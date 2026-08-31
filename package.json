@@ -1,0 +1,53 @@
+{
+  "name": "pebble-agent",
+  "author": "nick1udwig",
+  "version": "0.1.0",
+  "description": "A streaming, agent-defined interface for Repebble watches.",
+  "main": "src/common/index.js",
+  "keywords": [
+    "pebble-app",
+    "repebble",
+    "agent",
+    "dynamic-ui"
+  ],
+  "private": true,
+  "scripts": {
+    "test": "node tests/run.js && node tests/native/run.js && node tests/integration.mjs",
+    "build:watch": "pebble build",
+    "demo:server": "node examples/server.mjs"
+  },
+  "pebble": {
+    "displayName": "Agent",
+    "uuid": "a59810b4-596d-4c6e-81ae-7f2152af8c17",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "emery",
+      "gabbro"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "capabilities": [
+      "configurable"
+    ],
+    "messageKeys": {
+      "MessageType": 0,
+      "RequestId": 1,
+      "Operation": 2,
+      "Kind": 3,
+      "ElementId": 4,
+      "ParentId": 5,
+      "Title": 6,
+      "Subtitle": 7,
+      "Value": 8,
+      "Action": 9,
+      "Meta": 10,
+      "Flags": 11,
+      "Index": 12
+    },
+    "resources": {
+      "media": []
+    }
+  }
+}

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111827" />
+    <title>Pebble Agent settings</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="mark" aria-hidden="true">A</div>
+        <div>
+          <p class="eyebrow">Pebble Agent</p>
+          <h1>Connection</h1>
+          <p class="lede">Connect the watch to a PAM-compatible agent endpoint.</p>
+        </div>
+      </header>
+
+      <form id="settings">
+        <label>
+          <span>Agent endpoint</span>
+          <input id="endpoint" name="endpoint" type="url" inputmode="url"
+                 placeholder="https://agent.example.com/respond" autocomplete="url" />
+          <small>HTTPS is strongly recommended. HTTP and WebSocket endpoints are also supported for local development.</small>
+        </label>
+
+        <label>
+          <span>Bearer token</span>
+          <input id="token" name="token" type="password" autocomplete="off"
+                 placeholder="Optional" />
+          <small>Stored in the Pebble phone app's local storage and sent only to the endpoint above.</small>
+        </label>
+
+        <div class="split">
+          <label>
+            <span>Weather units</span>
+            <select id="units" name="units">
+              <option value="auto">Automatic</option>
+              <option value="metric">Metric</option>
+              <option value="imperial">Imperial</option>
+            </select>
+          </label>
+          <label>
+            <span>Timeout</span>
+            <select id="timeout" name="timeout">
+              <option value="30">30 seconds</option>
+              <option value="45">45 seconds</option>
+              <option value="60">60 seconds</option>
+              <option value="90">90 seconds</option>
+            </select>
+          </label>
+        </div>
+
+        <label>
+          <span>Weather location label</span>
+          <input id="location-label" name="locationLabel" type="text"
+                 maxlength="64" placeholder="Current location" />
+        </label>
+
+        <button type="submit">Save &amp; close</button>
+        <p id="status" role="status">Hold Select on the watch after saving.</p>
+      </form>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>
+
