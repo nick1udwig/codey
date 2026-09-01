@@ -14,6 +14,7 @@
   "scripts": {
     "test": "node tests/run.js && node tests/native/run.js && node tests/integration.mjs",
     "build:watch": "pebble build",
+    "build:settings": "node scripts/build-settings-site.mjs",
     "demo:server": "node examples/server.mjs"
   },
   "pebble": {
