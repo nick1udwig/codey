@@ -19,7 +19,7 @@ import (
 //go:embed prompt.md
 var developerInstructions string
 
-const baseInstructions = "You are Pebble Agent, a concise general assistant for a small watch. Follow the developer instructions exactly. Return only PAM and do not use tools."
+const baseInstructions = "You are Pebble Agent, a concise general assistant for a small watch. Follow the developer instructions exactly. Use only the tools permitted by the session configuration when needed. Return the final answer only as PAM."
 
 type Config struct {
 	Model     string
@@ -78,40 +78,43 @@ func (agent *Agent) respond(parent context.Context, request pam.Request, stream 
 	if err != nil {
 		return err
 	}
-	threadID := agent.store.Thread(request.Session)
+	model, effort, err := agent.modelOptions(ctx, request.Backend)
+	if err != nil {
+		return err
+	}
+	request.Backend.Model = model
+	sessionKey := agent.sessionKey(request.Session, request.Backend)
+	threadID := agent.store.Thread(sessionKey)
 	if threadID == "" {
-		threadID, err = agent.startThread(ctx, connection, generation, request.Session)
+		threadID, err = agent.startThread(ctx, connection, generation, sessionKey, request.Backend)
 	} else if !agent.isLoaded(threadID, generation) {
-		err = agent.resumeThread(ctx, connection, generation, threadID)
+		err = agent.resumeThread(ctx, connection, generation, threadID, request.Backend)
 		if err != nil && threadMissing(err) {
-			if clearErr := agent.store.Set(request.Session, ""); clearErr != nil {
+			if clearErr := agent.store.Set(sessionKey, ""); clearErr != nil {
 				return clearErr
 			}
-			threadID, err = agent.startThread(ctx, connection, generation, request.Session)
+			threadID, err = agent.startThread(ctx, connection, generation, sessionKey, request.Backend)
 		}
 	}
 	if err != nil {
 		return err
 	}
-	return agent.runTurn(ctx, connection, threadID, request.Raw, stream)
+	return agent.runTurn(ctx, connection, threadID, request.Raw, model, effort, request.Backend, stream)
 }
 
-func (agent *Agent) startThread(ctx context.Context, connection *appserver.Connection, generation uint64, session string) (string, error) {
+func (agent *Agent) startThread(ctx context.Context, connection *appserver.Connection, generation uint64, session string, options pam.BackendOptions) (string, error) {
 	var response struct {
 		Thread struct {
 			ID string `json:"id"`
 		} `json:"thread"`
 	}
-	err := connection.Request(ctx, "thread/start", map[string]any{
-		"approvalPolicy":        "never",
-		"baseInstructions":      baseInstructions,
-		"cwd":                   agent.config.Workspace,
-		"developerInstructions": developerInstructions,
-		"ephemeral":             false,
-		"model":                 agent.config.Model,
-		"sandbox":               "read-only",
-		"serviceName":           "pebble-agent",
-	}, &response)
+	params, err := agent.threadOptions(ctx, connection, options)
+	if err != nil {
+		return "", err
+	}
+	params["ephemeral"] = false
+	params["serviceName"] = "pebble-agent"
+	err = connection.Request(ctx, "thread/start", params, &response)
 	if err != nil {
 		return "", fmt.Errorf("start Codex thread: %w", err)
 	}
@@ -125,18 +128,15 @@ func (agent *Agent) startThread(ctx context.Context, connection *appserver.Conne
 	return response.Thread.ID, nil
 }
 
-func (agent *Agent) resumeThread(ctx context.Context, connection *appserver.Connection, generation uint64, threadID string) error {
+func (agent *Agent) resumeThread(ctx context.Context, connection *appserver.Connection, generation uint64, threadID string, options pam.BackendOptions) error {
 	var response map[string]any
-	err := connection.Request(ctx, "thread/resume", map[string]any{
-		"approvalPolicy":        "never",
-		"baseInstructions":      baseInstructions,
-		"cwd":                   agent.config.Workspace,
-		"developerInstructions": developerInstructions,
-		"excludeTurns":          true,
-		"model":                 agent.config.Model,
-		"sandbox":               "read-only",
-		"threadId":              threadID,
-	}, &response)
+	params, err := agent.threadOptions(ctx, connection, options)
+	if err != nil {
+		return err
+	}
+	params["excludeTurns"] = true
+	params["threadId"] = threadID
+	err = connection.Request(ctx, "thread/resume", params, &response)
 	if err != nil {
 		return fmt.Errorf("resume Codex thread: %w", err)
 	}
@@ -144,7 +144,7 @@ func (agent *Agent) resumeThread(ctx context.Context, connection *appserver.Conn
 	return nil
 }
 
-func (agent *Agent) runTurn(ctx context.Context, connection *appserver.Connection, threadID, request string, stream *pam.OutputStream) error {
+func (agent *Agent) runTurn(ctx context.Context, connection *appserver.Connection, threadID, request, model, effort string, options pam.BackendOptions, stream *pam.OutputStream) error {
 	subscription, err := connection.Subscribe(threadID)
 	if err != nil {
 		return err
@@ -156,14 +156,18 @@ func (agent *Agent) runTurn(ctx context.Context, connection *appserver.Connectio
 		} `json:"turn"`
 	}
 	prompt := "Respond to this watch request. Return only one PAM document.\n\n" + request
+	// Inherit the thread's resolved permissions snapshot. Re-sending the named
+	// profile here makes app-server resolve it against disk config, where our
+	// per-thread profile does not exist. Permission changes use another thread.
+	policy, reviewer := approvalOptions(options)
 	err = connection.Request(ctx, "turn/start", map[string]any{
-		"approvalPolicy": "never",
-		"cwd":            agent.config.Workspace,
-		"effort":         agent.config.Effort,
-		"input":          []map[string]any{{"type": "text", "text": prompt}},
-		"model":          agent.config.Model,
-		"sandboxPolicy":  map[string]any{"type": "readOnly", "networkAccess": false},
-		"threadId":       threadID,
+		"approvalPolicy":    policy,
+		"approvalsReviewer": reviewer,
+		"cwd":               agent.config.Workspace,
+		"effort":            effort,
+		"input":             []map[string]any{{"type": "text", "text": prompt}},
+		"model":             model,
+		"threadId":          threadID,
 	}, &response)
 	if err != nil {
 		return fmt.Errorf("start Codex turn: %w", err)

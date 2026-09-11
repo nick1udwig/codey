@@ -35,6 +35,7 @@ type Server struct {
 func New(config Config) *Server {
 	server := &Server{config: config, mux: http.NewServeMux()}
 	server.mux.HandleFunc("/healthz", server.health)
+	server.mux.HandleFunc("/v1/models", server.models)
 	server.mux.HandleFunc("/v1/agent", server.agent)
 	server.mux.HandleFunc("/", server.root)
 	return server

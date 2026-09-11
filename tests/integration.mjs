@@ -62,15 +62,20 @@ function request(port, { method = "POST", body = "" } = {}) {
   });
 }
 
-function runConfig(hash, bridge) {
-  const ids = ["settings", "endpoint", "token", "units", "timeout", "location-label", "status"];
+function runConfig(hash, bridge, XHR) {
+  const ids = ["settings", "endpoint", "token", "units", "timeout", "location-label", "status", "codex-model", "codex-effort", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review"];
   const elements = {};
   let submit;
   ids.forEach(id => {
     elements[id] = {
       value: "",
+      checked: false,
+      children: [],
+      handlers: {},
+      appendChild(child) { this.children.push(child); },
       textContent: "",
       addEventListener(name, handler) {
+        this.handlers[name] = handler;
         if (id === "settings" && name === "submit") submit = handler;
       }
     };
@@ -78,13 +83,16 @@ function runConfig(hash, bridge) {
   const location = { hash, href: "https://config.test/" + hash };
   const document = {
     location: location.href,
-    getElementById(id) { return elements[id]; }
+    getElementById(id) { return elements[id]; },
+    createElement() { return { value: "", textContent: "" }; }
   };
   const window = { location };
   if (bridge) window.PebbleConfigBridge = bridge;
   vm.runInNewContext(configScript, {
     window,
     document,
+    URL,
+    XMLHttpRequest: XHR,
     JSON,
     Object,
     String,
@@ -200,7 +208,9 @@ test("configuration page hydrates state and closes with normalized form values",
     token: "secret",
     units: "metric",
     locationLabel: "Current location",
-    timeoutSeconds: 90
+    timeoutSeconds: 90,
+    codexModel: "", codexEffort: "", webSearch: "disabled", fileAccess: "none",
+    networkAccess: false, shellAccess: false, autoReview: false
   });
 });
 
@@ -218,6 +228,41 @@ test("configuration page recovers from a bad hash and supports the native bridge
   assert.equal(submitted.endpoint, "wss://agent.test/socket");
   assert.equal(submitted.timeoutSeconds, 30);
   assert.equal(harness.location.href, "https://config.test/#%not-json");
+});
+
+test("configuration round-trips Codex permissions and model choices", () => {
+  const initial = { codexModel: "example", codexEffort: "high", webSearch: "cached", fileAccess: "read-only", networkAccess: true, shellAccess: true, autoReview: true };
+  let saved;
+  const h = runConfig("#" + encodeURIComponent(JSON.stringify(initial)), { submit(s) { saved = s; } });
+  assert.equal(h.elements["codex-model"].value, "example");
+  assert.equal(h.elements["auto-review"].checked, true);
+  h.elements["web-search"].value = "live";
+  h.elements["network-access"].checked = false;
+  h.submit({ preventDefault() {} });
+  assert.equal(saved.codexModel, "example"); assert.equal(saved.codexEffort, "high");
+  assert.equal(saved.webSearch, "live"); assert.equal(saved.fileAccess, "read-only");
+  assert.equal(saved.networkAccess, false); assert.equal(saved.shellAccess, true); assert.equal(saved.autoReview, true);
+});
+
+test("model discovery uses bearer auth and ignores stale endpoint responses", () => {
+  const requests = [];
+  function XHR() { this.headers = {}; requests.push(this); }
+  XHR.prototype.open = function(method, url) { this.method = method; this.url = url; };
+  XHR.prototype.setRequestHeader = function(k, v) { this.headers[k] = v; };
+  XHR.prototype.send = function() {};
+  const h = runConfig("#" + encodeURIComponent(JSON.stringify({ endpoint: "wss://agent.test/v1/agent", token: "secret", codexModel: "example", codexEffort: "ultra" })), null, XHR);
+  const load = () => h.elements["load-models"].handlers.click();
+  const body = JSON.stringify({ defaultModel: "example", defaultEffort: "high", models: [{ model: "example", displayName: "Example", supportedReasoningEfforts: [{ reasoningEffort: "low", description: "Fast" }, { reasoningEffort: "high", description: "Thorough" }] }] });
+  load();
+  assert.equal(requests[0].url, "https://agent.test/v1/models");
+  assert.equal(requests[0].headers.Authorization, "Bearer secret");
+  requests[0].status = 200; requests[0].responseText = body; requests[0].onload();
+  assert.equal(h.elements["codex-effort"].value, "");
+  assert.deepEqual(h.elements["codex-effort"].children.map(o => o.value), ["", "low", "high"]);
+  load();
+  h.elements.endpoint.value = "https://other.test"; h.elements.endpoint.handlers.input();
+  requests[1].status = 200; requests[1].responseText = body; requests[1].onload();
+  assert.match(h.elements["model-status"].textContent, /this endpoint/);
 });
 
 let passed = 0;

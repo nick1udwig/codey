@@ -13,8 +13,8 @@
         <div class="mark" aria-hidden="true">A</div>
         <div>
           <p class="eyebrow">Pebble Agent</p>
-          <h1>Connection</h1>
-          <p class="lede">Connect the watch to a PAM-compatible agent endpoint.</p>
+          <h1>Agent settings</h1>
+          <p class="lede">Configure your connection, Codex model, and permissions.</p>
         </div>
       </header>
 
@@ -32,6 +32,54 @@
                  placeholder="Optional" />
           <small>Stored in the Pebble phone app's local storage and sent only to the endpoint above.</small>
         </label>
+
+        <fieldset>
+          <legend>Codex backend</legend>
+          <label>
+            <span>Model</span>
+            <input id="codex-model" list="codex-models" maxlength="128" placeholder="Server default" autocomplete="off" />
+            <datalist id="codex-models"></datalist>
+            <small>Leave blank to use the server default, or select an available model.</small>
+          </label>
+          <button id="load-models" type="button">Load available models</button>
+          <p id="model-status" role="status">Load models from your endpoint to see supported reasoning levels.</p>
+          <label>
+            <span>Reasoning effort</span>
+            <select id="codex-effort">
+              <option value="">Default</option>
+              <option value="low">Low</option><option value="medium">Medium</option>
+              <option value="high">High</option><option value="xhigh">Extra high</option>
+              <option value="max">Maximum</option><option value="ultra">Ultra</option>
+            </select>
+            <small>Higher effort can take longer. Default uses the selected model's recommendation, or the server's effort when no model is selected.</small>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Codex permissions</legend>
+          <label>
+            <span>Web search</span>
+            <select id="web-search">
+              <option value="disabled">Off</option><option value="cached">Cached results</option><option value="live">Live web search</option>
+            </select>
+          </label>
+          <label>
+            <span>Filesystem access on the server</span>
+            <select id="file-access">
+              <option value="none">No user files</option>
+              <option value="read-only">Read-only</option>
+              <option value="workspace-write">Workspace writes</option>
+            </select>
+            <small>No user files allows only minimal runtime files. Read-only and workspace writes allow reads outside the workspace. Workspace writes are limited to the directory chosen when starting the server.</small>
+          </label>
+          <label class="toggle"><input id="shell-access" type="checkbox" /><span>Allow command execution</span></label>
+          <small>Commands run within the selected filesystem and network permissions.</small>
+          <label class="toggle"><input id="network-access" type="checkbox" /><span>Allow command network access</span></label>
+          <small>Separate from web search. This does not control phone dictation, weather, or the connection to Codex.</small>
+          <label class="toggle"><input id="auto-review" type="checkbox" /><span>Auto-review requests for additional permission</span></label>
+          <small>When on, Codex reviews eligible requests to go beyond the permissions above and may approve or deny them. When off, requests for additional permission are denied. Agent does not offer manual approval prompts.</small>
+          <p>Permission changes start a separate conversation. Configured apps, plugins, and MCP tools are disabled for these watch conversations. Server-managed restrictions still apply.</p>
+        </fieldset>
 
         <div class="split">
           <label>

@@ -72,7 +72,7 @@ func run(arguments []string) error {
 	flags.DurationVar(&config.connectTimeout, "connect-timeout", 5*time.Second, "timeout per app-server transport")
 	flags.DurationVar(&config.turnTimeout, "turn-timeout", 110*time.Second, "maximum Codex turn duration")
 	flags.StringVar(&config.statePath, "state", defaults.state, "session state JSON path")
-	flags.StringVar(&config.workspace, "workspace", defaults.workspace, "empty absolute cwd exposed read-only to Codex")
+	flags.StringVar(&config.workspace, "workspace", defaults.workspace, "absolute Codex cwd and writable root when phone settings allow workspace writes")
 	flags.StringVar(&config.logLevel, "log-level", environment("PEBBLE_AGENT_LOG_LEVEL", "info"), "debug, info, warn, or error")
 	flags.StringVar(&config.logFile, "log-file", environment("PEBBLE_AGENT_LOG_FILE", defaults.log), "rotating log path, or - for stderr only")
 	if err := flags.Parse(arguments); err != nil {

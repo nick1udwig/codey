@@ -80,3 +80,9 @@ button {
   button { background: #fbbf24; color: #111827; }
 }
 
+
+fieldset { border: 1px solid #374151; border-radius: 12px; padding: 18px; margin: 12px 0; min-width: 0; display: grid; gap: 14px; }
+legend { padding: 0 6px; font-weight: 700; }
+.toggle { display: flex; align-items: center; gap: 12px; }
+.toggle input { width: 22px; height: 22px; flex: 0 0 22px; }
+#model-status { font-size: .85rem; }

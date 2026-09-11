@@ -33,6 +33,7 @@ type scriptedServer struct {
 	turnStarts    int
 	invalidOutput bool
 	turnParams    []map[string]any
+	threadParams  []map[string]any
 }
 
 type scriptedSession struct {
@@ -78,9 +79,14 @@ func (session *scriptedSession) Write(_ context.Context, payload []byte) error {
 	case "initialize":
 		respond(map[string]any{"serverInfo": map[string]string{"name": "fake"}})
 	case "initialized":
+	case "config/read":
+		respond(map[string]any{"config": map[string]any{"mcp_servers": map[string]any{"local-files": map[string]any{"enabled": true}}, "plugins": map[string]any{"example@local": map[string]any{"enabled": true}}}})
+	case "model/list":
+		respond(map[string]any{"data": []map[string]any{{"model": "test-model", "defaultReasoningEffort": "low", "supportedReasoningEfforts": []map[string]string{{"reasoningEffort": "low"}, {"reasoningEffort": "high"}}}}, "nextCursor": nil})
 	case "thread/start":
 		session.server.mu.Lock()
 		session.server.threadStarts++
+		session.server.threadParams = append(session.server.threadParams, message.Params)
 		number := session.server.threadStarts
 		session.server.mu.Unlock()
 		respond(map[string]any{"thread": map[string]any{"id": fmt.Sprintf("thread-%d", number)}})
@@ -182,9 +188,8 @@ func TestAgentStreamsFinalPAMAndKeepsConversationThread(t *testing.T) {
 	if params["model"] != "gpt-5.6-luna" || params["effort"] != "xhigh" || params["approvalPolicy"] != "never" {
 		t.Fatalf("unexpected model policy: %#v", params)
 	}
-	sandbox := params["sandboxPolicy"].(map[string]any)
-	if sandbox["type"] != "readOnly" || sandbox["networkAccess"] != false {
-		t.Fatalf("unexpected sandbox: %#v", sandbox)
+	if server.threadParams[0]["permissions"] != "pebble" || params["approvalsReviewer"] != "user" {
+		t.Fatalf("unexpected permission policy: %#v", params)
 	}
 }
 
@@ -194,7 +199,10 @@ func TestAgentResumesPersistedThreadAfterReconnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Set("watch-session", "persisted-thread"); err != nil {
+	defaults, _ := pam.ParseBackendOptions(nil)
+	workspace := t.TempDir()
+	key := New(nil, nil, Config{Workspace: workspace}).sessionKey("watch-session", defaults)
+	if err := store.Set(key, "persisted-thread"); err != nil {
 		t.Fatal(err)
 	}
 	server := &scriptedServer{}
@@ -203,7 +211,7 @@ func TestAgentResumesPersistedThreadAfterReconnect(t *testing.T) {
 		ConnectTimeout: time.Second,
 	})
 	defer client.Close()
-	agent := New(client, store, Config{Workspace: t.TempDir(), Timeout: 3 * time.Second})
+	agent := New(client, store, Config{Workspace: workspace, Timeout: 3 * time.Second})
 	var output bytes.Buffer
 	if err := agent.Respond(context.Background(), testRequest(t, "watch-session"), func(payload []byte) error {
 		_, err := output.Write(payload)

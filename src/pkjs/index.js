@@ -204,6 +204,12 @@ function requestAgent(input) {
     timeoutSeconds: settings.timeoutSeconds,
     input: input,
     context: currentScreen,
+    backend: {
+      model: settings.codexModel, effort: settings.codexEffort,
+      web_search: settings.webSearch, file_access: settings.fileAccess,
+      network_access: String(settings.networkAccess), shell_access: String(settings.shellAccess),
+      auto_review: String(settings.autoReview)
+    },
     device: {
       platform: platformName(watchInfo),
       model: watchInfo.model || "unknown",
@@ -312,7 +318,38 @@ Pebble.addEventListener("ready", function() {
 Pebble.addEventListener("appmessage", handleWatchMessage);
 
 Pebble.addEventListener("showConfiguration", function() {
-  Pebble.openURL(Settings.buildConfigUrl(settings, Date.now()));
+  // Fetch through the phone bridge before opening the HTTPS settings page.
+  // This also works with local HTTP/WS endpoints that a browser would block as
+  // mixed content. Catalog metadata is not persisted as user settings.
+  var match = /^(https?|wss?):\/\/([^/?#]+)(?:[/?#]|$)/i.exec(settings.endpoint);
+  if (!match || match[2].indexOf("@") >= 0 || typeof XMLHttpRequest === "undefined") {
+    Pebble.openURL(Settings.buildConfigUrl(settings, Date.now()));
+    return;
+  }
+  var opened = false;
+  function open(catalog) {
+    if (opened) { return; }
+    opened = true;
+    Pebble.openURL(Settings.buildConfigUrl(settings, Date.now(), catalog));
+  }
+  var xhr = new XMLHttpRequest();
+  try {
+    xhr.open("GET", match[1].toLowerCase().replace(/^ws/, "http") + "://" + match[2] + "/v1/models", true);
+    xhr.timeout = 8000;
+    if (settings.token) { xhr.setRequestHeader("Authorization", "Bearer " + settings.token); }
+    xhr.onload = function() {
+      var catalog = null;
+      try {
+        if (xhr.status === 200) {
+          var data = JSON.parse(xhr.responseText);
+          if (data && Array.isArray(data.models) && data.models.length <= 100) { catalog = data; }
+        }
+      } catch (_) {}
+      open(catalog);
+    };
+    xhr.onerror = xhr.ontimeout = function() { open(); };
+    xhr.send();
+  } catch (_) { open(); }
 });
 
 Pebble.addEventListener("webviewclosed", function(event) {

@@ -17,6 +17,7 @@ type Request struct {
 	Input    map[string]string
 	Context  map[string]string
 	Device   map[string]string
+	Backend  BackendOptions
 	Bearer   string
 	Raw      string
 }
@@ -26,7 +27,8 @@ func ParseRequest(source []byte) (Request, error) {
 	if err != nil {
 		return Request{}, err
 	}
-	request := Request{}
+	defaults, _ := ParseBackendOptions(nil)
+	request := Request{Backend: defaults}
 	seen := make(map[string]bool)
 	requestSeen := false
 	doneSeen := false
@@ -45,7 +47,7 @@ func ParseRequest(source []byte) (Request, error) {
 			if err != nil || request.ID < 1 || request.ID > 65535 {
 				return Request{}, fmt.Errorf("PAM line %d: request id must be 1..65535", node.Line)
 			}
-		case "input", "context", "device", "auth":
+		case "input", "context", "device", "auth", "backend":
 			if !requestSeen || doneSeen || node.Depth != 1 || node.ParentKind != "request" {
 				return Request{}, fmt.Errorf("PAM line %d: %s must be a request child", node.Line, node.Kind)
 			}
@@ -60,6 +62,11 @@ func ParseRequest(source []byte) (Request, error) {
 				request.Context = node.Attrs
 			case "device":
 				request.Device = node.Attrs
+			case "backend":
+				request.Backend, err = ParseBackendOptions(node.Attrs)
+				if err != nil {
+					return Request{}, err
+				}
 			case "auth":
 				request.Bearer = node.Attrs["bearer"]
 			}

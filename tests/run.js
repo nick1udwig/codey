@@ -622,13 +622,7 @@ test("settings recover from corrupt storage and reject canceled configuration", 
     getItem: function() { return "{bad"; },
     setItem: function() { throw new Error("unexpected write"); }
   };
-  assert.deepStrictEqual(Settings.load(storage), {
-    endpoint: "",
-    token: "",
-    units: "auto",
-    locationLabel: "Current location",
-    timeoutSeconds: 45
-  });
+  assert.deepStrictEqual(Settings.load(storage), Object.assign({}, Settings.DEFAULTS));
   assert.strictEqual(Settings.parseConfigResponse("CANCELLED"), null);
   assert.strictEqual(Settings.parseConfigResponse("%not-json"), null);
   assert.strictEqual(Settings.parseConfigResponse(""), null);
@@ -1048,6 +1042,49 @@ test("Local commands work with no configured endpoint", function() {
     assert.strictEqual(harness.sent[0][Watch.Key.messageType], "capability");
     assert.strictEqual(harness.sent[0][Watch.Key.meta], "duration=300s");
   } finally { harness.cleanup(); }
+});
+
+test("backend preferences persist and reach Codex separately from dictated text", function() {
+  var normalized = Settings.normalize({ codexModel: "test-model", codexEffort: "high", webSearch: "live", fileAccess: "workspace-write", shellAccess: true, networkAccess: true, autoReview: true });
+  assert.strictEqual(normalized.autoReview, true);
+  var invalid = Settings.normalize({ webSearch: "bogus", fileAccess: "full", networkAccess: "true", shellAccess: "false", autoReview: "true", codexModel: "bad model" });
+  assert.strictEqual(invalid.webSearch, "disabled"); assert.strictEqual(invalid.fileAccess, "none");
+  assert.strictEqual(invalid.autoReview, false); assert.strictEqual(invalid.networkAccess, false); assert.strictEqual(invalid.codexModel, "");
+  var xhr;
+  function XHR() { xhr = this; this.responseText = ""; }
+  XHR.prototype.open = function() {}; XHR.prototype.setRequestHeader = function() {};
+  XHR.prototype.send = function(body) { this.body = body; }; XHR.prototype.abort = function() {};
+  normalized.endpoint = "https://agent.test";
+  var storage = {}; storage[Settings.STORAGE_KEY] = JSON.stringify(normalized);
+  var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: XHR });
+  try {
+    h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "explain gravity" } });
+    var backend = parse(xhr.body).filter(function(n) { return n.kind === "backend"; })[0];
+    assert.deepStrictEqual(Object.assign({}, backend.attrs), { model: "test-model", effort: "high", web_search: "live", file_access: "workspace-write", network_access: "true", shell_access: "true", auto_review: "true" });
+    xhr.status = 200; xhr.readyState = 4; xhr.responseText = "pam version=1\nscreen id=answer layout=card\ndone\n"; xhr.onreadystatechange();
+  } finally { h.cleanup(); }
+});
+
+test("phone configuration fetches model choices before opening HTTPS settings", function() {
+  var xhr;
+  function XHR() { xhr = this; this.headers = {}; }
+  XHR.prototype.open = function(method,url) { this.url=url; };
+  XHR.prototype.setRequestHeader = function(k,v) {this.headers[k]=v;};
+  XHR.prototype.send = function() {};
+  var storage = {}; storage[Settings.STORAGE_KEY] = JSON.stringify({endpoint:"ws://local.test:8787/v1/agent",token:"secret"});
+  var h = loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
+  try {
+    h.handlers.showConfiguration();
+    assert.strictEqual(xhr.url,"http://local.test:8787/v1/models");
+    assert.strictEqual(xhr.headers.Authorization,"Bearer secret");
+    xhr.status=200; xhr.responseText=JSON.stringify({models:[{model:"example",supportedReasoningEfforts:[]}],defaultModel:"example",defaultEffort:"low"});xhr.onload();
+    var state=JSON.parse(decodeURIComponent(h.opened[0].split("#")[1]));
+    assert.strictEqual(state.codexCatalog.models[0].model,"example");
+    assert.strictEqual(Settings.normalize(state).codexCatalog,undefined);
+    xhr.onerror(); assert.strictEqual(h.opened.length,1);
+    h.handlers.showConfiguration();xhr.ontimeout();
+    assert.strictEqual(h.opened.length,2);
+  } finally {h.cleanup();}
 });
 
 function runOne(entry) {

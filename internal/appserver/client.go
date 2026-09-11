@@ -342,7 +342,8 @@ func (client *Client) Connection(ctx context.Context) (*Connection, uint64, stri
 		connection := newConnection(session, client.config.Logger, connector.Name())
 		var initializeResult map[string]any
 		err = connection.Request(attemptCtx, "initialize", map[string]any{
-			"clientInfo": map[string]string{"name": "pebble_agent", "title": "Pebble Agent", "version": client.config.Version},
+			"capabilities": map[string]bool{"experimentalApi": true},
+			"clientInfo":   map[string]string{"name": "pebble_agent", "title": "Pebble Agent", "version": client.config.Version},
 		}, &initializeResult)
 		if err == nil {
 			err = connection.Notify(attemptCtx, "initialized", map[string]any{})

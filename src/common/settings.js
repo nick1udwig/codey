@@ -8,7 +8,14 @@ var DEFAULTS = Object.freeze({
   token: "",
   units: "auto",
   locationLabel: "Current location",
-  timeoutSeconds: 45
+  timeoutSeconds: 45,
+  codexModel: "",
+  codexEffort: "",
+  webSearch: "disabled",
+  fileAccess: "none",
+  networkAccess: false,
+  shellAccess: false,
+  autoReview: false
 });
 
 function copyDefaults(value) {
@@ -22,6 +29,15 @@ function copyDefaults(value) {
   settings.units = settings.units === "imperial" || settings.units === "metric" ? settings.units : "auto";
   settings.locationLabel = String(settings.locationLabel || DEFAULTS.locationLabel).slice(0, 64);
   settings.timeoutSeconds = Math.max(10, Math.min(120, parseInt(settings.timeoutSeconds, 10) || 45));
+  ["codexModel", "codexEffort"].forEach(function(key) {
+    var value = String(settings[key] || "").trim();
+    settings[key] = /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,127}$/.test(value) ? value : "";
+  });
+  settings.webSearch = ["cached", "live"].indexOf(settings.webSearch) >= 0 ? settings.webSearch : "disabled";
+  settings.fileAccess = ["read-only", "workspace-write"].indexOf(settings.fileAccess) >= 0 ? settings.fileAccess : "none";
+  ["networkAccess", "shellAccess", "autoReview"].forEach(function(key) {
+    settings[key] = settings[key] === true;
+  });
   return settings;
 }
 
@@ -48,8 +64,9 @@ function save(settings, storage) {
   return normalized;
 }
 
-function buildConfigUrl(settings, nonce) {
+function buildConfigUrl(settings, nonce, catalog) {
   var normalized = copyDefaults(settings);
+  if (catalog) { normalized.codexCatalog = catalog; }
   var state = encodeURIComponent(JSON.stringify(normalized));
   return CONFIG_URL + "?v=" + encodeURIComponent(String(nonce || Date.now())) + "#" + state;
 }

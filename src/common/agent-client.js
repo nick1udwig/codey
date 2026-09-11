@@ -34,6 +34,9 @@ function buildRequest(request) {
     now: device.now == null ? "" : device.now,
     utc_offset_minutes: device.utc_offset_minutes == null ? "" : device.utc_offset_minutes
   }, 1);
+  if (request.backend) {
+    output += line("backend", request.backend, 1);
+  }
   if (request.token && /^wss?:/i.test(request.endpoint || "")) {
     output += line("auth", { bearer: request.token }, 1);
   }

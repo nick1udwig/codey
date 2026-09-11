@@ -49,6 +49,13 @@ Use the same `PEBBLE_AGENT_TOKEN` value in the app settings. Plain HTTP is suita
 4. Enter the server's bearer token, choose weather units and a timeout, then tap **Save & close**.
 5. Launch **Agent** on the watch. The home screen should say **Agent connected**.
 
+Settings also select the Codex model and reasoning effort. Use **Load available
+models** to fetch the server's supported choices. Permissions control web search,
+user-file access, command execution, command networking, and auto-review. All tool
+permissions start off. Auto-review can approve exceptions to the selected baseline;
+when off, additional-permission requests are denied. Changing permissions uses a
+separate conversation. See [backend settings](docs/server.md#codex-configuration).
+
 The gear icon is supplied by the Pebble mobile app. The settings page requires internet access when it opens.
 
 ## Use the app
