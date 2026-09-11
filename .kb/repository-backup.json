@@ -1,14 +1,14 @@
 {
   "version": 1,
-  "created_at": "2026-09-11T19:37:06.751234894+00:00",
+  "created_at": "2026-09-11T19:39:00.166815302+00:00",
   "documents": [
     {
       "id": "01a091f6-6759-7d51-8645-6a6c40097e31",
       "slug": "issues/configure-codex-backend",
-      "version": 1,
+      "version": 2,
       "doc_type": "task",
       "title": "Configure Codex models and permissions from phone settings",
-      "content": "Add model and effort selection backed by model/list; expose web search, filesystem, shell, network, and auto-review settings. Validate and transport settings outside model input, isolate permission profiles, and verify settings UI, backend tests, and the real Codex request path. Complete deployment and refresh KB documentation.",
+      "content": "Implementation: git commit `885b444`.\n\n- [x] Model and effort selection using the installed Codex model/list catalog.\n- [x] Web search, filesystem, command, network, and auto-review options.\n- [x] Validated backend attributes kept out of model input; isolated permission profiles.\n- [x] 57 JavaScript tests, native scheduler tests, 6 integration tests, all Go tests passed.\n- [x] Emery/Gabbro builds and phone-sized browser layout checked.\n- [x] Real Codex greeting smoke test and authenticated model discovery passed.\n- [x] Running tmux server updated while preserving its environment; watch installed.\n- [x] KB documentation imported, code indexed, and portable backup restore verified.\n- [ ] Publish the settings page. Push to nick1udwig/pebble-agent requires explicit user approval following automatic approval review rejection. Until publication, the hosted settings page retains its previous controls.\n\nImplementation detail: turn/start must inherit the thread-local resolved permission\nprofile. Sending its name again attempts to resolve against global config and fails.\nPermission changes therefore use separate threads; model/effort changes reuse them.\n",
       "frontmatter": {
         "status": "active",
         "priority": "medium",
@@ -19,7 +19,7 @@
         ]
       },
       "created_at": "2026-09-11T19:36:42.120639199Z",
-      "modified_at": "2026-09-11T19:36:42.120639199Z"
+      "modified_at": "2026-09-11T19:39:00.126190155Z"
     },
     {
       "id": "01a091eb-498b-73f3-9b2f-bf1076dcc440",
@@ -221,6 +221,100 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a091fa-fca7-7ed0-b7b1-4777f80a8334",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Record settings validation and pending publication",
+      "created_at": "2026-09-11T19:39:00.126190155Z",
+      "changes": [
+        {
+          "document_id": "01a091f6-6759-7d51-8645-6a6c40097e31",
+          "slug": "issues/configure-codex-backend",
+          "change_type": "modified",
+          "previous_commit_id": "01a091f8-e226-7663-a542-e80b3f5d23cc",
+          "previous_version": 1,
+          "new_version": 2,
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 1,
+              "new_start": 1,
+              "new_count": 15,
+              "lines": [
+                {
+                  "op": "delete",
+                  "content": "Add model and effort selection backed by model/list; expose web search, filesystem, shell, network, and auto-review settings. Validate and transport settings outside model input, isolate permission profiles, and verify settings UI, backend tests, and the real Codex request path. Complete deployment and refresh KB documentation."
+                },
+                {
+                  "op": "add",
+                  "content": "Implementation: git commit `885b444`."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "- [x] Model and effort selection using the installed Codex model/list catalog."
+                },
+                {
+                  "op": "add",
+                  "content": "- [x] Web search, filesystem, command, network, and auto-review options."
+                },
+                {
+                  "op": "add",
+                  "content": "- [x] Validated backend attributes kept out of model input; isolated permission profiles."
+                },
+                {
+                  "op": "add",
+                  "content": "- [x] 57 JavaScript tests, native scheduler tests, 6 integration tests, all Go tests passed."
+                },
+                {
+                  "op": "add",
+                  "content": "- [x] Emery/Gabbro builds and phone-sized browser layout checked."
+                },
+                {
+                  "op": "add",
+                  "content": "- [x] Real Codex greeting smoke test and authenticated model discovery passed."
+                },
+                {
+                  "op": "add",
+                  "content": "- [x] Running tmux server updated while preserving its environment; watch installed."
+                },
+                {
+                  "op": "add",
+                  "content": "- [x] KB documentation imported, code indexed, and portable backup restore verified."
+                },
+                {
+                  "op": "add",
+                  "content": "- [ ] Publish the settings page. Push to nick1udwig/pebble-agent requires explicit user approval following automatic approval review rejection. Until publication, the hosted settings page retains its previous controls."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Implementation detail: turn/start must inherit the thread-local resolved permission"
+                },
+                {
+                  "op": "add",
+                  "content": "profile. Sending its name again attempts to resolve against global config and fails."
+                },
+                {
+                  "op": "add",
+                  "content": "Permission changes therefore use separate threads; model/effort changes reuse them."
+                }
+              ]
+            }
+          ],
+          "content_hash": "3cf48ebdc15bc1ab462b0effc3f2727c05cc862d3f09f3182a289e8fa4987408",
+          "previous_hash": "c37d0231aa5e0120672f50527d371b4952ef413bc88739d099d5d6084a57b403",
+          "doc_type": "task",
+          "title": "Configure Codex models and permissions from phone settings"
+        }
+      ]
+    },
     {
       "id": "01a091f8-e226-7663-a542-e80b3f5d23cc",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
