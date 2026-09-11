@@ -13,6 +13,7 @@ import (
 // Settings with different tool permissions use separate threads. Thread-level
 // tool configuration cannot safely be replaced with only turn/start overrides.
 func (agent *Agent) sessionKey(session string, options pam.BackendOptions) string {
+	options.FastMode = false
 	options.Model = ""
 	options.Effort = ""
 	data, _ := json.Marshal(struct {

@@ -86,10 +86,10 @@ The included `examples/server.mjs` is a deterministic transport fixture, not a p
 The Go backend accepts an optional request child such as:
 
 ```pam
-  backend model=gpt-5.6-luna effort=low web_search=disabled file_access=none network_access=false shell_access=false auto_review=false
+  backend model=gpt-5.6-luna effort=xhigh fast_mode=true web_search=live file_access=none network_access=false shell_access=false auto_review=false
 ```
 
 These are configuration attributes, not model instructions. The Go parser validates
 them and removes the entire node from the model-facing request. Missing attributes
-use server model/effort defaults and restrictive tool defaults. Generic PAM endpoints
+use server model/effort defaults, fast mode on, and restrictive tool defaults. Generic PAM endpoints
 may ignore this node if they do not support Codex settings. See [server settings](server.md).

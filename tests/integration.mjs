@@ -63,7 +63,7 @@ function request(port, { method = "POST", body = "" } = {}) {
 }
 
 function runConfig(hash, bridge, XHR) {
-  const ids = ["settings", "endpoint", "token", "units", "timeout", "location-label", "status", "codex-model", "codex-effort", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review"];
+  const ids = ["settings", "endpoint", "token", "units", "timeout", "location-label", "status", "codex-model", "codex-effort", "fast-mode", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review"];
   const elements = {};
   let submit;
   ids.forEach(id => {
@@ -209,7 +209,7 @@ test("configuration page hydrates state and closes with normalized form values",
     units: "metric",
     locationLabel: "Current location",
     timeoutSeconds: 90,
-    codexModel: "", codexEffort: "", webSearch: "disabled", fileAccess: "none",
+    codexModel: "gpt-5.6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
     networkAccess: false, shellAccess: false, autoReview: false
   });
 });
@@ -220,6 +220,10 @@ test("configuration page recovers from a bad hash and supports the native bridge
   assert.equal(harness.elements.endpoint.value, "");
   assert.equal(harness.elements.units.value, "auto");
   assert.equal(harness.elements.timeout.value, "45");
+  assert.equal(harness.elements["codex-model"].value, "gpt-5.6-luna");
+  assert.equal(harness.elements["codex-effort"].value, "xhigh");
+  assert.equal(harness.elements["fast-mode"].checked, true);
+  assert.equal(harness.elements["web-search"].value, "live");
   assert.equal(harness.elements["location-label"].value, "Current location");
   harness.elements.endpoint.value = "wss://agent.test/socket";
   harness.elements.units.value = "auto";
@@ -231,7 +235,7 @@ test("configuration page recovers from a bad hash and supports the native bridge
 });
 
 test("configuration round-trips Codex permissions and model choices", () => {
-  const initial = { codexModel: "example", codexEffort: "high", webSearch: "cached", fileAccess: "read-only", networkAccess: true, shellAccess: true, autoReview: true };
+  const initial = { codexModel: "example", codexEffort: "high", fastMode: false, webSearch: "cached", fileAccess: "read-only", networkAccess: true, shellAccess: true, autoReview: true };
   let saved;
   const h = runConfig("#" + encodeURIComponent(JSON.stringify(initial)), { submit(s) { saved = s; } });
   assert.equal(h.elements["codex-model"].value, "example");
@@ -239,7 +243,7 @@ test("configuration round-trips Codex permissions and model choices", () => {
   h.elements["web-search"].value = "live";
   h.elements["network-access"].checked = false;
   h.submit({ preventDefault() {} });
-  assert.equal(saved.codexModel, "example"); assert.equal(saved.codexEffort, "high");
+  assert.equal(saved.codexModel, "example"); assert.equal(saved.codexEffort, "high"); assert.equal(saved.fastMode, false);
   assert.equal(saved.webSearch, "live"); assert.equal(saved.fileAccess, "read-only");
   assert.equal(saved.networkAccess, false); assert.equal(saved.shellAccess, true); assert.equal(saved.autoReview, true);
 });

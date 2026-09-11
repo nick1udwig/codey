@@ -31,6 +31,7 @@ func TestSettingsApplyToThreadsAndTurnsWithoutPermissionCarryover(t *testing.T) 
 	run()
 	request.Backend.Model = "test-model"
 	request.Backend.Effort = "high"
+	request.Backend.FastMode = false
 	run() // Model-only change reuses the thread.
 	request.Backend.FileAccess = "workspace-write"
 	request.Backend.WebSearch = "live"
@@ -42,6 +43,9 @@ func TestSettingsApplyToThreadsAndTurnsWithoutPermissionCarryover(t *testing.T) 
 	run() // Restricting again returns to the restricted thread.
 	server.mu.Lock()
 	defer server.mu.Unlock()
+	if server.turnParams[0]["serviceTierForTurn"] != "fast" || server.turnParams[1]["serviceTierForTurn"] != "default" {
+		t.Fatal("fast mode did not switch independently of the conversation")
+	}
 	if server.threadStarts != 2 || server.turnStarts != 4 {
 		t.Fatalf("starts=%d turns=%d", server.threadStarts, server.turnStarts)
 	}

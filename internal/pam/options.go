@@ -8,6 +8,7 @@ import (
 // BackendOptions is an allowlist, not a general Codex configuration channel.
 // It is transported separately from the model-facing user request.
 type BackendOptions struct {
+	FastMode      bool   `json:"fastMode,omitempty"`
 	Model         string `json:"model"`
 	Effort        string `json:"effort"`
 	WebSearch     string `json:"webSearch"`
@@ -20,7 +21,7 @@ type BackendOptions struct {
 var optionIdentifier = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,127}$`)
 
 func ParseBackendOptions(attrs map[string]string) (BackendOptions, error) {
-	o := BackendOptions{WebSearch: "disabled", FileAccess: "none"}
+	o := BackendOptions{WebSearch: "disabled", FileAccess: "none", FastMode: true}
 	for k, v := range attrs {
 		switch k {
 		case "model", "effort":
@@ -42,11 +43,13 @@ func ParseBackendOptions(attrs map[string]string) (BackendOptions, error) {
 				return o, fmt.Errorf("invalid file_access")
 			}
 			o.FileAccess = v
-		case "network_access", "shell_access", "auto_review":
+		case "network_access", "shell_access", "auto_review", "fast_mode":
 			if v != "true" && v != "false" {
 				return o, fmt.Errorf("%s must be true or false", k)
 			}
 			switch k {
+			case "fast_mode":
+				o.FastMode = v == "true"
 			case "network_access":
 				o.NetworkAccess = v == "true"
 			case "shell_access":

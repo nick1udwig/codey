@@ -28,6 +28,7 @@ Defaults:
 ```text
 model:  gpt-5.6-luna
 effort: xhigh
+fast:   on
 ```
 
 Set them when the process starts:
@@ -43,8 +44,9 @@ The corresponding environment variables are `PEBBLE_AGENT_MODEL` and `PEBBLE_AGE
 The phone settings provide model and effort selection plus web search (disabled,
 cached, live), filesystem access (runtime files only, read-only, workspace
 writes), command execution, command network access, and automatic approval
-review. Defaults disable web search, commands, user-file access, command network
-access, and auto-review. Permission settings do not affect local timers, alarms,
+review. Phone settings default to Luna / xhigh, fast mode, and live web search. Commands,
+user-file access, command network access, and auto-review remain off. Older callers
+without a backend node retain disabled web search. Missing fast_mode defaults on. Permission settings do not affect local timers, alarms,
 dictation, phone weather, or the transport connection to Codex.
 
 `GET /v1/models` uses the same bearer authentication and returns the installed
@@ -57,6 +59,12 @@ models. The phone bridge preloads model choices before opening settings, includi
 local HTTP/WS endpoints. The page also has a refresh button; browser refresh may
 be blocked as mixed content for HTTP endpoints. In that case, save the endpoint
 and reopen settings to load through the phone bridge.
+
+Fast mode is sent as the allowlisted `fast_mode=true|false` backend attribute.
+Each turn requests `serviceTierForTurn=fast` or `default`, so turning it off does
+not inherit a previous fast tier. Fast mode changes preserve the conversation.
+Codex maps fast to priority processing; model/account availability still applies.
+Existing saved preferences are preserved when defaults change.
 
 Permission options are allowlisted PAM `backend` attributes, excluded from the
 model-facing document. They resolve to a thread-local named Codex permission

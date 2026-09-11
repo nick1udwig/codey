@@ -1,14 +1,14 @@
 {
   "version": 1,
-  "created_at": "2026-09-11T19:39:00.166815302+00:00",
+  "created_at": "2026-09-11T20:59:03.283173168+00:00",
   "documents": [
     {
       "id": "01a091f6-6759-7d51-8645-6a6c40097e31",
       "slug": "issues/configure-codex-backend",
-      "version": 2,
+      "version": 3,
       "doc_type": "task",
       "title": "Configure Codex models and permissions from phone settings",
-      "content": "Implementation: git commit `885b444`.\n\n- [x] Model and effort selection using the installed Codex model/list catalog.\n- [x] Web search, filesystem, command, network, and auto-review options.\n- [x] Validated backend attributes kept out of model input; isolated permission profiles.\n- [x] 57 JavaScript tests, native scheduler tests, 6 integration tests, all Go tests passed.\n- [x] Emery/Gabbro builds and phone-sized browser layout checked.\n- [x] Real Codex greeting smoke test and authenticated model discovery passed.\n- [x] Running tmux server updated while preserving its environment; watch installed.\n- [x] KB documentation imported, code indexed, and portable backup restore verified.\n- [ ] Publish the settings page. Push to nick1udwig/pebble-agent requires explicit user approval following automatic approval review rejection. Until publication, the hosted settings page retains its previous controls.\n\nImplementation detail: turn/start must inherit the thread-local resolved permission\nprofile. Sending its name again attempts to resolve against global config and fails.\nPermission changes therefore use separate threads; model/effort changes reuse them.\n",
+      "content": "Implementation: git commit `885b444`.\n\n- [x] Model and effort selection using the installed Codex model/list catalog.\n- [x] Web search, filesystem, command, network, and auto-review options.\n- [x] Validated backend attributes kept out of model input; isolated permission profiles.\n- [x] 57 JavaScript tests, native scheduler tests, 6 integration tests, all Go tests passed.\n- [x] Emery/Gabbro builds and phone-sized browser layout checked.\n- [x] Real Codex greeting smoke test and authenticated model discovery passed.\n- [x] Running tmux server updated while preserving its environment; watch installed.\n- [x] KB documentation imported, code indexed, and portable backup restore verified.\n- [x] Defaults updated to Luna / xhigh / fast and live web search; fast-mode toggle maps to per-turn fast/default service tier. Saved explicit settings are preserved. Full tests and real Codex fast-mode smoke test passed; server and watch updated.\n- [ ] Publish the settings page. Push to nick1udwig/pebble-agent requires explicit user approval following automatic approval review rejection. Until publication, the hosted settings page retains its previous controls.\n\nImplementation detail: turn/start must inherit the thread-local resolved permission\nprofile. Sending its name again attempts to resolve against global config and fails.\nPermission changes therefore use separate threads; model/effort changes reuse them.\n",
       "frontmatter": {
         "status": "active",
         "priority": "medium",
@@ -19,7 +19,7 @@
         ]
       },
       "created_at": "2026-09-11T19:36:42.120639199Z",
-      "modified_at": "2026-09-11T19:39:00.126190155Z"
+      "modified_at": "2026-09-11T20:59:03.035123072Z"
     },
     {
       "id": "01a091eb-498b-73f3-9b2f-bf1076dcc440",
@@ -114,10 +114,10 @@
     {
       "id": "01a091eb-493e-7da2-a8aa-cf6e205ef385",
       "slug": "reference/docs/backend",
-      "version": 2,
+      "version": 3,
       "doc_type": "reference",
       "title": "docs/backend.md",
-      "content": "Source: `docs/backend.md`\n\n# Agent backend contract\n\n## HTTP\n\nThe phone sends:\n\n- Method: `POST`\n- `Content-Type: text/x-pebble-agent-markup; version=1; charset=utf-8`\n- `Accept: text/x-pebble-agent-markup; version=1`\n- Optional `Authorization: Bearer …`\n- Body: one PAM request document\n\nReturn status `2xx` and stream raw PAM bytes. Do not wrap PAM in JSON, an SSE `data:` field, Markdown fences, or an OpenAI/Anthropic provider envelope. Flush after every useful line. Chunk boundaries may occur anywhere; newline boundaries are the commit points.\n\nIf the phone runtime exposes progressive `XMLHttpRequest.responseText`, lines reach the watch immediately. A runtime that buffers HTTP still produces the same final result. Use WebSocket when guaranteed incremental delivery is required.\n\n## WebSocket\n\nThe phone opens the configured `ws:`/`wss:` endpoint with subprotocol `pam.v1`, then sends one complete PAM request as a text message. The bearer token is included in a nested `auth` request node because browser-style WebSockets cannot set an Authorization header. Send one or more text messages containing PAM chunks, then close normally (`1000`).\n\nPrefer WSS. Avoid putting long-lived high-value credentials directly on a watch/phone client; a short-lived backend session token is safer.\n\n## Request nodes\n\n```pam\npam version=1\nrequest id=42 protocol=pam/1 session=1788123456-12345\n  input action=result.open element=row-2 kind=select text= value=\n  context layout=list screen=results selected=row-2\n  device model=pebble_time_2 now=1788220800 platform=emery shape=rect touch=true utc_offset_minutes=-420\ndone\n```\n\n- `request.id` is a 1–65535 transport generation, not a global conversation ID.\n- `request.session` is stable in phone-local storage and may key backend conversation state.\n- `input.kind` is `dictation`, a button/gesture name, `field`, or `capability`.\n- `input.text` contains dictation.\n- `input.action`, `element`, and `value` contain a semantic UI event.\n- `context` describes the currently rendered agent screen.\n- `device` lets an agent favor, for example, a two-column grid on round hardware without emitting pixel geometry. `now` is Unix time in seconds and `utc_offset_minutes` is the phone's offset east of UTC, allowing absolute reminder times to be resolved without guessing the user's clock.\n\nTreat every field as untrusted client input. Authenticate the session separately and authorize external side effects on the backend.\n\n## Suggested agent instruction\n\nUse this as a starting system/developer instruction for the model that chooses the interface:\n\n```text\nReturn only Pebble Agent Markup version 1 (PAM), never JSON, Markdown, or prose outside PAM.\nStart with exactly: pam version=1\n\nPAM is line-streamed. Emit the screen line as soon as you know the best layout, then emit useful\nchildren one complete newline-terminated line at a time. Indent children with exactly two spaces.\nUse quoted attribute values for whitespace. Keep copy concise enough for a watch.\n\nChoose one layout from text, list, menu, grid, card, progress, form, choice, modal. Use stable,\nshort element IDs. Visible elements are section, item, text, metric, progress, field, choice,\naction, image, spacer. Bind inputs with bind and input=up|select|down|back|tap|swipe-left|\nswipe-right|swipe-up|swipe-down. Never attempt to bind long Select; it is reserved for dictation.\nEnd a screen with done.\n\nUse patch target=<id> for later updates and remove target=<id> for deletion. Do not reference an\nelement before emitting it.\n\nFor a timer, stopwatch, weather lookup, or reminder, prefer a root capability node over pretending\nthe operation happened. Allowed commands and attributes follow the supplied PAM capability schema.\nDo not invent capabilities. Never claim an external side effect succeeded unless the backend has\nactually completed it or the watch capability reports success.\n```\n\nSupply the detailed layout/element/capability portion of [protocol.md](protocol.md) to the model as tool/schema context. Enforce the same allowlist server-side; model instructions are not a security boundary.\n\n## Production adapter pattern\n\n1. Parse the request with `Pam.Parser` or another strict implementation.\n2. Load conversation/session state and any authorized tools.\n3. Ask the model for PAM under the instruction above.\n4. Validate each complete output line before flushing it downstream.\n5. Stop and emit `error message=\"…\"` on invalid structure rather than forwarding arbitrary text.\n6. Persist only the state needed for the next semantic event.\n\nThe included `examples/server.mjs` is a deterministic transport fixture, not a production AI or authentication service. The real reference implementation is `cmd/pebble-agent-server`; see [server.md](server.md).\n\n## Codex settings\n\nThe Go backend accepts an optional request child such as:\n\n```pam\n  backend model=gpt-5.6-luna effort=low web_search=disabled file_access=none network_access=false shell_access=false auto_review=false\n```\n\nThese are configuration attributes, not model instructions. The Go parser validates\nthem and removes the entire node from the model-facing request. Missing attributes\nuse server model/effort defaults and restrictive tool defaults. Generic PAM endpoints\nmay ignore this node if they do not support Codex settings. See [server settings](server.md).\n",
+      "content": "Source: `docs/backend.md`\n\n# Agent backend contract\n\n## HTTP\n\nThe phone sends:\n\n- Method: `POST`\n- `Content-Type: text/x-pebble-agent-markup; version=1; charset=utf-8`\n- `Accept: text/x-pebble-agent-markup; version=1`\n- Optional `Authorization: Bearer …`\n- Body: one PAM request document\n\nReturn status `2xx` and stream raw PAM bytes. Do not wrap PAM in JSON, an SSE `data:` field, Markdown fences, or an OpenAI/Anthropic provider envelope. Flush after every useful line. Chunk boundaries may occur anywhere; newline boundaries are the commit points.\n\nIf the phone runtime exposes progressive `XMLHttpRequest.responseText`, lines reach the watch immediately. A runtime that buffers HTTP still produces the same final result. Use WebSocket when guaranteed incremental delivery is required.\n\n## WebSocket\n\nThe phone opens the configured `ws:`/`wss:` endpoint with subprotocol `pam.v1`, then sends one complete PAM request as a text message. The bearer token is included in a nested `auth` request node because browser-style WebSockets cannot set an Authorization header. Send one or more text messages containing PAM chunks, then close normally (`1000`).\n\nPrefer WSS. Avoid putting long-lived high-value credentials directly on a watch/phone client; a short-lived backend session token is safer.\n\n## Request nodes\n\n```pam\npam version=1\nrequest id=42 protocol=pam/1 session=1788123456-12345\n  input action=result.open element=row-2 kind=select text= value=\n  context layout=list screen=results selected=row-2\n  device model=pebble_time_2 now=1788220800 platform=emery shape=rect touch=true utc_offset_minutes=-420\ndone\n```\n\n- `request.id` is a 1–65535 transport generation, not a global conversation ID.\n- `request.session` is stable in phone-local storage and may key backend conversation state.\n- `input.kind` is `dictation`, a button/gesture name, `field`, or `capability`.\n- `input.text` contains dictation.\n- `input.action`, `element`, and `value` contain a semantic UI event.\n- `context` describes the currently rendered agent screen.\n- `device` lets an agent favor, for example, a two-column grid on round hardware without emitting pixel geometry. `now` is Unix time in seconds and `utc_offset_minutes` is the phone's offset east of UTC, allowing absolute reminder times to be resolved without guessing the user's clock.\n\nTreat every field as untrusted client input. Authenticate the session separately and authorize external side effects on the backend.\n\n## Suggested agent instruction\n\nUse this as a starting system/developer instruction for the model that chooses the interface:\n\n```text\nReturn only Pebble Agent Markup version 1 (PAM), never JSON, Markdown, or prose outside PAM.\nStart with exactly: pam version=1\n\nPAM is line-streamed. Emit the screen line as soon as you know the best layout, then emit useful\nchildren one complete newline-terminated line at a time. Indent children with exactly two spaces.\nUse quoted attribute values for whitespace. Keep copy concise enough for a watch.\n\nChoose one layout from text, list, menu, grid, card, progress, form, choice, modal. Use stable,\nshort element IDs. Visible elements are section, item, text, metric, progress, field, choice,\naction, image, spacer. Bind inputs with bind and input=up|select|down|back|tap|swipe-left|\nswipe-right|swipe-up|swipe-down. Never attempt to bind long Select; it is reserved for dictation.\nEnd a screen with done.\n\nUse patch target=<id> for later updates and remove target=<id> for deletion. Do not reference an\nelement before emitting it.\n\nFor a timer, stopwatch, weather lookup, or reminder, prefer a root capability node over pretending\nthe operation happened. Allowed commands and attributes follow the supplied PAM capability schema.\nDo not invent capabilities. Never claim an external side effect succeeded unless the backend has\nactually completed it or the watch capability reports success.\n```\n\nSupply the detailed layout/element/capability portion of [protocol.md](protocol.md) to the model as tool/schema context. Enforce the same allowlist server-side; model instructions are not a security boundary.\n\n## Production adapter pattern\n\n1. Parse the request with `Pam.Parser` or another strict implementation.\n2. Load conversation/session state and any authorized tools.\n3. Ask the model for PAM under the instruction above.\n4. Validate each complete output line before flushing it downstream.\n5. Stop and emit `error message=\"…\"` on invalid structure rather than forwarding arbitrary text.\n6. Persist only the state needed for the next semantic event.\n\nThe included `examples/server.mjs` is a deterministic transport fixture, not a production AI or authentication service. The real reference implementation is `cmd/pebble-agent-server`; see [server.md](server.md).\n\n## Codex settings\n\nThe Go backend accepts an optional request child such as:\n\n```pam\n  backend model=gpt-5.6-luna effort=xhigh fast_mode=true web_search=live file_access=none network_access=false shell_access=false auto_review=false\n```\n\nThese are configuration attributes, not model instructions. The Go parser validates\nthem and removes the entire node from the model-facing request. Missing attributes\nuse server model/effort defaults, fast mode on, and restrictive tool defaults. Generic PAM endpoints\nmay ignore this node if they do not support Codex settings. See [server settings](server.md).\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -127,7 +127,7 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-11T19:36:42.120639199Z"
+      "modified_at": "2026-09-11T20:59:03.035123072Z"
     },
     {
       "id": "01a091eb-494b-70e2-a1ae-cedae4248f70",
@@ -150,10 +150,10 @@
     {
       "id": "01a091eb-4958-7731-a829-5a501e760d31",
       "slug": "reference/docs/server",
-      "version": 2,
+      "version": 3,
       "doc_type": "reference",
       "title": "docs/server.md",
-      "content": "Source: `docs/server.md`\n\n# Codex-backed agent server\n\n`pebble-agent-server` is the real self-hosted PAM endpoint. It accepts a watch request over streaming HTTP or the `pam.v1` WebSocket subprotocol, runs the corresponding conversation turn through Codex app-server, validates the model's PAM one complete line at a time, and streams those lines to the phone.\n\n## Prerequisites\n\n- Go 1.24 or newer to build the binary.\n- A current Codex CLI on `PATH`.\n- A working Codex CLI login on the same operating-system account that runs the service.\n- A TLS reverse proxy, VPN, or trusted private network through which the paired phone can reach the service.\n\nBuild and start it:\n\n```sh\ngo build -o build/pebble-agent-server ./cmd/pebble-agent-server\nexport PEBBLE_AGENT_TOKEN=\"replace-with-a-long-random-secret\"\n./build/pebble-agent-server --listen 0.0.0.0:8787\n```\n\nSet the watchapp endpoint to `http://SERVER:8787/v1/agent` and enter the same token. `POST /` is also accepted, but `/v1/agent` is the stable endpoint. `GET /healthz` reports process health.\n\nThe server refuses a non-loopback listener when `PEBBLE_AGENT_TOKEN` is empty. `--allow-unauthenticated-public` exists for tightly controlled development environments, but it is deliberately explicit. The bearer token is read from an environment variable rather than a command-line value so it is not exposed in a process listing.\n\n## Codex configuration\n\nDefaults:\n\n```text\nmodel:  gpt-5.6-luna\neffort: xhigh\n```\n\nSet them when the process starts:\n\n```sh\n./build/pebble-agent-server \\\n  --model gpt-5.6-luna \\\n  --effort xhigh\n```\n\nThe corresponding environment variables are `PEBBLE_AGENT_MODEL` and `PEBBLE_AGENT_EFFORT`. These values are server defaults. Phone settings can override the model and effort for each request.\n\nThe phone settings provide model and effort selection plus web search (disabled,\ncached, live), filesystem access (runtime files only, read-only, workspace\nwrites), command execution, command network access, and automatic approval\nreview. Defaults disable web search, commands, user-file access, command network\naccess, and auto-review. Permission settings do not affect local timers, alarms,\ndictation, phone weather, or the transport connection to Codex.\n\n`GET /v1/models` uses the same bearer authentication and returns the installed\nCodex `model/list` catalog, including supported reasoning efforts and server\ndefaults. It supports cross-origin requests from the static settings page using\nan explicit Authorization header and no cookies. A custom model with blank\neffort uses that model's advertised default; blank model and effort use server\ndefaults. Unsupported selections produce an error rather than silently changing\nmodels. The phone bridge preloads model choices before opening settings, including for\nlocal HTTP/WS endpoints. The page also has a refresh button; browser refresh may\nbe blocked as mixed content for HTTP endpoints. In that case, save the endpoint\nand reopen settings to load through the phone bridge.\n\nPermission options are allowlisted PAM `backend` attributes, excluded from the\nmodel-facing document. They resolve to a thread-local named Codex permission\nprofile. No user files grants only the platform's minimal runtime paths; read-only\nallows file reads; workspace-write additionally grants writes under `--workspace`.\nCommand execution and network access are independent. Shells inherit only core\nenvironment variables. Project instruction files and memory injection are disabled.\nInherited MCP servers, plugins, and app tools are disabled because their privileges\nare not controlled by the local command sandbox.\n\nAuto-review off means `approvalPolicy=never` and `approvalsReviewer=user`: operations\nrequiring additional permission are denied. Auto-review on means `on-request` and\n`auto_review`: Codex may review and approve exceptions beyond the selected baseline.\nIt is not blanket approval. Unexpected interactive client requests are rejected;\nthere is no manual approval UI on the watch. Managed server restrictions remain\nin force and can reject requested settings.\n\nPermission profiles are isolated by session, workspace, and permission settings.\nChanging permissions uses a separate conversation; returning to a previous profile\nresumes its conversation. Model/effort changes keep the same conversation.\nLegacy threads without a recorded permission profile are not reused. Each turn\ninherits the resolved thread permissions; it must not re-send the thread-local\nprofile name, which app-server otherwise resolves against global disk config.\n\nThis implementation was verified with Codex CLI 0.153.2 and its generated app-server\nschema. Named permissions use the experimental API handshake; unsupported servers\nfail explicitly. See the official [app-server documentation](https://learn.chatgpt.com/docs/app-server)\nand [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).\n\n\n## App-server transport selection\n\nEach connection attempt follows this order:\n\n1. Discover the running daemon with `codex app-server daemon version` and connect to its reported Unix socket using WebSocket-over-Unix-socket. `--app-server-unix /absolute/path.sock` skips discovery.\n2. Start and retain a managed `codex app-server --stdio` child process.\n3. Connect to `--app-server-url`, which defaults to `ws://127.0.0.1:4222`.\n\nUse `PEBBLE_AGENT_CODEX` to select another Codex executable, `PEBBLE_AGENT_APP_SERVER_UNIX` for an explicit socket, and `PEBBLE_AGENT_APP_SERVER_URL` for the fallback URL. If a remote WebSocket app-server requires a bearer token, put it in `CODEX_APP_SERVER_TOKEN` or change the variable name with `--app-server-token-env`.\n\nEvery transport performs the required `initialize` request and `initialized` notification. A dropped long-lived connection is re-resolved in the same order on the next request. A connection attempt has a five-second per-transport timeout by default.\n\nEvery JSON protocol message sent to or received from Codex app-server is logged at `info` with `direction=to_app_server` or `direction=from_app_server`, the selected transport, and the complete raw payload. This includes dictated prompts, model output deltas, thread metadata, errors, and any server requests or client responses. Phone endpoint bearer credentials are consumed at the HTTP/WebSocket boundary and are never forwarded in the model-facing PAM document.\n\n## Logs and rotation\n\nStart runtime debugging with:\n\n```text\n~/.pebble-agent/server.log\n```\n\nThe server mirrors its structured stderr output into that file. Before a complete log record would take the active file past 10 MiB (10,485,760 bytes), it rotates the file. It retains five backups: `server.log.1` is newest and `server.log.5` is oldest. A single record larger than 10 MiB remains intact. The active log is created with mode `0600`, and a newly created `.pebble-agent` directory is private to the current user.\n\nSet `PEBBLE_AGENT_LOG_FILE` or use `--log-file /absolute/path` to choose a different file. Use `--log-file -` to log only to stderr. The payloads are intentionally not content-redacted, so protect the active file and every backup as sensitive conversation data.\n\nThese logs prove what crossed the Go server/Codex boundary. If they show a completed, valid PAM response but the watchapp exits, collect Pebble watch logs next: that failure is downstream in the phone bridge, AppMessage delivery, or native watch process.\n\n## Conversations and streaming\n\nThe PAM `request.session` value and permission profile map to a persisted Codex thread. The default state file is the user cache directory's `pebble-agent/sessions.json`, written with mode `0600`; use `--state /absolute/path.json` to move it. Restarting either service resumes the thread. If Codex no longer has a persisted thread, the mapping is discarded and a new one is created.\n\nOnly final-answer agent-message deltas are forwarded. Commentary is ignored. Output is limited to 128 KiB, 2,048 bytes per line, 96 PAM nodes, eight indentation levels, and 48 screen elements. Layouts, element kinds, bindings, patches, removals, and built-in capability commands are allowlisted before each line is flushed. Invalid output becomes a valid root PAM `error` instead of arbitrary bytes reaching the watch. A missing final `done` is supplied for an otherwise valid screen.\n\nThe default turn timeout is 110 seconds, configurable with `--turn-timeout`. The watch setting must be long enough for the selected model and effort; its client-side maximum is 120 seconds.\n\n## Internet-facing deployment\n\nKeep the Go listener on `127.0.0.1` when a reverse proxy runs on the same host. Terminate TLS at that proxy, disable response buffering for `/v1/agent`, permit WebSocket upgrades if using WSS, and forward `Authorization`. The service already sends `Cache-Control: no-store` and `X-Accel-Buffering: no`.\n\nDo not expose an unencrypted bearer token over the public internet. The service is designed for one trusted operator's Codex account; it is not a multi-tenant authorization or billing boundary.\n\n## Useful flags\n\nRun `pebble-agent-server -h` for the complete set. Common options include:\n\n```text\n--listen 127.0.0.1:8787\n--model gpt-5.6-luna\n--effort xhigh\n--connect-timeout 5s\n--turn-timeout 110s\n--state /absolute/path/sessions.json\n--workspace /absolute/path/empty-workspace\n--log-level debug|info|warn|error\n--log-file /absolute/path/server.log\n```\n\nThe workspace is an otherwise empty directory by default. It becomes the writable root only when workspace writes are selected in phone settings. Read-only and workspace-write modes allow reads outside that root; no-user-files mode restricts reads to minimal runtime paths.\n",
+      "content": "Source: `docs/server.md`\n\n# Codex-backed agent server\n\n`pebble-agent-server` is the real self-hosted PAM endpoint. It accepts a watch request over streaming HTTP or the `pam.v1` WebSocket subprotocol, runs the corresponding conversation turn through Codex app-server, validates the model's PAM one complete line at a time, and streams those lines to the phone.\n\n## Prerequisites\n\n- Go 1.24 or newer to build the binary.\n- A current Codex CLI on `PATH`.\n- A working Codex CLI login on the same operating-system account that runs the service.\n- A TLS reverse proxy, VPN, or trusted private network through which the paired phone can reach the service.\n\nBuild and start it:\n\n```sh\ngo build -o build/pebble-agent-server ./cmd/pebble-agent-server\nexport PEBBLE_AGENT_TOKEN=\"replace-with-a-long-random-secret\"\n./build/pebble-agent-server --listen 0.0.0.0:8787\n```\n\nSet the watchapp endpoint to `http://SERVER:8787/v1/agent` and enter the same token. `POST /` is also accepted, but `/v1/agent` is the stable endpoint. `GET /healthz` reports process health.\n\nThe server refuses a non-loopback listener when `PEBBLE_AGENT_TOKEN` is empty. `--allow-unauthenticated-public` exists for tightly controlled development environments, but it is deliberately explicit. The bearer token is read from an environment variable rather than a command-line value so it is not exposed in a process listing.\n\n## Codex configuration\n\nDefaults:\n\n```text\nmodel:  gpt-5.6-luna\neffort: xhigh\nfast:   on\n```\n\nSet them when the process starts:\n\n```sh\n./build/pebble-agent-server \\\n  --model gpt-5.6-luna \\\n  --effort xhigh\n```\n\nThe corresponding environment variables are `PEBBLE_AGENT_MODEL` and `PEBBLE_AGENT_EFFORT`. These values are server defaults. Phone settings can override the model and effort for each request.\n\nThe phone settings provide model and effort selection plus web search (disabled,\ncached, live), filesystem access (runtime files only, read-only, workspace\nwrites), command execution, command network access, and automatic approval\nreview. Phone settings default to Luna / xhigh, fast mode, and live web search. Commands,\nuser-file access, command network access, and auto-review remain off. Older callers\nwithout a backend node retain disabled web search. Missing fast_mode defaults on. Permission settings do not affect local timers, alarms,\ndictation, phone weather, or the transport connection to Codex.\n\n`GET /v1/models` uses the same bearer authentication and returns the installed\nCodex `model/list` catalog, including supported reasoning efforts and server\ndefaults. It supports cross-origin requests from the static settings page using\nan explicit Authorization header and no cookies. A custom model with blank\neffort uses that model's advertised default; blank model and effort use server\ndefaults. Unsupported selections produce an error rather than silently changing\nmodels. The phone bridge preloads model choices before opening settings, including for\nlocal HTTP/WS endpoints. The page also has a refresh button; browser refresh may\nbe blocked as mixed content for HTTP endpoints. In that case, save the endpoint\nand reopen settings to load through the phone bridge.\n\nFast mode is sent as the allowlisted `fast_mode=true|false` backend attribute.\nEach turn requests `serviceTierForTurn=fast` or `default`, so turning it off does\nnot inherit a previous fast tier. Fast mode changes preserve the conversation.\nCodex maps fast to priority processing; model/account availability still applies.\nExisting saved preferences are preserved when defaults change.\n\nPermission options are allowlisted PAM `backend` attributes, excluded from the\nmodel-facing document. They resolve to a thread-local named Codex permission\nprofile. No user files grants only the platform's minimal runtime paths; read-only\nallows file reads; workspace-write additionally grants writes under `--workspace`.\nCommand execution and network access are independent. Shells inherit only core\nenvironment variables. Project instruction files and memory injection are disabled.\nInherited MCP servers, plugins, and app tools are disabled because their privileges\nare not controlled by the local command sandbox.\n\nAuto-review off means `approvalPolicy=never` and `approvalsReviewer=user`: operations\nrequiring additional permission are denied. Auto-review on means `on-request` and\n`auto_review`: Codex may review and approve exceptions beyond the selected baseline.\nIt is not blanket approval. Unexpected interactive client requests are rejected;\nthere is no manual approval UI on the watch. Managed server restrictions remain\nin force and can reject requested settings.\n\nPermission profiles are isolated by session, workspace, and permission settings.\nChanging permissions uses a separate conversation; returning to a previous profile\nresumes its conversation. Model/effort changes keep the same conversation.\nLegacy threads without a recorded permission profile are not reused. Each turn\ninherits the resolved thread permissions; it must not re-send the thread-local\nprofile name, which app-server otherwise resolves against global disk config.\n\nThis implementation was verified with Codex CLI 0.153.2 and its generated app-server\nschema. Named permissions use the experimental API handshake; unsupported servers\nfail explicitly. See the official [app-server documentation](https://learn.chatgpt.com/docs/app-server)\nand [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).\n\n\n## App-server transport selection\n\nEach connection attempt follows this order:\n\n1. Discover the running daemon with `codex app-server daemon version` and connect to its reported Unix socket using WebSocket-over-Unix-socket. `--app-server-unix /absolute/path.sock` skips discovery.\n2. Start and retain a managed `codex app-server --stdio` child process.\n3. Connect to `--app-server-url`, which defaults to `ws://127.0.0.1:4222`.\n\nUse `PEBBLE_AGENT_CODEX` to select another Codex executable, `PEBBLE_AGENT_APP_SERVER_UNIX` for an explicit socket, and `PEBBLE_AGENT_APP_SERVER_URL` for the fallback URL. If a remote WebSocket app-server requires a bearer token, put it in `CODEX_APP_SERVER_TOKEN` or change the variable name with `--app-server-token-env`.\n\nEvery transport performs the required `initialize` request and `initialized` notification. A dropped long-lived connection is re-resolved in the same order on the next request. A connection attempt has a five-second per-transport timeout by default.\n\nEvery JSON protocol message sent to or received from Codex app-server is logged at `info` with `direction=to_app_server` or `direction=from_app_server`, the selected transport, and the complete raw payload. This includes dictated prompts, model output deltas, thread metadata, errors, and any server requests or client responses. Phone endpoint bearer credentials are consumed at the HTTP/WebSocket boundary and are never forwarded in the model-facing PAM document.\n\n## Logs and rotation\n\nStart runtime debugging with:\n\n```text\n~/.pebble-agent/server.log\n```\n\nThe server mirrors its structured stderr output into that file. Before a complete log record would take the active file past 10 MiB (10,485,760 bytes), it rotates the file. It retains five backups: `server.log.1` is newest and `server.log.5` is oldest. A single record larger than 10 MiB remains intact. The active log is created with mode `0600`, and a newly created `.pebble-agent` directory is private to the current user.\n\nSet `PEBBLE_AGENT_LOG_FILE` or use `--log-file /absolute/path` to choose a different file. Use `--log-file -` to log only to stderr. The payloads are intentionally not content-redacted, so protect the active file and every backup as sensitive conversation data.\n\nThese logs prove what crossed the Go server/Codex boundary. If they show a completed, valid PAM response but the watchapp exits, collect Pebble watch logs next: that failure is downstream in the phone bridge, AppMessage delivery, or native watch process.\n\n## Conversations and streaming\n\nThe PAM `request.session` value and permission profile map to a persisted Codex thread. The default state file is the user cache directory's `pebble-agent/sessions.json`, written with mode `0600`; use `--state /absolute/path.json` to move it. Restarting either service resumes the thread. If Codex no longer has a persisted thread, the mapping is discarded and a new one is created.\n\nOnly final-answer agent-message deltas are forwarded. Commentary is ignored. Output is limited to 128 KiB, 2,048 bytes per line, 96 PAM nodes, eight indentation levels, and 48 screen elements. Layouts, element kinds, bindings, patches, removals, and built-in capability commands are allowlisted before each line is flushed. Invalid output becomes a valid root PAM `error` instead of arbitrary bytes reaching the watch. A missing final `done` is supplied for an otherwise valid screen.\n\nThe default turn timeout is 110 seconds, configurable with `--turn-timeout`. The watch setting must be long enough for the selected model and effort; its client-side maximum is 120 seconds.\n\n## Internet-facing deployment\n\nKeep the Go listener on `127.0.0.1` when a reverse proxy runs on the same host. Terminate TLS at that proxy, disable response buffering for `/v1/agent`, permit WebSocket upgrades if using WSS, and forward `Authorization`. The service already sends `Cache-Control: no-store` and `X-Accel-Buffering: no`.\n\nDo not expose an unencrypted bearer token over the public internet. The service is designed for one trusted operator's Codex account; it is not a multi-tenant authorization or billing boundary.\n\n## Useful flags\n\nRun `pebble-agent-server -h` for the complete set. Common options include:\n\n```text\n--listen 127.0.0.1:8787\n--model gpt-5.6-luna\n--effort xhigh\n--connect-timeout 5s\n--turn-timeout 110s\n--state /absolute/path/sessions.json\n--workspace /absolute/path/empty-workspace\n--log-level debug|info|warn|error\n--log-file /absolute/path/server.log\n```\n\nThe workspace is an otherwise empty directory by default. It becomes the writable root only when workspace writes are selected in phone settings. Read-only and workspace-write modes allow reads outside that root; no-user-files mode restricts reads to minimal runtime paths.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -163,7 +163,7 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-11T19:36:42.120639199Z"
+      "modified_at": "2026-09-11T20:59:03.035123072Z"
     },
     {
       "id": "01a091eb-4965-7451-8490-4bb90faa9ae5",
@@ -204,10 +204,10 @@
     {
       "id": "01a091eb-4925-72e2-a4c7-6c4fc5b284e8",
       "slug": "reference/readme",
-      "version": 2,
+      "version": 3,
       "doc_type": "reference",
       "title": "README.md",
-      "content": "Source: `README.md`\n\n# Pebble Agent\n\nPebble Agent puts a voice-driven agent on your Pebble. Hold Select, say what you need, and the agent chooses a watch-friendly screen for its answer: a list, grid, card, form, progress view, or another supported layout.\n\nThe app is built for Repebble and currently supports:\n\n- Pebble Time 2 (`emery`)\n- Pebble Round 2 (`gabbro`)\n\nOther Pebble models are not included in this build.\n\n## What you need\n\n- A supported watch paired with the Pebble mobile app.\n- The Pebble Agent `.pbw` watchapp.\n- An internet connection on the paired phone.\n- A computer or server that can run the bundled Go agent service and the authenticated Codex CLI.\n- A URL the paired phone can use to reach that service, plus its bearer token.\n\nPebble Agent includes the watch client and a self-hosted agent service. The service uses your local Codex login; it is not a hosted account or public relay.\n\n## Run the agent service\n\nInstall and sign in to the Codex CLI, install Go 1.24 or newer, then build the service from this repository:\n\n```sh\ngo build -o build/pebble-agent-server ./cmd/pebble-agent-server\nexport PEBBLE_AGENT_TOKEN=\"replace-with-a-long-random-secret\"\n./build/pebble-agent-server --listen 0.0.0.0:8787\n```\n\nThe server uses `gpt-5.6-luna` with `xhigh` reasoning by default. Configure either at startup with `--model` and `--effort`, or the `PEBBLE_AGENT_MODEL` and `PEBBLE_AGENT_EFFORT` environment variables.\n\nIt first looks for the running Codex app-server daemon over its Unix socket. If none is available, it starts `codex app-server --stdio`; a configured app-server WebSocket is the final fallback. The service exits at startup if no transport can initialize.\n\nThe phone endpoint is:\n\n```text\nhttp://YOUR-SERVER:8787/v1/agent\n```\n\nUse the same `PEBBLE_AGENT_TOKEN` value in the app settings. Plain HTTP is suitable only on a trusted private network for development. For internet access, put the service behind an HTTPS/WSS reverse proxy and keep the Go listener on loopback. See [Server setup](docs/server.md) for connection, security, persistence, and deployment options.\n\n## Install and connect\n\n1. Install the Pebble Agent `.pbw` with your paired Pebble mobile app.\n2. Find **Agent** in the phone app's watchapp list and open its settings using the gear icon.\n3. Enter your server's `/v1/agent` endpoint. `https://` and `wss://` are recommended; a trusted local network may also use `http://` or `ws://`.\n4. Enter the server's bearer token, choose weather units and a timeout, then tap **Save & close**.\n5. Launch **Agent** on the watch. The home screen should say **Agent connected**.\n\nSettings also select the Codex model and reasoning effort. Use **Load available\nmodels** to fetch the server's supported choices. Permissions control web search,\nuser-file access, command execution, command networking, and auto-review. All tool\npermissions start off. Auto-review can approve exceptions to the selected baseline;\nwhen off, additional-permission requests are denied. Changing permissions uses a\nseparate conversation. See [backend settings](docs/server.md#codex-configuration).\n\nThe gear icon is supplied by the Pebble mobile app. The settings page requires internet access when it opens.\n\n## Use the app\n\nHold Select until dictation opens, then speak normally. The phone first matches\ncommon commands locally, using normalized speech and regular expressions inspired\nby Bibble. Only unmatched dictation is sent to the configured Codex agent.\n**Thinking** can appear briefly while the phone processes the transcription.\n\nLocal examples: “start a five-minute timer,” “set a timer for one hour and thirty\nminutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up\ntomorrow at seven am,” “remind me in an hour to check the oven,” “pause the\nstopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”\nThese commands need no agent endpoint; weather still uses the phone's location\nand weather service. Each new timer gets its own delivery identity.\n\nClock alarms use the phone's local timezone. AM/PM, noon/midnight, or 24-hour\nHH:MM notation is required; without a date they mean the next occurrence.\nAmbiguous times (“set an alarm for seven”), recurring alarms, commands targeting\nan individual timer, and requests with additional instructions fall back to\nCodex unchanged. Matching is for complete phrases, never just a command buried\ninside a longer sentence. Relative durations support 1 second through 7 days.\n\nAgent opens to a local dashboard with the time, unacknowledged notifications,\nrunning or paused timers, alarms/reminders, and the stopwatch. It works without\nthe phone. Select an entry to open its controls. Back returns to the dashboard\nwithout stopping anything; Back from the dashboard exits the app. On a timer,\nthe X (Down) cancels only that timer, Select pauses/resumes it, and the arrow\n(Up) returns home.\n\nYou can have four timers and four alarms/reminders at once. Finished alerts\nreturn you to Notifications and buzz every three seconds until acknowledged or\nsnoozed. Open a finished entry and press Select to acknowledge, or Down to\nsnooze ten minutes. Acknowledging one leaves other notifications active.\nIf you close Agent with an unacknowledged alert, it requests a wakeup to remind\nyou again in a minute. Pebble only lets the app vibrate while running; if the\nsystem refuses a wakeup, Agent displays “keep Agent open” instead of silently\npromising a background alert.\n\nAssign Agent to a button in the watch's Quick Launch settings. Launching with\nthat shortcut opens dictation automatically; opening Agent from the app menu\nshows the dashboard, and a scheduled wakeup shows notifications.\n\nThe agent can choose the controls and presentation that fit each response:\n\n- Up and Down usually move through or scroll the current screen.\n- Short Select activates the selected item.\n- Back returns to the dashboard; from the dashboard it exits the app.\n- Taps, hotspots, and swipes may be available when the screen defines them.\n- Long Select is always reserved for new dictation and cannot be replaced by the agent.\n\nDepending on the configured agent, you can ask for things such as “start a ten-minute timer,” “show my stopwatch,” “what is the weather?”, or “remind me in two hours.” Timers, stopwatches, and reminders run on the watch; current-location weather is fetched by the phone.\n\n## Troubleshooting\n\n**The watch stays on Thinking.** The transcription reached Pebble Agent, but the endpoint has not returned a usable response. Check the phone's connection, endpoint URL, token, timeout, server log, Codex login, and app-server availability. The endpoint must return Pebble Agent Markup (PAM), not ordinary chat text or JSON.\n\n**Where are the server logs?** Start debugging with `~/.pebble-agent/server.log`. The server also writes the same records to stderr. It rotates the file at 10 MiB and retains five backups, from `server.log.1` (newest) through `server.log.5` (oldest). Set `PEBBLE_AGENT_LOG_FILE` or pass `--log-file /absolute/path` to move it; pass `--log-file -` for stderr only.\n\n**The home screen says Configure endpoint.** Open Agent's gear icon in the paired phone app, save a valid endpoint, then reopen the watchapp if needed.\n\n**Dictation reports Voice unavailable, Voice disabled, or Voice connection failed.** Check microphone/voice permissions and the phone/watch connection, then retry. Voice recognition depends on the system dictation service.\n\n**Weather cannot get a location.** Allow location access for the Pebble mobile app and make sure the phone has network access.\n\n**The settings page will not open.** Confirm the phone is online. The hosted page is [nick1udwig.github.io/pebble-agent/config/](https://nick1udwig.github.io/pebble-agent/config/).\n\n## Privacy and security\n\nDictated text and watch interactions are sent to the endpoint you configure, then to Codex through the self-hosted service. The server logs every JSON message to and from Codex app-server, including prompts and model responses, in `~/.pebble-agent/server.log`, so that file and its rotated backups must be treated as sensitive conversation data. The bearer token is kept in the Pebble phone runtime's local storage and sent only to the endpoint authentication boundary. When current-location weather is requested, the phone sends coordinates to Open-Meteo. Use an endpoint you trust and prefer HTTPS or WSS.\n\nFor source builds, backend integration, PAM, library APIs, extension points, and testing, see [DEVS.md](DEVS.md).\n",
+      "content": "Source: `README.md`\n\n# Pebble Agent\n\nPebble Agent puts a voice-driven agent on your Pebble. Hold Select, say what you need, and the agent chooses a watch-friendly screen for its answer: a list, grid, card, form, progress view, or another supported layout.\n\nThe app is built for Repebble and currently supports:\n\n- Pebble Time 2 (`emery`)\n- Pebble Round 2 (`gabbro`)\n\nOther Pebble models are not included in this build.\n\n## What you need\n\n- A supported watch paired with the Pebble mobile app.\n- The Pebble Agent `.pbw` watchapp.\n- An internet connection on the paired phone.\n- A computer or server that can run the bundled Go agent service and the authenticated Codex CLI.\n- A URL the paired phone can use to reach that service, plus its bearer token.\n\nPebble Agent includes the watch client and a self-hosted agent service. The service uses your local Codex login; it is not a hosted account or public relay.\n\n## Run the agent service\n\nInstall and sign in to the Codex CLI, install Go 1.24 or newer, then build the service from this repository:\n\n```sh\ngo build -o build/pebble-agent-server ./cmd/pebble-agent-server\nexport PEBBLE_AGENT_TOKEN=\"replace-with-a-long-random-secret\"\n./build/pebble-agent-server --listen 0.0.0.0:8787\n```\n\nThe server uses `gpt-5.6-luna` with `xhigh` reasoning by default. Configure either at startup with `--model` and `--effort`, or the `PEBBLE_AGENT_MODEL` and `PEBBLE_AGENT_EFFORT` environment variables.\n\nIt first looks for the running Codex app-server daemon over its Unix socket. If none is available, it starts `codex app-server --stdio`; a configured app-server WebSocket is the final fallback. The service exits at startup if no transport can initialize.\n\nThe phone endpoint is:\n\n```text\nhttp://YOUR-SERVER:8787/v1/agent\n```\n\nUse the same `PEBBLE_AGENT_TOKEN` value in the app settings. Plain HTTP is suitable only on a trusted private network for development. For internet access, put the service behind an HTTPS/WSS reverse proxy and keep the Go listener on loopback. See [Server setup](docs/server.md) for connection, security, persistence, and deployment options.\n\n## Install and connect\n\n1. Install the Pebble Agent `.pbw` with your paired Pebble mobile app.\n2. Find **Agent** in the phone app's watchapp list and open its settings using the gear icon.\n3. Enter your server's `/v1/agent` endpoint. `https://` and `wss://` are recommended; a trusted local network may also use `http://` or `ws://`.\n4. Enter the server's bearer token, choose weather units and a timeout, then tap **Save & close**.\n5. Launch **Agent** on the watch. The home screen should say **Agent connected**.\n\nSettings default to GPT-5.6 Luna, extra-high reasoning effort, fast mode, and live\nweb search. The Fast mode toggle requests priority processing and can be turned\noff for standard speed. Explicitly saved preferences are preserved. Use **Load available\nmodels** to fetch the server's supported choices. Permissions control web search,\nuser-file access, command execution, command networking, and auto-review. Filesystem, command, network, and auto-review\npermissions start off. Auto-review can approve exceptions to the selected baseline;\nwhen off, additional-permission requests are denied. Changing permissions uses a\nseparate conversation. See [backend settings](docs/server.md#codex-configuration).\n\nThe gear icon is supplied by the Pebble mobile app. The settings page requires internet access when it opens.\n\n## Use the app\n\nHold Select until dictation opens, then speak normally. The phone first matches\ncommon commands locally, using normalized speech and regular expressions inspired\nby Bibble. Only unmatched dictation is sent to the configured Codex agent.\n**Thinking** can appear briefly while the phone processes the transcription.\n\nLocal examples: “start a five-minute timer,” “set a timer for one hour and thirty\nminutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up\ntomorrow at seven am,” “remind me in an hour to check the oven,” “pause the\nstopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”\nThese commands need no agent endpoint; weather still uses the phone's location\nand weather service. Each new timer gets its own delivery identity.\n\nClock alarms use the phone's local timezone. AM/PM, noon/midnight, or 24-hour\nHH:MM notation is required; without a date they mean the next occurrence.\nAmbiguous times (“set an alarm for seven”), recurring alarms, commands targeting\nan individual timer, and requests with additional instructions fall back to\nCodex unchanged. Matching is for complete phrases, never just a command buried\ninside a longer sentence. Relative durations support 1 second through 7 days.\n\nAgent opens to a local dashboard with the time, unacknowledged notifications,\nrunning or paused timers, alarms/reminders, and the stopwatch. It works without\nthe phone. Select an entry to open its controls. Back returns to the dashboard\nwithout stopping anything; Back from the dashboard exits the app. On a timer,\nthe X (Down) cancels only that timer, Select pauses/resumes it, and the arrow\n(Up) returns home.\n\nYou can have four timers and four alarms/reminders at once. Finished alerts\nreturn you to Notifications and buzz every three seconds until acknowledged or\nsnoozed. Open a finished entry and press Select to acknowledge, or Down to\nsnooze ten minutes. Acknowledging one leaves other notifications active.\nIf you close Agent with an unacknowledged alert, it requests a wakeup to remind\nyou again in a minute. Pebble only lets the app vibrate while running; if the\nsystem refuses a wakeup, Agent displays “keep Agent open” instead of silently\npromising a background alert.\n\nAssign Agent to a button in the watch's Quick Launch settings. Launching with\nthat shortcut opens dictation automatically; opening Agent from the app menu\nshows the dashboard, and a scheduled wakeup shows notifications.\n\nThe agent can choose the controls and presentation that fit each response:\n\n- Up and Down usually move through or scroll the current screen.\n- Short Select activates the selected item.\n- Back returns to the dashboard; from the dashboard it exits the app.\n- Taps, hotspots, and swipes may be available when the screen defines them.\n- Long Select is always reserved for new dictation and cannot be replaced by the agent.\n\nDepending on the configured agent, you can ask for things such as “start a ten-minute timer,” “show my stopwatch,” “what is the weather?”, or “remind me in two hours.” Timers, stopwatches, and reminders run on the watch; current-location weather is fetched by the phone.\n\n## Troubleshooting\n\n**The watch stays on Thinking.** The transcription reached Pebble Agent, but the endpoint has not returned a usable response. Check the phone's connection, endpoint URL, token, timeout, server log, Codex login, and app-server availability. The endpoint must return Pebble Agent Markup (PAM), not ordinary chat text or JSON.\n\n**Where are the server logs?** Start debugging with `~/.pebble-agent/server.log`. The server also writes the same records to stderr. It rotates the file at 10 MiB and retains five backups, from `server.log.1` (newest) through `server.log.5` (oldest). Set `PEBBLE_AGENT_LOG_FILE` or pass `--log-file /absolute/path` to move it; pass `--log-file -` for stderr only.\n\n**The home screen says Configure endpoint.** Open Agent's gear icon in the paired phone app, save a valid endpoint, then reopen the watchapp if needed.\n\n**Dictation reports Voice unavailable, Voice disabled, or Voice connection failed.** Check microphone/voice permissions and the phone/watch connection, then retry. Voice recognition depends on the system dictation service.\n\n**Weather cannot get a location.** Allow location access for the Pebble mobile app and make sure the phone has network access.\n\n**The settings page will not open.** Confirm the phone is online. The hosted page is [nick1udwig.github.io/pebble-agent/config/](https://nick1udwig.github.io/pebble-agent/config/).\n\n## Privacy and security\n\nDictated text and watch interactions are sent to the endpoint you configure, then to Codex through the self-hosted service. The server logs every JSON message to and from Codex app-server, including prompts and model responses, in `~/.pebble-agent/server.log`, so that file and its rotated backups must be treated as sensitive conversation data. The bearer token is kept in the Pebble phone runtime's local storage and sent only to the endpoint authentication boundary. When current-location weather is requested, the phone sends coordinates to Open-Meteo. Use an endpoint you trust and prefer HTTPS or WSS.\n\nFor source builds, backend integration, PAM, library APIs, extension points, and testing, see [DEVS.md](DEVS.md).\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -217,10 +217,421 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-11T19:36:42.120639199Z"
+      "modified_at": "2026-09-11T20:59:03.035123072Z"
     }
   ],
   "commits": [
+    {
+      "id": "01a09244-46b2-7733-894f-4d21571bf957",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Record fast mode and live web search defaults",
+      "created_at": "2026-09-11T20:59:03.035123072Z",
+      "changes": [
+        {
+          "document_id": "01a091f6-6759-7d51-8645-6a6c40097e31",
+          "slug": "issues/configure-codex-backend",
+          "change_type": "modified",
+          "previous_commit_id": "01a091fa-fca7-7ed0-b7b1-4777f80a8334",
+          "previous_version": 2,
+          "new_version": 3,
+          "hunks": [
+            {
+              "old_start": 8,
+              "old_count": 6,
+              "new_start": 8,
+              "new_count": 7,
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "- [x] Real Codex greeting smoke test and authenticated model discovery passed."
+                },
+                {
+                  "op": "context",
+                  "content": "- [x] Running tmux server updated while preserving its environment; watch installed."
+                },
+                {
+                  "op": "context",
+                  "content": "- [x] KB documentation imported, code indexed, and portable backup restore verified."
+                },
+                {
+                  "op": "add",
+                  "content": "- [x] Defaults updated to Luna / xhigh / fast and live web search; fast-mode toggle maps to per-turn fast/default service tier. Saved explicit settings are preserved. Full tests and real Codex fast-mode smoke test passed; server and watch updated."
+                },
+                {
+                  "op": "context",
+                  "content": "- [ ] Publish the settings page. Push to nick1udwig/pebble-agent requires explicit user approval following automatic approval review rejection. Until publication, the hosted settings page retains its previous controls."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Implementation detail: turn/start must inherit the thread-local resolved permission"
+                }
+              ]
+            }
+          ],
+          "content_hash": "e1ccd3c3aea2693747e0bac33833de9a3b5f231efe60d17b24beb0c89963d9cd",
+          "previous_hash": "3cf48ebdc15bc1ab462b0effc3f2727c05cc862d3f09f3182a289e8fa4987408",
+          "doc_type": "task",
+          "title": "Configure Codex models and permissions from phone settings"
+        },
+        {
+          "document_id": "01a091eb-493e-7da2-a8aa-cf6e205ef385",
+          "slug": "reference/docs/backend",
+          "change_type": "modified",
+          "previous_commit_id": "01a091f8-e226-7663-a542-e80b3f5d23cc",
+          "previous_version": 2,
+          "new_version": 3,
+          "hunks": [
+            {
+              "old_start": 88,
+              "old_count": 7,
+              "new_start": 88,
+              "new_count": 7,
+              "context": "## Codex settings",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "The Go backend accepts an optional request child such as:"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "```pam"
+                },
+                {
+                  "op": "delete",
+                  "content": "  backend model=gpt-5.6-luna effort=low web_search=disabled file_access=none network_access=false shell_access=false auto_review=false"
+                },
+                {
+                  "op": "add",
+                  "content": "  backend model=gpt-5.6-luna effort=xhigh fast_mode=true web_search=live file_access=none network_access=false shell_access=false auto_review=false"
+                },
+                {
+                  "op": "context",
+                  "content": "```"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "These are configuration attributes, not model instructions. The Go parser validates"
+                }
+              ]
+            },
+            {
+              "old_start": 93,
+              "old_count": 5,
+              "new_start": 93,
+              "new_count": 5,
+              "context": "## Codex settings",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "These are configuration attributes, not model instructions. The Go parser validates"
+                },
+                {
+                  "op": "context",
+                  "content": "them and removes the entire node from the model-facing request. Missing attributes"
+                },
+                {
+                  "op": "delete",
+                  "content": "use server model/effort defaults and restrictive tool defaults. Generic PAM endpoints"
+                },
+                {
+                  "op": "add",
+                  "content": "use server model/effort defaults, fast mode on, and restrictive tool defaults. Generic PAM endpoints"
+                },
+                {
+                  "op": "context",
+                  "content": "may ignore this node if they do not support Codex settings. See [server settings](server.md)."
+                }
+              ]
+            }
+          ],
+          "content_hash": "dcf75ac8fe65a5628b3409c263c3aba0aa7e488e32e32345b90eac42b35dc832",
+          "previous_hash": "5efd9a8c97c2557f6846d621231f4c1eda3ac9203e65fb52636950da5e47ddf4",
+          "doc_type": "reference",
+          "title": "docs/backend.md"
+        },
+        {
+          "document_id": "01a091eb-4958-7731-a829-5a501e760d31",
+          "slug": "reference/docs/server",
+          "change_type": "modified",
+          "previous_commit_id": "01a091f8-e226-7663-a542-e80b3f5d23cc",
+          "previous_version": 2,
+          "new_version": 3,
+          "hunks": [
+            {
+              "old_start": 30,
+              "old_count": 6,
+              "new_start": 30,
+              "new_count": 7,
+              "context": "## Codex configuration",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "```text"
+                },
+                {
+                  "op": "context",
+                  "content": "model:  gpt-5.6-luna"
+                },
+                {
+                  "op": "context",
+                  "content": "effort: xhigh"
+                },
+                {
+                  "op": "add",
+                  "content": "fast:   on"
+                },
+                {
+                  "op": "context",
+                  "content": "```"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Set them when the process starts:"
+                }
+              ]
+            },
+            {
+              "old_start": 45,
+              "old_count": 8,
+              "new_start": 46,
+              "new_count": 9,
+              "context": "## Codex configuration",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "The phone settings provide model and effort selection plus web search (disabled,"
+                },
+                {
+                  "op": "context",
+                  "content": "cached, live), filesystem access (runtime files only, read-only, workspace"
+                },
+                {
+                  "op": "context",
+                  "content": "writes), command execution, command network access, and automatic approval"
+                },
+                {
+                  "op": "delete",
+                  "content": "review. Defaults disable web search, commands, user-file access, command network"
+                },
+                {
+                  "op": "delete",
+                  "content": "access, and auto-review. Permission settings do not affect local timers, alarms,"
+                },
+                {
+                  "op": "add",
+                  "content": "review. Phone settings default to Luna / xhigh, fast mode, and live web search. Commands,"
+                },
+                {
+                  "op": "add",
+                  "content": "user-file access, command network access, and auto-review remain off. Older callers"
+                },
+                {
+                  "op": "add",
+                  "content": "without a backend node retain disabled web search. Missing fast_mode defaults on. Permission settings do not affect local timers, alarms,"
+                },
+                {
+                  "op": "context",
+                  "content": "dictation, phone weather, or the transport connection to Codex."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "`GET /v1/models` uses the same bearer authentication and returns the installed"
+                }
+              ]
+            },
+            {
+              "old_start": 60,
+              "old_count": 6,
+              "new_start": 62,
+              "new_count": 12,
+              "context": "## Codex configuration",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "be blocked as mixed content for HTTP endpoints. In that case, save the endpoint"
+                },
+                {
+                  "op": "context",
+                  "content": "and reopen settings to load through the phone bridge."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Fast mode is sent as the allowlisted `fast_mode=true|false` backend attribute."
+                },
+                {
+                  "op": "add",
+                  "content": "Each turn requests `serviceTierForTurn=fast` or `default`, so turning it off does"
+                },
+                {
+                  "op": "add",
+                  "content": "not inherit a previous fast tier. Fast mode changes preserve the conversation."
+                },
+                {
+                  "op": "add",
+                  "content": "Codex maps fast to priority processing; model/account availability still applies."
+                },
+                {
+                  "op": "add",
+                  "content": "Existing saved preferences are preserved when defaults change."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Permission options are allowlisted PAM `backend` attributes, excluded from the"
+                },
+                {
+                  "op": "context",
+                  "content": "model-facing document. They resolve to a thread-local named Codex permission"
+                },
+                {
+                  "op": "context",
+                  "content": "profile. No user files grants only the platform's minimal runtime paths; read-only"
+                }
+              ]
+            }
+          ],
+          "content_hash": "a8010d786d0ed93a2d8f2d8d872759f56b9f7a4fd7bd1cdefbbe0c55f34b8075",
+          "previous_hash": "d5dafc492d2ccc229ecd8d09637059e472ba104d8132da0c7a20d51fa97c4147",
+          "doc_type": "reference",
+          "title": "docs/server.md"
+        },
+        {
+          "document_id": "01a091eb-4925-72e2-a4c7-6c4fc5b284e8",
+          "slug": "reference/readme",
+          "change_type": "modified",
+          "previous_commit_id": "01a091f8-e226-7663-a542-e80b3f5d23cc",
+          "previous_version": 2,
+          "new_version": 3,
+          "hunks": [
+            {
+              "old_start": 51,
+              "old_count": 7,
+              "new_start": 51,
+              "new_count": 9,
+              "context": "## Install and connect",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "4. Enter the server's bearer token, choose weather units and a timeout, then tap **Save & close**."
+                },
+                {
+                  "op": "context",
+                  "content": "5. Launch **Agent** on the watch. The home screen should say **Agent connected**."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "delete",
+                  "content": "Settings also select the Codex model and reasoning effort. Use **Load available"
+                },
+                {
+                  "op": "add",
+                  "content": "Settings default to GPT-5.6 Luna, extra-high reasoning effort, fast mode, and live"
+                },
+                {
+                  "op": "add",
+                  "content": "web search. The Fast mode toggle requests priority processing and can be turned"
+                },
+                {
+                  "op": "add",
+                  "content": "off for standard speed. Explicitly saved preferences are preserved. Use **Load available"
+                },
+                {
+                  "op": "context",
+                  "content": "models** to fetch the server's supported choices. Permissions control web search,"
+                },
+                {
+                  "op": "context",
+                  "content": "user-file access, command execution, command networking, and auto-review. All tool"
+                },
+                {
+                  "op": "context",
+                  "content": "permissions start off. Auto-review can approve exceptions to the selected baseline;"
+                }
+              ]
+            },
+            {
+              "old_start": 53,
+              "old_count": 7,
+              "new_start": 55,
+              "new_count": 7,
+              "context": "## Install and connect",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Settings also select the Codex model and reasoning effort. Use **Load available"
+                },
+                {
+                  "op": "context",
+                  "content": "models** to fetch the server's supported choices. Permissions control web search,"
+                },
+                {
+                  "op": "delete",
+                  "content": "user-file access, command execution, command networking, and auto-review. All tool"
+                },
+                {
+                  "op": "add",
+                  "content": "user-file access, command execution, command networking, and auto-review. Filesystem, command, network, and auto-review"
+                },
+                {
+                  "op": "context",
+                  "content": "permissions start off. Auto-review can approve exceptions to the selected baseline;"
+                },
+                {
+                  "op": "context",
+                  "content": "when off, additional-permission requests are denied. Changing permissions uses a"
+                },
+                {
+                  "op": "context",
+                  "content": "separate conversation. See [backend settings](docs/server.md#codex-configuration)."
+                }
+              ]
+            }
+          ],
+          "content_hash": "45938975a29907744e47e6a918a24ab4aee77c6fae7413fb02d5234d1027d423",
+          "previous_hash": "52089f41e46b114ba3ebfdd1ec233f17e0b5d78c062c76789a9dd4b52594a471",
+          "doc_type": "reference",
+          "title": "README.md"
+        }
+      ]
+    },
     {
       "id": "01a091fa-fca7-7ed0-b7b1-4777f80a8334",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

@@ -9,9 +9,10 @@ var DEFAULTS = Object.freeze({
   units: "auto",
   locationLabel: "Current location",
   timeoutSeconds: 45,
-  codexModel: "",
-  codexEffort: "",
-  webSearch: "disabled",
+  codexModel: "gpt-5.6-luna",
+  codexEffort: "xhigh",
+  webSearch: "live",
+  fastMode: true,
   fileAccess: "none",
   networkAccess: false,
   shellAccess: false,
@@ -35,7 +36,7 @@ function copyDefaults(value) {
   });
   settings.webSearch = ["cached", "live"].indexOf(settings.webSearch) >= 0 ? settings.webSearch : "disabled";
   settings.fileAccess = ["read-only", "workspace-write"].indexOf(settings.fileAccess) >= 0 ? settings.fileAccess : "none";
-  ["networkAccess", "shellAccess", "autoReview"].forEach(function(key) {
+  ["networkAccess", "shellAccess", "autoReview", "fastMode"].forEach(function(key) {
     settings[key] = settings[key] === true;
   });
   return settings;

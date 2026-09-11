@@ -205,7 +205,7 @@ function requestAgent(input) {
     input: input,
     context: currentScreen,
     backend: {
-      model: settings.codexModel, effort: settings.codexEffort,
+      model: settings.codexModel, effort: settings.codexEffort, fast_mode: String(settings.fastMode),
       web_search: settings.webSearch, file_access: settings.fileAccess,
       network_access: String(settings.networkAccess), shell_access: String(settings.shellAccess),
       auto_review: String(settings.autoReview)

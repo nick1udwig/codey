@@ -159,15 +159,20 @@ func (agent *Agent) runTurn(ctx context.Context, connection *appserver.Connectio
 	// Inherit the thread's resolved permissions snapshot. Re-sending the named
 	// profile here makes app-server resolve it against disk config, where our
 	// per-thread profile does not exist. Permission changes use another thread.
+	tier := "default"
+	if options.FastMode {
+		tier = "fast"
+	}
 	policy, reviewer := approvalOptions(options)
 	err = connection.Request(ctx, "turn/start", map[string]any{
-		"approvalPolicy":    policy,
-		"approvalsReviewer": reviewer,
-		"cwd":               agent.config.Workspace,
-		"effort":            effort,
-		"input":             []map[string]any{{"type": "text", "text": prompt}},
-		"model":             model,
-		"threadId":          threadID,
+		"approvalPolicy":     policy,
+		"approvalsReviewer":  reviewer,
+		"serviceTierForTurn": tier,
+		"cwd":                agent.config.Workspace,
+		"effort":             effort,
+		"input":              []map[string]any{{"type": "text", "text": prompt}},
+		"model":              model,
+		"threadId":           threadID,
 	}, &response)
 	if err != nil {
 		return fmt.Errorf("start Codex turn: %w", err)

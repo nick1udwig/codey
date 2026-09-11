@@ -49,9 +49,11 @@ Use the same `PEBBLE_AGENT_TOKEN` value in the app settings. Plain HTTP is suita
 4. Enter the server's bearer token, choose weather units and a timeout, then tap **Save & close**.
 5. Launch **Agent** on the watch. The home screen should say **Agent connected**.
 
-Settings also select the Codex model and reasoning effort. Use **Load available
+Settings default to GPT-5.6 Luna, extra-high reasoning effort, fast mode, and live
+web search. The Fast mode toggle requests priority processing and can be turned
+off for standard speed. Explicitly saved preferences are preserved. Use **Load available
 models** to fetch the server's supported choices. Permissions control web search,
-user-file access, command execution, command networking, and auto-review. All tool
+user-file access, command execution, command networking, and auto-review. Filesystem, command, network, and auto-review
 permissions start off. Auto-review can approve exceptions to the selected baseline;
 when off, additional-permission requests are denied. Changing permissions uses a
 separate conversation. See [backend settings](docs/server.md#codex-configuration).

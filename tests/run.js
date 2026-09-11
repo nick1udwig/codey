@@ -1047,6 +1047,12 @@ test("Local commands work with no configured endpoint", function() {
 test("backend preferences persist and reach Codex separately from dictated text", function() {
   var normalized = Settings.normalize({ codexModel: "test-model", codexEffort: "high", webSearch: "live", fileAccess: "workspace-write", shellAccess: true, networkAccess: true, autoReview: true });
   assert.strictEqual(normalized.autoReview, true);
+  assert.strictEqual(Settings.normalize({}).codexModel, "gpt-5.6-luna");
+  assert.strictEqual(Settings.normalize({}).codexEffort, "xhigh");
+  assert.strictEqual(Settings.normalize({}).fastMode, true);
+  assert.strictEqual(Settings.normalize({}).webSearch, "live");
+  assert.strictEqual(Settings.normalize({fastMode:false}).fastMode, false);
+  assert.strictEqual(Settings.normalize({webSearch:"disabled"}).webSearch, "disabled");
   var invalid = Settings.normalize({ webSearch: "bogus", fileAccess: "full", networkAccess: "true", shellAccess: "false", autoReview: "true", codexModel: "bad model" });
   assert.strictEqual(invalid.webSearch, "disabled"); assert.strictEqual(invalid.fileAccess, "none");
   assert.strictEqual(invalid.autoReview, false); assert.strictEqual(invalid.networkAccess, false); assert.strictEqual(invalid.codexModel, "");
@@ -1060,7 +1066,7 @@ test("backend preferences persist and reach Codex separately from dictated text"
   try {
     h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "explain gravity" } });
     var backend = parse(xhr.body).filter(function(n) { return n.kind === "backend"; })[0];
-    assert.deepStrictEqual(Object.assign({}, backend.attrs), { model: "test-model", effort: "high", web_search: "live", file_access: "workspace-write", network_access: "true", shell_access: "true", auto_review: "true" });
+    assert.deepStrictEqual(Object.assign({}, backend.attrs), { model: "test-model", effort: "high", fast_mode: "true", web_search: "live", file_access: "workspace-write", network_access: "true", shell_access: "true", auto_review: "true" });
     xhr.status = 200; xhr.readyState = 4; xhr.responseText = "pam version=1\nscreen id=answer layout=card\ndone\n"; xhr.onreadystatechange();
   } finally { h.cleanup(); }
 });

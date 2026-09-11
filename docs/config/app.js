@@ -7,7 +7,7 @@
     units: "auto",
     locationLabel: "Current location",
     timeoutSeconds: 45,
-    codexModel: "", codexEffort: "", webSearch: "disabled", fileAccess: "none",
+    codexModel: "gpt-5.6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
     networkAccess: false, shellAccess: false, autoReview: false
   };
   var form = document.getElementById("settings");
@@ -21,6 +21,7 @@
   var extraFields = {
     codexModel: document.getElementById("codex-model"),
     codexEffort: document.getElementById("codex-effort"),
+    fastMode: document.getElementById("fast-mode"),
     webSearch: document.getElementById("web-search"),
     fileAccess: document.getElementById("file-access"),
     networkAccess: document.getElementById("network-access"),
