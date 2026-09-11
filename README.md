@@ -53,7 +53,24 @@ The gear icon is supplied by the Pebble mobile app. The settings page requires i
 
 ## Use the app
 
-Hold Select until dictation opens, then speak normally. Your transcription is sent to the configured agent. A **Thinking** indicator means the watch accepted the transcription and is waiting for that service to respond.
+Hold Select until dictation opens, then speak normally. The phone first matches
+common commands locally, using normalized speech and regular expressions inspired
+by Bibble. Only unmatched dictation is sent to the configured Codex agent.
+**Thinking** can appear briefly while the phone processes the transcription.
+
+Local examples: “start a five-minute timer,” “set a timer for one hour and thirty
+minutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up
+tomorrow at seven am,” “remind me in an hour to check the oven,” “pause the
+stopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”
+These commands need no agent endpoint; weather still uses the phone's location
+and weather service. Each new timer gets its own delivery identity.
+
+Clock alarms use the phone's local timezone. AM/PM, noon/midnight, or 24-hour
+HH:MM notation is required; without a date they mean the next occurrence.
+Ambiguous times (“set an alarm for seven”), recurring alarms, commands targeting
+an individual timer, and requests with additional instructions fall back to
+Codex unchanged. Matching is for complete phrases, never just a command buried
+inside a longer sentence. Relative durations support 1 second through 7 days.
 
 Agent opens to a local dashboard with the time, unacknowledged notifications,
 running or paused timers, alarms/reminders, and the stopwatch. It works without

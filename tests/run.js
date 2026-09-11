@@ -988,6 +988,68 @@ test("Native dashboard survives bridge startup, configuration, and local notific
   } finally { harness.cleanup(); }
 });
 
+require("./local-dictation")(test);
+
+test("Local dictation bypasses Codex and gives concurrent timers distinct delivery IDs", function() {
+  var requests = 0;
+  function FakeXHR() { requests += 1; }
+  var storage = {};
+  storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test" });
+  var harness = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
+  try {
+    ["set a timer for 10 seconds", "set a timer for 60 seconds", "set an alarm in 2 minutes"]
+      .forEach(function(text) { harness.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: text } }); });
+    assert.strictEqual(requests, 0);
+    var messages = harness.sent.filter(function(m) { return m[Watch.Key.messageType] === "capability"; });
+    assert.strictEqual(messages.length, 3);
+    assert.strictEqual(messages[0][Watch.Key.meta], "duration=10s");
+    assert.strictEqual(messages[1][Watch.Key.meta], "duration=60s");
+    assert.strictEqual(messages[2][Watch.Key.meta], "in=120s");
+    assert.ok(messages[0][Watch.Key.index] < messages[1][Watch.Key.index]);
+    assert.ok(messages[1][Watch.Key.index] < messages[2][Watch.Key.index]);
+    assert.ok(harness.sent.every(function(m) { return m[Watch.Key.operation] !== "loading"; }));
+  } finally { harness.cleanup(); }
+});
+
+test("Local commands abort earlier Codex requests and unmatched dictation falls back unchanged", function() {
+  var requests = [], aborted = 0;
+  function FakeXHR() { this.responseText = ""; requests.push(this); }
+  FakeXHR.prototype.open = function() {};
+  FakeXHR.prototype.setRequestHeader = function() {};
+  FakeXHR.prototype.send = function(body) { this.body = body; };
+  FakeXHR.prototype.abort = function() { aborted += 1; };
+  var storage = {};
+  storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test" });
+  var harness = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
+  function dictate(text) { harness.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: text } }); }
+  try {
+    var unmatched = "Set a timer for five minutes and tell me a joke.";
+    dictate(unmatched);
+    assert.strictEqual(parse(requests[0].body)[2].attrs.text, unmatched);
+    dictate("set a timer for 10 seconds");
+    assert.strictEqual(aborted, 1);
+    var count = harness.sent.length;
+    requests[0].responseText = "pam version=1\ncapability type=timer command=start duration=5m\ndone\n";
+    requests[0].readyState = 4; requests[0].status = 200; requests[0].onreadystatechange();
+    assert.strictEqual(harness.sent.length, count);
+    dictate("set an alarm for seven");
+    assert.strictEqual(requests.length, 2);
+    requests[1].status = 200; requests[1].readyState = 4;
+    requests[1].responseText = "pam version=1\nscreen id=clarify layout=list title=Clarify\ndone\n";
+    requests[1].onreadystatechange();
+  } finally { harness.cleanup(); }
+});
+
+test("Local commands work with no configured endpoint", function() {
+  var harness = loadPkjsHarness();
+  try {
+    harness.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "start a five minute timer" } });
+    assert.strictEqual(harness.sent.length, 1);
+    assert.strictEqual(harness.sent[0][Watch.Key.messageType], "capability");
+    assert.strictEqual(harness.sent[0][Watch.Key.meta], "duration=300s");
+  } finally { harness.cleanup(); }
+});
+
 function runOne(entry) {
   return new Promise(function(resolve, reject) {
     var finished = false;

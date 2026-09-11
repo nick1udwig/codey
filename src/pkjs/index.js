@@ -7,6 +7,7 @@ var AgentClient = require("../common/agent-client").AgentClient;
 var Settings = require("../common/settings");
 var Capabilities = require("../common/capabilities");
 var Weather = require("../common/weather");
+var LocalDictation = require("../common/local-dictation");
 
 var Key = WatchProtocol.Key;
 var settings = Settings.load();
@@ -101,20 +102,24 @@ function capabilityContext(requestId) {
   return {
     settings: settings,
     sendWatchCapability: function(operation) {
+      if (requestId !== activeRequestId) { return; }
       // Assign once before queueing; retries retain the same ID, while new
       // model commands (even in the same response) receive different IDs.
       operation.invocationId = nextCommandId();
       watchQueue.enqueueOperation(operation, requestId);
     },
     renderPam: function(source) {
+      if (requestId !== activeRequestId) { return; }
       var pipeline = createPipeline(requestId);
       pipeline.parser.push(source);
       pipeline.parser.finish();
     },
     status: function(text) {
+      if (requestId !== activeRequestId) { return; }
       sendStatus(text, "show", requestId);
     },
     error: function(text) {
+      if (requestId !== activeRequestId) { return; }
       sendStatus(text, "error", requestId);
     }
   };
@@ -181,6 +186,15 @@ function requestAgent(input) {
   }
   activeRequestId = requestId;
   activePipeline = pipeline;
+  var local = input.kind === "dictation" ? LocalDictation.parse(input.text, now) : null;
+  if (local) {
+    // Invalidate callbacks before aborting: a canceled server response must not
+    // replace a local result or start a second timer. Use the normal capability
+    // queue so delivery retries keep the same invocation ID.
+    client.abort();
+    capabilityRegistry.handle(local, capabilityContext(requestId));
+    return;
+  }
   sendStatus(input.kind === "dictation" ? "Thinking" : "Loading", "loading", requestId);
   client.send({
     id: requestId,
