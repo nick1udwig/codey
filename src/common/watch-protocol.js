@@ -212,6 +212,7 @@ function encodeOperation(operation, requestId) {
   }
   if (operation.type === "capability") {
     message = commonMessage("capability", requestId, attrs.command);
+    if (operation.invocationId) { message[Key.index] = operation.invocationId; }
     message[Key.kind] = attrs.type;
     addIf(message, Key.elementId, attrs.id, 32);
     addIf(message, Key.title, attrs.title == null ? attrs.label : attrs.title, 72);

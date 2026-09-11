@@ -12,9 +12,11 @@
   ],
   "private": true,
   "scripts": {
-    "test": "node tests/run.js && node tests/native/run.js && node tests/integration.mjs",
+    "test": "node tests/run.js && node tests/native/run.js && node tests/integration.mjs && go test ./...",
     "build:watch": "pebble build",
     "build:settings": "node scripts/build-settings-site.mjs",
+    "build:server": "go build -o build/pebble-agent-server ./cmd/pebble-agent-server",
+    "server": "go run ./cmd/pebble-agent-server",
     "demo:server": "node examples/server.mjs"
   },
   "pebble": {

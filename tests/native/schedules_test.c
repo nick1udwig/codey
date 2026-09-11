@@ -1,0 +1,295 @@
+#include "agent_capabilities.h"
+#include "agent_protocol.h"
+#include <assert.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
+
+static time_t now = 100000;
+static int buzzes, canceled, writes_fail;
+static bool wake_fail;
+static int next_wake;
+static WakeupId wake_id = -1;
+static time_t wake_at;
+static int32_t wake_cookie;
+static WakeupHandler wake_handler;
+static struct { size_t size; unsigned char data[256]; } storage[4300];
+struct AppTimer { bool used; time_t at; void (*callback)(void *); void *context; };
+static AppTimer timers[16];
+struct AgentUi { char screen[32], status[100]; int count;
+  struct { char id[32], title[72], subtitle[100], value[320], action[48]; } elements[48]; };
+static AgentUi ui;
+
+time_t time(time_t *out) { if (out) { *out = now; } return now; }
+AppTimer *app_timer_register(uint32_t ms, void (*cb)(void *), void *ctx) {
+  for (int i = 0; i < 16; ++i) { if (!timers[i].used) {
+    timers[i] = (AppTimer){ true, now + (ms + 999) / 1000, cb, ctx }; return &timers[i];
+  } }
+  abort();
+}
+void app_timer_cancel(AppTimer *timer) { timer->used = false; }
+void wakeup_service_subscribe(WakeupHandler handler) { wake_handler = handler; }
+void wakeup_cancel_all(void) { wake_id = -1; }
+void wakeup_cancel(WakeupId id) { if (id == wake_id) { wake_id = -1; } }
+WakeupId wakeup_schedule(time_t at, int32_t cookie, bool notify) {
+  assert(notify && at > now);
+  if (wake_fail) { return -1; }
+  // A shared scheduler should never request a second concurrent wakeup.
+  assert(wake_id == -1);
+  wake_at = at; wake_cookie = cookie; wake_id = ++next_wake; return wake_id;
+}
+bool persist_exists(uint32_t key) { assert(key < 4300); return storage[key].size != 0; }
+int persist_write_data(uint32_t key, const void *data, size_t size) {
+  assert(key < 4300 && size <= 256);
+  if (writes_fail) { return -1; }
+  memcpy(storage[key].data, data, size); storage[key].size = size; return (int)size;
+}
+int persist_read_data(uint32_t key, void *data, size_t size) {
+  assert(key < 4300);
+  if (!storage[key].size) { return -1; }
+  size_t copy = size < storage[key].size ? size : storage[key].size;
+  memcpy(data, storage[key].data, copy); return (int)copy;
+}
+int32_t persist_read_int(uint32_t key) { int32_t value = 0; persist_read_data(key, &value, sizeof(value)); return value; }
+int persist_write_int(uint32_t key, int32_t value) { return persist_write_data(key, &value, sizeof(value)); }
+bool clock_is_24h_style(void) { return true; }
+void vibes_double_pulse(void) { ++buzzes; }
+void vibes_cancel(void) { ++canceled; }
+void agent_ui_begin(AgentUi *u, const char *id, const char *layout, const char *title,
+                    const char *subtitle, const char *meta, int32_t flags) {
+  (void)layout; (void)title; (void)subtitle; (void)meta; (void)flags;
+  u->count = 0; u->status[0] = 0; agent_protocol_copy(u->screen, sizeof(u->screen), id);
+}
+static int element(const char *id) {
+  for (int i = 0; i < ui.count; ++i) { if (strcmp(ui.elements[i].id, id) == 0) { return i; } }
+  return -1;
+}
+bool agent_ui_add(AgentUi *u, const AgentUiElementSpec *spec) {
+  assert(u->count < 48 && element(spec->id) == -1);
+  int i = u->count++;
+  memset(&u->elements[i], 0, sizeof(u->elements[i]));
+  agent_protocol_copy(u->elements[i].id, 32, spec->id);
+  agent_protocol_copy(u->elements[i].title, 72, spec->title);
+  agent_protocol_copy(u->elements[i].subtitle, 100, spec->subtitle);
+  agent_protocol_copy(u->elements[i].value, 320, spec->value);
+  agent_protocol_copy(u->elements[i].action, 48, spec->action);
+  return true;
+}
+bool agent_ui_patch(AgentUi *u, const AgentUiElementSpec *spec) {
+  int i = element(spec->id); if (i < 0) { return false; }
+  if (spec->present & AgentUiPresentValue) { agent_protocol_copy(u->elements[i].value, 320, spec->value); }
+  if (spec->present & AgentUiPresentSubtitle) { agent_protocol_copy(u->elements[i].subtitle, 100, spec->subtitle); }
+  return true;
+}
+void agent_ui_end(AgentUi *u) { (void)u; }
+void agent_ui_set_status(AgentUi *u, const char *status, bool error, bool loading) {
+  (void)error; (void)loading; agent_protocol_copy(u->status, sizeof(u->status), status);
+}
+static void advance(int seconds) {
+  while (seconds-- > 0) {
+    ++now;
+    if (wake_id >= 0 && wake_at <= now) {
+      WakeupId id = wake_id; wake_id = -1; wake_handler(id, wake_cookie);
+    }
+    for (int i = 0; i < 16; ++i) { if (timers[i].used && timers[i].at <= now) {
+      void (*cb)(void *) = timers[i].callback; void *ctx = timers[i].context;
+      timers[i].used = false; cb(ctx);
+    } }
+  }
+}
+static void command(AgentCapabilities *caps, const char *type, const char *op, const char *id, const char *meta) {
+  AgentCapabilityCommand cmd = { .type = type, .command = op, .id = id, .title = id, .meta = meta };
+  assert(agent_capabilities_handle_command(caps, &cmd));
+}
+static void event(AgentCapabilities *caps, const char *action) {
+  AgentUiEvent e = {0}; agent_protocol_copy(e.action, sizeof(e.action), action);
+  assert(agent_capabilities_handle_ui_event(caps, &e));
+}
+static void reset(void) {
+  memset(storage, 0, sizeof(storage)); memset(timers, 0, sizeof(timers)); memset(&ui, 0, sizeof(ui));
+  wake_id = -1; buzzes = canceled = writes_fail = 0; wake_fail = false; now = 100000;
+}
+static void test_multiple_and_ack(void) {
+  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL); assert(caps);
+  command(caps, "timer", "start", "tea", "duration=5s");
+  command(caps, "timer", "start", "eggs", "duration=8s");
+  command(caps, "alarm", "schedule", "alarm", "in=5s");
+  event(caps, "local.home");
+  assert(element("schedule-0") >= 0 && element("schedule-1") >= 0 && element("schedule-4") >= 0);
+  assert(wake_at == now + 5);
+  uint32_t revision = agent_capabilities_notification_revision(caps);
+  uint32_t navigation = agent_capabilities_navigation_revision(caps);
+  advance(5);
+  assert(strcmp(ui.screen, "dashboard") == 0 && element("notifications") >= 0);
+  assert(agent_capabilities_notification_revision(caps) > revision);
+  assert(agent_capabilities_navigation_revision(caps) == navigation);
+  assert(strstr(ui.elements[element("schedule-0")].subtitle, "Finished"));
+  assert(buzzes == 1);
+  advance(6); assert(buzzes >= 3);
+  event(caps, "local.schedule.0"); event(caps, "local.schedule.toggle");
+  assert(element("schedule-0") < 0 && element("schedule-1") >= 0);
+  int before = buzzes; advance(3); assert(buzzes > before);
+  event(caps, "local.schedule.1"); event(caps, "local.schedule.toggle");
+  event(caps, "local.schedule.4"); event(caps, "local.schedule.toggle");
+  before = buzzes; advance(6); assert(buzzes == before && wake_id == -1);
+  agent_capabilities_destroy(caps);
+}
+static void test_pause_cancel_restore(void) {
+  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  AgentCapabilityCommand first = { .type = "timer", .command = "start", .id = "one",
+    .title = "one", .meta = "duration=30s", .invocation_id = 101 };
+  assert(agent_capabilities_handle_command(caps, &first));
+  command(caps, "timer", "start", "two", "duration=60s");
+  WakeupId old_wake = wake_id;
+  advance(5);
+  assert(agent_capabilities_handle_command(caps, &first));
+  assert(wake_at == 100030); // duplicate must not restart at 100035
+  wake_handler(old_wake + 500, wake_cookie); // unrelated stale event
+  assert(buzzes == 0);
+  advance(5); command(caps, "timer", "pause", "one", "");
+  event(caps, "local.home"); advance(5);
+  assert(strstr(ui.elements[element("schedule-0")].subtitle, "00:20"));
+  command(caps, "timer", "cancel", "two", "");
+  assert(element("schedule-1") < 0 && wake_id == -1);
+  agent_capabilities_destroy(caps);
+  caps = agent_capabilities_create(&ui, NULL, NULL);
+  assert(element("schedule-0") >= 0 && strstr(ui.elements[element("schedule-0")].subtitle, "Paused"));
+  command(caps, "timer", "resume", "one", "");
+  agent_capabilities_destroy(caps); now += 25;
+  caps = agent_capabilities_create(&ui, NULL, NULL);
+  assert(element("notifications") >= 0);
+  event(caps, "local.schedule.0"); event(caps, "local.schedule.snooze");
+  assert(element("notifications") < 0 && wake_at == now + 600);
+  agent_capabilities_destroy(caps);
+}
+static void test_failures_and_capacity(void) {
+  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  for (int i = 0; i < 4; ++i) { char id[8]; snprintf(id, sizeof(id), "t%d", i); command(caps, "timer", "start", id, "duration=30s"); }
+  command(caps, "timer", "start", "fifth", "duration=30s"); assert(strstr(ui.status, "Four timers"));
+  command(caps, "timer", "cancel_all", "", "");
+  writes_fail = 1; command(caps, "timer", "start", "lost", "duration=5s");
+  writes_fail = 0; event(caps, "local.home"); assert(element("schedule-0") < 0);
+  wake_fail = true; command(caps, "timer", "start", "live", "duration=5s"); assert(strstr(ui.status, "keep Agent open"));
+  advance(5); assert(element("notifications") >= 0 && buzzes > 0);
+  wake_fail = false; command(caps, "timer", "cancel_all", "", "");
+  command(caps, "timer", "start", "bad", "duration=2147483648s"); assert(strstr(ui.status, "duration"));
+  now = INT32_MAX - 3; command(caps, "alarm", "schedule", "overflow", "in=5s"); assert(strstr(ui.status, "duration"));
+  agent_capabilities_destroy(caps);
+  memset(storage[4200].data, 0xff, storage[4200].size);
+  caps = agent_capabilities_create(&ui, NULL, NULL); assert(element("schedule-0") < 0);
+  agent_capabilities_destroy(caps);
+}
+static void test_migration(void) {
+  reset();
+  struct { uint32_t magic; uint8_t active, running; int32_t duration, remaining;
+    time_t at; WakeupId wakeup; char id[32], title[72]; } old = {
+      .magic = 0x54494d52, .active = 1, .running = 1, .duration = 30, .remaining = 30,
+      .at = 100030, .wakeup = 12, .id = "legacy", .title = "Legacy timer" };
+  persist_write_data(4100, &old, sizeof(old));
+  AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  assert(element("schedule-0") >= 0 && wake_at == 100030);
+  command(caps, "timer", "cancel", "legacy", "");
+  agent_capabilities_destroy(caps);
+  caps = agent_capabilities_create(&ui, NULL, NULL);
+  assert(element("schedule-0") < 0); // never resurrect canceled legacy state
+  agent_capabilities_destroy(caps);
+}
+static void test_explicit_replacement(void) {
+  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  command(caps, "timer", "start", "tea", "duration=5s");
+  WakeupId original = wake_id;
+  AgentCapabilityCommand replace = { .type = "timer", .command = "start", .id = "tea",
+    .title = "Tea", .meta = "duration=30s", .flags = 32 };
+  assert(agent_capabilities_handle_command(caps, &replace));
+  wake_handler(original, wake_cookie);
+  advance(6);
+  event(caps, "local.home");
+  assert(buzzes == 0 && element("notifications") < 0);
+  assert(strstr(ui.elements[element("schedule-0")].subtitle, "00:24"));
+  agent_capabilities_destroy(caps);
+}
+static void test_stopwatch_dashboard(void) {
+  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  command(caps, "stopwatch", "start", "run", ""); event(caps, "local.home"); advance(5);
+  assert(strstr(ui.elements[element("dashboard-stopwatch")].subtitle, "00:05"));
+  assert(strcmp(ui.screen, "dashboard") == 0);
+  event(caps, "local.stopwatch"); assert(strcmp(ui.screen, "run") == 0);
+  agent_capabilities_destroy(caps);
+}
+static void test_reused_ids_and_screen_independent_expiry(void) {
+  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  AgentCapabilityCommand first = { .type = "timer", .command = "start", .id = "timer",
+    .title = "10 seconds", .meta = "duration=10s", .invocation_id = 201 };
+  AgentCapabilityCommand second = { .type = "timer", .command = "start", .id = "timer",
+    .title = "60 seconds", .meta = "duration=60s", .invocation_id = 202 };
+  assert(agent_capabilities_handle_command(caps, &first));
+  assert(agent_capabilities_handle_command(caps, &second));
+  assert(strcmp(ui.screen, "timer-1") == 0);
+  advance(10); // Expire the FIRST timer while viewing the SECOND timer.
+  assert(buzzes > 0 && strcmp(ui.screen, "dashboard") == 0);
+  assert(strstr(ui.elements[element("schedule-0")].subtitle, "Finished"));
+  assert(strstr(ui.elements[element("schedule-1")].subtitle, "00:50"));
+  event(caps, "local.schedule.1");
+  int before = buzzes; advance(3); assert(buzzes > before); // buzz on other detail screen
+  event(caps, "local.schedule.cancel");
+  assert(element("schedule-1") < 0 && element("schedule-0") >= 0); // cancel correct collision ID
+  event(caps, "local.schedule.0"); event(caps, "local.schedule.toggle");
+  assert(agent_capabilities_handle_command(caps, &first)); // canceled/acked replay never resurrects
+  assert(element("schedule-0") < 0);
+  assert(agent_capabilities_handle_command(caps, &second));
+  assert(element("schedule-1") < 0);
+  agent_capabilities_destroy(caps);
+
+  const char *screens[] = { "dashboard", "remote", "stopwatch", "schedules" };
+  for (unsigned i = 0; i < sizeof(screens) / sizeof(screens[0]); ++i) {
+    reset(); caps = agent_capabilities_create(&ui, NULL, NULL);
+    command(caps, "alarm", "schedule", "alarm", "in=5s");
+    command(caps, "alarm", "schedule", "alarm", "in=30s"); // same-name alarms too
+    agent_capabilities_set_active(caps, screens[i], true);
+    agent_ui_begin(&ui, screens[i], "card", "Other screen", "", "", 16);
+    advance(5);
+    assert(buzzes > 0 && strcmp(ui.screen, "dashboard") == 0);
+    assert(element("schedule-4") >= 0 && element("schedule-5") >= 0);
+    event(caps, "local.schedule.4"); event(caps, "local.schedule.toggle");
+    agent_capabilities_set_active(caps, "remote", true);
+    advance(25);
+    assert(element("notifications") >= 0 && element("schedule-5") >= 0);
+    agent_capabilities_destroy(caps);
+  }
+}
+static void test_delivery_replay_after_relaunch(void) {
+  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  AgentCapabilityCommand cmd = { .type = "timer", .command = "start", .id = "timer",
+    .title = "Timer", .meta = "duration=60s", .invocation_id = 999 };
+  assert(agent_capabilities_handle_command(caps, &cmd));
+  agent_capabilities_destroy(caps); now += 10;
+  caps = agent_capabilities_create(&ui, NULL, NULL);
+  assert(agent_capabilities_handle_command(caps, &cmd));
+  event(caps, "local.home");
+  assert(element("schedule-0") >= 0 && element("schedule-1") < 0);
+  assert(strstr(ui.elements[element("schedule-0")].subtitle, "00:50"));
+  agent_capabilities_destroy(caps);
+}
+static void test_previous_dashboard_upgrade(void) {
+  reset();
+  struct { uint32_t magic; uint8_t state, reserved[3]; int32_t duration, remaining;
+    time_t at; char id[32], title[72], body[84]; } old = {
+      .magic = 0x53434832, .state = 1, .duration = 60, .remaining = 60,
+      .at = 100060, .id = "timer", .title = "Existing timer" };
+  persist_write_data(4200, &old, sizeof(old));
+  AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  assert(element("schedule-0") >= 0 && wake_at == 100060);
+  command(caps, "timer", "start", "timer", "duration=10s");
+  assert(strcmp(ui.screen, "timer-1") == 0);
+  advance(10);
+  assert(strstr(ui.elements[element("schedule-0")].subtitle, "00:50"));
+  assert(strstr(ui.elements[element("schedule-1")].subtitle, "Finished"));
+  agent_capabilities_destroy(caps);
+}
+int main(void) {
+  test_multiple_and_ack(); test_pause_cancel_restore(); test_failures_and_capacity(); test_stopwatch_dashboard(); test_migration(); test_explicit_replacement();
+  test_reused_ids_and_screen_independent_expiry(); test_delivery_replay_after_relaunch();
+  test_previous_dashboard_upgrade();
+  puts("✓ schedules: concurrent deadlines, repeated alerts, acknowledge, snooze, navigation, persistence, failures, bounds, stopwatch");
+  return 0;
+}

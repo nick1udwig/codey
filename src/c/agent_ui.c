@@ -4,6 +4,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #ifndef AGENT_MAX
 #define AGENT_MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -318,7 +319,8 @@ static void prv_calculate_layout(AgentUi *ui) {
     }
     row_height = prv_row_height(ui, element, width);
     element->frame = GRect(inset, y, width, row_height);
-    y += row_height;
+    // Layer geometry is signed 16-bit even when text is supplied remotely.
+    y = (int16_t)AGENT_MIN(30000, (int32_t)y + row_height);
     grid_y = y;
   }
   if (ui->layout == AgentUiLayoutGrid && column) {
@@ -367,6 +369,10 @@ static void prv_draw_symbol(GContext *ctx, const char *symbol, GRect frame, GCol
     graphics_context_set_stroke_width(ctx, 3);
     graphics_draw_line(ctx, GPoint(center.x - 10, center.y), GPoint(center.x - 3, center.y + 7));
     graphics_draw_line(ctx, GPoint(center.x - 3, center.y + 7), GPoint(center.x + 11, center.y - 8));
+  } else if (strcmp(symbol, "close") == 0) {
+    graphics_context_set_stroke_width(ctx, 3);
+    graphics_draw_line(ctx, GPoint(center.x - 8, center.y - 8), GPoint(center.x + 8, center.y + 8));
+    graphics_draw_line(ctx, GPoint(center.x - 8, center.y + 8), GPoint(center.x + 8, center.y - 8));
   } else if (strcmp(symbol, "up") == 0) {
     graphics_context_set_stroke_width(ctx, 3);
     graphics_draw_line(ctx, GPoint(center.x - 9, center.y + 5), GPoint(center.x, center.y - 5));
@@ -469,12 +475,16 @@ static void prv_draw_element(AgentUi *ui, GContext *ctx, AgentUiElement *element
     case AgentUiElementProgress: {
       int32_t minimum = agent_protocol_meta_get_int(element->meta, "min", 0);
       int32_t maximum = agent_protocol_meta_get_int(element->meta, "max", 100);
-      int32_t value = atoi(element->value);
+      int32_t value = 0;
+      agent_protocol_parse_int32(element->value, NULL, &value);
       int16_t bar_width;
       GRect bar = GRect(frame.origin.x + 5, frame.origin.y + 29, frame.size.w - 10, 14);
-      if (maximum <= minimum) { maximum = minimum + 1; }
+      if (maximum <= minimum) {
+        if (minimum == INT32_MAX) { minimum -= 1; }
+        maximum = minimum + 1;
+      }
       value = AGENT_MAX(minimum, AGENT_MIN(maximum, value));
-      bar_width = (int16_t)(((int64_t)(value - minimum) * bar.size.w) / (maximum - minimum));
+      bar_width = (int16_t)((((int64_t)value - minimum) * bar.size.w) / ((int64_t)maximum - minimum));
       snprintf(display, sizeof(display), "%s%s%s", element->title,
                element->title[0] && element->subtitle[0] ? "  " : "", element->subtitle);
       prv_draw_text(ctx, display, title_font,
@@ -716,9 +726,9 @@ static void prv_number_selected(NumberWindow *number_window, void *context) {
   value = number_window_get_value(number_window);
   snprintf(element->value, sizeof(element->value), "%ld", (long)value);
   prv_refresh(ui);
-  prv_emit(ui, "field", element, element->action, element->value);
   window_stack_pop(true);
   ui->editing_element = -1;
+  prv_emit(ui, "field", element, element->action, element->value);
 }
 
 static void prv_open_number(AgentUi *ui, AgentUiElement *element) {
@@ -743,7 +753,8 @@ static void prv_open_number(AgentUi *ui, AgentUiElement *element) {
   minimum = agent_protocol_meta_get_int(element->meta, "min", 0);
   maximum = agent_protocol_meta_get_int(element->meta, "max", 100);
   step = AGENT_MAX(1, agent_protocol_meta_get_int(element->meta, "step", 1));
-  value = atoi(element->value);
+  value = 0;
+  agent_protocol_parse_int32(element->value, NULL, &value);
   number_window_set_min(ui->number_window, minimum);
   number_window_set_max(ui->number_window, AGENT_MAX(minimum, maximum));
   number_window_set_step_size(ui->number_window, step);
@@ -804,6 +815,8 @@ static void prv_back_click(ClickRecognizerRef recognizer, void *context) {
   binding = prv_find_binding(ui, "back");
   if (binding) {
     prv_emit_binding(ui, "back", binding);
+  } else if (strcmp(ui->screen_id, "dashboard") != 0) {
+    prv_emit(ui, "back", NULL, "local.home", "");
   } else {
     window_stack_pop(true);
   }
@@ -829,7 +842,7 @@ static void prv_number_up_click(ClickRecognizerRef recognizer, void *context) {
   if (!ui || !ui->number_window) { return; }
   value = number_window_get_value(ui->number_window);
   number_window_set_value(ui->number_window,
-                          AGENT_MIN(ui->editing_max, value + ui->editing_step));
+                          (int32_t)AGENT_MIN((int64_t)ui->editing_max, (int64_t)value + ui->editing_step));
 }
 
 static void prv_number_down_click(ClickRecognizerRef recognizer, void *context) {
@@ -839,7 +852,7 @@ static void prv_number_down_click(ClickRecognizerRef recognizer, void *context) 
   if (!ui || !ui->number_window) { return; }
   value = number_window_get_value(ui->number_window);
   number_window_set_value(ui->number_window,
-                          AGENT_MAX(ui->editing_min, value - ui->editing_step));
+                          (int32_t)AGENT_MAX((int64_t)ui->editing_min, (int64_t)value - ui->editing_step));
 }
 
 static void prv_number_back_click(ClickRecognizerRef recognizer, void *context) {
@@ -923,6 +936,10 @@ static AgentUiElement *prv_hotspot(AgentUi *ui, int16_t x, int16_t y) {
     top = agent_protocol_meta_get_int(element->meta, "y", 0);
     width = agent_protocol_meta_get_int(element->meta, "width", 100);
     height = agent_protocol_meta_get_int(element->meta, "height", 100);
+    left = AGENT_MAX(0, AGENT_MIN(100, left));
+    top = AGENT_MAX(0, AGENT_MIN(100, top));
+    width = AGENT_MAX(0, AGENT_MIN(100 - left, width));
+    height = AGENT_MAX(0, AGENT_MIN(100 - top, height));
     frame = GRect(bounds.size.w * left / 100, bounds.size.h * top / 100,
                   bounds.size.w * width / 100, bounds.size.h * height / 100);
     if (grect_contains_point(&frame, &point)) { return element; }
@@ -998,13 +1015,16 @@ static void prv_window_load(Window *window) {
   GRect bounds = layer_get_bounds(root);
   AgentUi **slot;
   ui->status_bar_layer = status_bar_layer_create();
+  if (!ui->status_bar_layer) { return; }
   status_bar_layer_set_colors(ui->status_bar_layer, GColorWhite, GColorBlack);
   status_bar_layer_set_separator_mode(ui->status_bar_layer, StatusBarLayerSeparatorModeDotted);
   layer_add_child(root, status_bar_layer_get_layer(ui->status_bar_layer));
 
   ui->scroll_layer = scroll_layer_create(bounds);
+  if (!ui->scroll_layer) { return; }
   layer_add_child(root, scroll_layer_get_layer(ui->scroll_layer));
   ui->content_layer = layer_create_with_data(bounds, sizeof(AgentUi *));
+  if (!ui->content_layer) { return; }
   slot = layer_get_data(ui->content_layer);
   *slot = ui;
   layer_set_update_proc(ui->content_layer, prv_content_update_proc);
@@ -1012,6 +1032,7 @@ static void prv_window_load(Window *window) {
 
   ui->action_bar_layer = layer_create_with_data(GRect(bounds.size.w, 0, 0, bounds.size.h),
                                                  sizeof(AgentUi *));
+  if (!ui->action_bar_layer) { return; }
   slot = layer_get_data(ui->action_bar_layer);
   *slot = ui;
   layer_set_update_proc(ui->action_bar_layer, prv_action_bar_update_proc);
@@ -1104,6 +1125,14 @@ void agent_ui_show(AgentUi *ui, bool animated) {
 void agent_ui_begin(AgentUi *ui, const char *screen_id, const char *layout, const char *title,
                     const char *subtitle, const char *meta, int32_t flags) {
   if (!ui) { return; }
+  if (ui->number_window) {
+    if (window_stack_get_top_window() == number_window_get_window(ui->number_window)) {
+      window_stack_pop(false);
+    }
+    number_window_destroy(ui->number_window);
+    ui->number_window = NULL;
+  }
+  ui->editing_element = -1;
   memset(ui->elements, 0, sizeof(ui->elements));
   ui->element_count = 0;
   ui->selected_element = -1;
@@ -1181,7 +1210,7 @@ bool agent_ui_append(AgentUi *ui, const char *element_id, const char *value) {
   if (!element || !value) { return false; }
   available = sizeof(element->value) - strlen(element->value) - 1;
   if (available) {
-    strncat(element->value, value, available);
+    agent_protocol_copy(element->value + strlen(element->value), available + 1, value);
   }
   prv_refresh(ui);
   return true;
@@ -1192,6 +1221,12 @@ bool agent_ui_remove(AgentUi *ui, const char *element_id) {
   int16_t index;
   if (!element) { return false; }
   index = prv_index_of(ui, element);
+  if (ui->editing_element == index) {
+    if (ui->number_window && window_stack_get_top_window() == number_window_get_window(ui->number_window)) {
+      window_stack_pop(false);
+    }
+    ui->editing_element = -1;
+  } else if (ui->editing_element > index) { ui->editing_element -= 1; }
   if (index + 1 < ui->element_count) {
     memmove(&ui->elements[index], &ui->elements[index + 1],
             (ui->element_count - index - 1) * sizeof(AgentUiElement));

@@ -6,10 +6,13 @@ var path = require("path");
 
 var root = path.resolve(__dirname, "../..");
 var outputDirectory = path.join(root, "build", "tests");
-var output = path.join(outputDirectory, "native-test");
+
 
 fs.mkdirSync(outputDirectory, { recursive: true });
 
+var cases = ["native_test", "schedules_test"];
+for (var testCase of cases) {
+var output = path.join(outputDirectory, testCase);
 var compile = childProcess.spawnSync("cc", [
   "-std=c11",
   "-Wall",
@@ -21,9 +24,11 @@ var compile = childProcess.spawnSync("cc", [
   "-fdata-sections",
   "-I" + path.join(root, "tests", "native", "include"),
   "-I" + path.join(root, "src", "c"),
-  path.join(root, "tests", "native", "native_test.c"),
+  path.join(root, "tests", "native", testCase + ".c"),
   path.join(root, "src", "c", "agent_protocol.c"),
   path.join(root, "src", "c", "agent_capabilities.c"),
+  path.join(root, "src", "c", "capabilities", "schedules.c"),
+  path.join(root, "src", "c", "capabilities", "stopwatch.c"),
   "-Wl,--gc-sections",
   "-o",
   output
@@ -40,4 +45,5 @@ var run = childProcess.spawnSync(output, [], {
 });
 if (run.stdout) { process.stdout.write(run.stdout); }
 if (run.stderr) { process.stderr.write(run.stderr); }
-process.exit(run.status || 0);
+if (run.status !== 0) { process.exit(run.status || 1); }
+}

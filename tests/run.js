@@ -430,11 +430,13 @@ test("agent request is hierarchical PAM, not JSON", function() {
     endpoint: "https://example.test",
     input: { kind: "dictation", text: "timer \"tea\"" },
     context: { screen: "home", layout: "list" },
-    device: { platform: "emery", touch: true }
+    device: { platform: "emery", touch: true, now: 1788220800, utc_offset_minutes: -420 }
   });
   assert.ok(source.indexOf("pam version=1\nrequest id=3") === 0);
   assert.ok(source.indexOf("  input") !== -1);
   assert.ok(source.indexOf("text=\"timer \\\"tea\\\"\"") !== -1);
+  assert.ok(source.indexOf("now=1788220800") !== -1);
+  assert.ok(source.indexOf("utc_offset_minutes=-420") !== -1);
   assert.doesNotThrow(function() { parse(source, { requireHeader: true }); });
 });
 
@@ -917,6 +919,8 @@ test("PebbleKit bridge carries watch input through HTTP streaming to render oper
     var requestNodes = parse(xhr.body);
     assert.strictEqual(requestNodes[2].attrs.kind, "dictation");
     assert.strictEqual(requestNodes[2].attrs.text, "show choices");
+    assert.match(requestNodes[4].attrs.now, /^\d+$/);
+    assert.match(requestNodes[4].attrs.utc_offset_minutes, /^-?\d+$/);
     xhr.responseText = "pam version=1\nscreen id=answer layout=choice title=Choose\n" +
       "  choice id=a title=Alpha action=choose.a\n";
     xhr.readyState = 3;
@@ -936,6 +940,52 @@ test("PebbleKit bridge carries watch input through HTTP streaming to render oper
   } finally {
     harness.cleanup();
   }
+});
+
+test("Capability delivery IDs distinguish identical model commands and survive bridge reload", function() {
+  var xhr;
+  function FakeXHR() { this.responseText = ""; xhr = this; }
+  FakeXHR.prototype.open = function() {};
+  FakeXHR.prototype.setRequestHeader = function() {};
+  FakeXHR.prototype.send = function() {};
+  FakeXHR.prototype.abort = function() {};
+  var storage = {};
+  storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test" });
+  var lastId = 0;
+  for (var round = 0; round < 2; ++round) {
+    var harness = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
+    try {
+      harness.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "start two timers" } });
+      xhr.responseText = "pam version=1\n" +
+        "capability type=timer command=start id=timer duration=10s\n" +
+        "capability type=timer command=start id=timer duration=60s\n";
+      xhr.status = 200; xhr.readyState = 4; xhr.onreadystatechange();
+      var messages = harness.sent.filter(function(m) { return m[Watch.Key.messageType] === "capability"; });
+      assert.strictEqual(messages.length, 2);
+      assert.ok(messages[0][Watch.Key.index] > lastId);
+      assert.ok(messages[1][Watch.Key.index] > messages[0][Watch.Key.index]);
+      assert.strictEqual(messages[0][Watch.Key.elementId], "timer");
+      assert.strictEqual(messages[1][Watch.Key.elementId], "timer");
+      lastId = messages[1][Watch.Key.index];
+    } finally { harness.cleanup(); }
+  }
+});
+
+test("Native dashboard survives bridge startup, configuration, and local notifications", function() {
+  var requests = 0;
+  function FakeXHR() { requests += 1; }
+  var harness = loadPkjsHarness({ XMLHttpRequest: FakeXHR });
+  try {
+    harness.handlers.appmessage({ payload: { 0: "ready", 8: "local-active" } });
+    assert.strictEqual(harness.sent.length, 1);
+    assert.strictEqual(harness.sent[0][Watch.Key.messageType], "bridge");
+    ["timer.finished", "reminder.acknowledged", "stopwatch.reset"].forEach(function(action) {
+      harness.handlers.appmessage({ payload: { 0: "capability_event", 9: action } });
+    });
+    assert.strictEqual(requests, 0);
+    harness.handlers.webviewclosed({ response: encodeURIComponent(JSON.stringify({ endpoint: "https://agent.test" })) });
+    assert.ok(harness.sent.every(function(message) { return message[Watch.Key.messageType] === "bridge"; }));
+  } finally { harness.cleanup(); }
 });
 
 function runOne(entry) {

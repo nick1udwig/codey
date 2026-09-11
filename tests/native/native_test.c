@@ -35,6 +35,7 @@ static void test_metadata(void) {
   CHECK(agent_protocol_meta_get_int("n=2147483648", "n", 7) == 7);
   CHECK(agent_protocol_meta_get_int("n=-2147483649", "n", 7) == 7);
   CHECK(agent_protocol_meta_get_int("n=12x", "n", 7) == 7);
+  CHECK(agent_protocol_meta_get_int("n=000000000000000000000000001", "n", 7) == 7);
   CHECK(agent_protocol_meta_get_bool(meta, "enabled", false));
   CHECK(!agent_protocol_meta_get_bool(meta, "disabled", true));
   CHECK(agent_protocol_meta_get_bool("flag=maybe", "flag", true));
@@ -47,6 +48,12 @@ static void test_copy(void) {
   agent_protocol_copy(destination, sizeof(destination), NULL);
   CHECK(strcmp(destination, "") == 0);
   agent_protocol_copy(NULL, 0, "safe");
+  agent_protocol_copy(destination, sizeof(destination), "ab€");
+  CHECK(strcmp(destination, "ab") == 0);
+  agent_protocol_copy(destination, sizeof(destination), "€ab");
+  CHECK(strcmp(destination, "€a") == 0);
+  agent_protocol_copy(destination, sizeof(destination), destination + 3);
+  CHECK(strcmp(destination, "a") == 0);
 }
 
 static void test_durations(void) {
@@ -60,6 +67,17 @@ static void test_durations(void) {
   CHECK(agent_capability_parse_duration("1w", 9) == 9);
   CHECK(agent_capability_parse_duration("999999999d", 9) == 9);
   CHECK(agent_capability_parse_duration("", 9) == 9);
+  CHECK(agent_capability_parse_duration(NULL, 9) == 9);
+  CHECK(agent_capability_parse_duration("+5s", -1) == 5);
+  CHECK(agent_capability_parse_duration("0s", -1) == 0);
+  CHECK(agent_capability_parse_duration("2147483647s", -1) == INT32_MAX);
+  CHECK(agent_capability_parse_duration("2147483648s", 9) == 9);
+  CHECK(agent_capability_parse_duration("35791394m", -1) == 2147483640);
+  CHECK(agent_capability_parse_duration("35791395m", 9) == 9);
+  CHECK(agent_capability_parse_duration("999999999999999999999999999999s", 9) == 9);
+  CHECK(agent_capability_parse_duration("5ss", 9) == 9);
+  CHECK(agent_capability_parse_duration("s", 9) == 9);
+  CHECK(agent_capability_parse_duration("+", 9) == 9);
 
   agent_capability_format_duration(value, sizeof(value), 0, false);
   CHECK(strcmp(value, "00:00") == 0);
@@ -73,10 +91,30 @@ static void test_durations(void) {
   CHECK(strcmp(value, "00:00") == 0);
 }
 
+static void test_integer_parser(void) {
+  int32_t result = 42;
+  const char *end = NULL;
+  CHECK(agent_protocol_parse_int32("1789145375", NULL, &result));
+  CHECK(result == 1789145375);
+  CHECK(!agent_protocol_parse_int32("1789145375garbage", NULL, &result));
+  CHECK(result == 1789145375);
+  CHECK(agent_protocol_parse_int32("-2147483648", NULL, &result));
+  CHECK(result == INT32_MIN);
+  CHECK(!agent_protocol_parse_int32("-2147483649", NULL, &result));
+  CHECK(result == INT32_MIN);
+  CHECK(!agent_protocol_parse_int32(NULL, NULL, &result));
+  CHECK(!agent_protocol_parse_int32("", NULL, &result));
+  CHECK(!agent_protocol_parse_int32("-", NULL, &result));
+  CHECK(!agent_protocol_parse_int32("1", NULL, NULL));
+  CHECK(agent_protocol_parse_int32("5s", &end, &result));
+  CHECK(result == 5 && strcmp(end, "s") == 0);
+}
+
 int main(void) {
   test_metadata();
   test_copy();
   test_durations();
+  test_integer_parser();
   if (s_failures) {
     fprintf(stderr, "%d native test(s) failed\n", s_failures);
     return 1;

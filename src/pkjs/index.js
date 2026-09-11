@@ -16,7 +16,24 @@ var activeRequestId = 0;
 var activePipeline = null;
 var currentScreen = { id: "", layout: "", selected: "" };
 var watchInfo = {};
+var nativeDashboard = false;
 var sessionId = loadSessionId();
+var commandSequence = loadCommandSequence();
+
+function loadCommandSequence() {
+  try {
+    var value = Number(localStorage.getItem("pebble-agent.command-sequence.v1"));
+    if (value >= 0 && value < 2147483647 && Math.floor(value) === value) { return value; }
+  } catch (error) { /* Use a per-runtime fallback if storage is unavailable. */ }
+  return Math.floor(Math.random() * 1073741824);
+}
+
+function nextCommandId() {
+  commandSequence = commandSequence >= 2147483646 ? 1 : commandSequence + 1;
+  try { localStorage.setItem("pebble-agent.command-sequence.v1", String(commandSequence)); }
+  catch (error) { log("command sequence could not be saved", error); }
+  return commandSequence;
+}
 
 function log(message, detail) {
   if (typeof console !== "undefined" && console.log) {
@@ -65,6 +82,13 @@ function sendStatus(text, operation, requestId) {
   watchQueue.enqueue(message);
 }
 
+function sendConnection() {
+  var message = {};
+  message[Key.messageType] = "bridge";
+  message[Key.value] = settings.endpoint ? "Agent connected · Hold Select to talk" : "Configure endpoint in phone settings";
+  watchQueue.enqueue(message);
+}
+
 function nextRequestId() {
   requestSequence += 1;
   if (requestSequence > 65535) {
@@ -77,6 +101,9 @@ function capabilityContext(requestId) {
   return {
     settings: settings,
     sendWatchCapability: function(operation) {
+      // Assign once before queueing; retries retain the same ID, while new
+      // model commands (even in the same response) receive different IDs.
+      operation.invocationId = nextCommandId();
       watchQueue.enqueueOperation(operation, requestId);
     },
     renderPam: function(source) {
@@ -147,6 +174,7 @@ function requestAgent(input) {
   var requestId = nextRequestId();
   var pipeline = createPipeline(requestId);
   var previous = activeRequestId;
+  var now = new Date();
 
   if (previous) {
     watchQueue.clearRequest(previous);
@@ -166,7 +194,9 @@ function requestAgent(input) {
       platform: platformName(watchInfo),
       model: watchInfo.model || "unknown",
       shape: platformName(watchInfo) === "gabbro" ? "round" : "rect",
-      touch: platformName(watchInfo) === "emery" || platformName(watchInfo) === "gabbro"
+      touch: platformName(watchInfo) === "emery" || platformName(watchInfo) === "gabbro",
+      now: Math.floor(now.getTime() / 1000),
+      utc_offset_minutes: -now.getTimezoneOffset()
     }
   }, {
     onChunk: function(chunk) {
@@ -223,6 +253,8 @@ function handleWatchMessage(event) {
   var element = String(read(payload, Key.elementId, "ElementId") || "");
 
   if (type === "ready") {
+    nativeDashboard = value === "local-active";
+    if (nativeDashboard) { sendConnection(); }
     if (value !== "local-active") {
       renderOnboarding();
     }
@@ -242,6 +274,9 @@ function handleWatchMessage(event) {
     return;
   }
   if (type === "capability_event") {
+    // Local completion, reset and acknowledgment must not launch a model turn
+    // that replaces the notification dashboard or repeats an executed command.
+    if (action !== "stopwatch.lap") { return; }
     requestAgent({
       kind: "capability",
       action: action || operation,
@@ -272,5 +307,6 @@ Pebble.addEventListener("webviewclosed", function(event) {
     return;
   }
   settings = Settings.save(updated);
-  renderOnboarding();
+  if (nativeDashboard) { sendConnection(); }
+  else { renderOnboarding(); }
 });

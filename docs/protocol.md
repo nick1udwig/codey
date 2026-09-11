@@ -118,7 +118,7 @@ Every addressable element should have a unique `id`. If it does not, the phone a
   spacer id=gap height=16
 ```
 
-Supported symbolic image icons are `info`, `check`, `warning`, `sun`/`weather`, `timer`, `up`, `down`, `left`, and `right`. The image element is deliberately symbolic: arbitrary remote bitmaps are not accepted into the watch heap.
+Supported symbolic image icons are `info`, `check`, `warning`, `sun`/`weather`, `timer`, `close`, `up`, `down`, `left`, and `right`. The image element is deliberately symbolic: arbitrary remote bitmaps are not accepted into the watch heap.
 
 ### Progress
 
@@ -234,7 +234,26 @@ capability type=reminder command=cancel id=meeting
 capability type=reminder command=cancel_all
 ```
 
-`at` is a Unix timestamp in seconds; `in` is a duration. Up to four app reminders are persisted. A due reminder offers acknowledge and ten-minute snooze actions.
+`at` is a Unix timestamp in seconds; `in` is a duration from 1 second to 7 days.
+`alarm` is an alias of `reminder`. Four timers and four alarms/reminders are
+persisted independently, including unacknowledged notifications. Use a unique
+ID shorter than 32 bytes for each new alert. Each new creation command allocates
+a separate alert even if the model reuses an ID; collisions receive a unique
+suffix. Use `show` to open an existing alert, or `replace=true` to replace it.
+The phone supplies a persisted delivery sequence in `Index` for capability
+messages. A retry retains that sequence and cannot restart or duplicate its
+alert. The watch persists this delivery identity separately from the model ID.
+Timer and reminder/alarm support `show`, `list`, `ack`, `cancel`, and
+`cancel_all` (the latter only affects its own category). Timer also supports
+`start`, `pause`, and `resume`; alarm/reminder use `schedule`.
+
+Finished alerts appear in the native dashboard and buzz repeatedly until
+acknowledged or snoozed ten minutes. Local completion does not trigger an agent
+turn. Back returns home without canceling. The native scheduler multiplexes all
+deadlines onto one system wakeup; when wakeup scheduling fails, it warns that
+Agent must stay open. The native watch sends `ready value=local-active`; the
+phone sends `MessageType=bridge` with connection/configuration status instead
+of streaming an onboarding screen over the local dashboard.
 
 ## Limits and failure behavior
 

@@ -33,10 +33,23 @@ static uint8_t s_outbox_count;
 static bool s_outbox_busy;
 static AppTimer *s_outbox_retry_timer;
 static AppTimer *s_ready_timer;
+static AppTimer *s_quick_launch_timer;
+static bool s_accept_remote;
+static bool s_dictation_active;
+static uint32_t s_navigation_revision;
+static uint32_t s_notification_revision;
+static void prv_start_dictation(void *context);
+
+static void prv_begin_request(void) {
+  s_accept_remote = true;
+  s_navigation_revision = agent_capabilities_navigation_revision(s_capabilities);
+  s_notification_revision = agent_capabilities_notification_revision(s_capabilities);
+}
 
 static const char *prv_tuple_string(DictionaryIterator *iter, uint32_t key) {
   Tuple *tuple = dict_find(iter, key);
-  return tuple && tuple->type == TUPLE_CSTRING ? tuple->value->cstring : "";
+  return tuple && tuple->type == TUPLE_CSTRING && tuple->length &&
+         memchr(tuple->value->cstring, 0, tuple->length) ? tuple->value->cstring : "";
 }
 
 static int32_t prv_tuple_int(DictionaryIterator *iter, uint32_t key, int32_t fallback) {
@@ -44,9 +57,13 @@ static int32_t prv_tuple_int(DictionaryIterator *iter, uint32_t key, int32_t fal
   if (!tuple) { return fallback; }
   switch (tuple->type) {
     case TUPLE_INT:
-      return tuple->value->int32;
+      if (tuple->length == 1) { return tuple->value->int8; }
+      if (tuple->length == 2) { return tuple->value->int16; }
+      return tuple->length == 4 ? tuple->value->int32 : fallback;
     case TUPLE_UINT:
-      return (int32_t)tuple->value->uint32;
+      if (tuple->length == 1) { return tuple->value->uint8; }
+      if (tuple->length == 2) { return tuple->value->uint16; }
+      return tuple->length == 4 && tuple->value->uint32 <= INT32_MAX ? (int32_t)tuple->value->uint32 : fallback;
     default:
       return fallback;
   }
@@ -102,7 +119,7 @@ static void prv_flush_outbox(void) {
   message = &s_outbox[0];
   result = app_message_outbox_begin(&iter);
   if (result != APP_MSG_OK || !iter) {
-    prv_schedule_retry();
+    prv_finish_outbox(false);
     return;
   }
   dict_write_cstring(iter, MESSAGE_KEY_MessageType, message->type);
@@ -144,9 +161,11 @@ static bool prv_queue_message(const char *type, uint32_t request_id, const char 
 
 static void prv_ui_event(const AgentUiEvent *event, void *context) {
   (void)context;
+  if (strcmp(event->action, "local.dictate") == 0) { prv_start_dictation(NULL); return; }
   if (agent_capabilities_handle_ui_event(s_capabilities, event)) {
     return;
   }
+  prv_begin_request();
   prv_queue_message("input", s_request_id, event->input, event->element_id,
                     event->action, event->value, "");
   agent_ui_set_status(s_ui, "Loading", false, true);
@@ -174,10 +193,12 @@ static void prv_dictation_callback(DictationSession *session, DictationSessionSt
                                     char *transcription, void *context) {
   (void)session;
   (void)context;
+  s_dictation_active = false;
   if (status != DictationSessionStatusSuccess || !transcription || !transcription[0]) {
     agent_ui_set_status(s_ui, prv_dictation_error(status), true, false);
     return;
   }
+  prv_begin_request();
   prv_queue_message("input", s_request_id, "dictation", "", "", transcription, "");
   agent_ui_set_status(s_ui, "Thinking", false, true);
 }
@@ -185,12 +206,15 @@ static void prv_dictation_callback(DictationSession *session, DictationSessionSt
 static void prv_start_dictation(void *context) {
   (void)context;
 #if defined(PBL_MICROPHONE)
+  if (s_dictation_active) { return; }
   if (!s_dictation) {
     agent_ui_set_status(s_ui, "Voice unavailable", true, false);
     return;
   }
   agent_ui_set_status(s_ui, "Listening", false, true);
+  s_dictation_active = true;
   if (dictation_session_start(s_dictation) != DictationSessionStatusSuccess) {
+    s_dictation_active = false;
     agent_ui_set_status(s_ui, "Voice unavailable", true, false);
   }
 #else
@@ -250,6 +274,7 @@ static void prv_handle_render(DictionaryIterator *iter, uint32_t request_id, con
   AgentUiElementSpec spec;
   if (!prv_accept_request(request_id, operation)) { return; }
   if (strcmp(operation, "begin") == 0) {
+    agent_capabilities_set_active(s_capabilities, "remote", true);
     agent_ui_begin(s_ui,
                    prv_tuple_string(iter, MESSAGE_KEY_ElementId),
                    prv_tuple_string(iter, MESSAGE_KEY_Kind),
@@ -286,10 +311,14 @@ static void prv_handle_capability(DictionaryIterator *iter, uint32_t request_id,
     .value = prv_tuple_string(iter, MESSAGE_KEY_Value),
     .meta = prv_tuple_string(iter, MESSAGE_KEY_Meta),
     .flags = prv_tuple_int(iter, MESSAGE_KEY_Flags, 0),
+    .invocation_id = (uint32_t)prv_tuple_int(iter, MESSAGE_KEY_Index, 0),
   };
   s_request_id = request_id;
   if (!agent_capabilities_handle_command(s_capabilities, &command)) {
     agent_ui_set_status(s_ui, "Unsupported capability command", true, false);
+  }
+  if (s_notification_revision != agent_capabilities_notification_revision(s_capabilities)) {
+    agent_capabilities_show_notifications(s_capabilities);
   }
 }
 
@@ -298,6 +327,15 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   const char *operation = prv_tuple_string(iter, MESSAGE_KEY_Operation);
   uint32_t request_id = (uint32_t)prv_tuple_int(iter, MESSAGE_KEY_RequestId, 0);
   (void)context;
+  if (strcmp(type, "bridge") == 0) {
+    agent_capabilities_set_connection(s_capabilities, prv_tuple_string(iter, MESSAGE_KEY_Value));
+    return;
+  }
+  if (!s_accept_remote || s_navigation_revision != agent_capabilities_navigation_revision(s_capabilities)) { return; }
+  // A timer may expire while a new request is Thinking. Execute its capability
+  // commands, but keep late screen/status traffic from hiding the notification.
+  if (strcmp(type, "capability") != 0 &&
+      s_notification_revision != agent_capabilities_notification_revision(s_capabilities)) { return; }
   if (strcmp(type, "render") == 0) {
     prv_handle_render(iter, request_id, operation);
   } else if (strcmp(type, "capability") == 0) {
@@ -332,7 +370,12 @@ static void prv_send_ready(void *context) {
   (void)context;
   s_ready_timer = NULL;
   prv_queue_message("ready", 0, "ready", "", "",
-                    agent_capabilities_has_active(s_capabilities) ? "local-active" : "", "");
+                    "local-active", "");
+}
+
+static void prv_quick_launch(void *context) {
+  s_quick_launch_timer = NULL;
+  prv_start_dictation(context);
 }
 
 static void prv_show_boot(void) {
@@ -366,7 +409,9 @@ static void prv_init(void) {
   app_message_register_inbox_dropped(prv_inbox_dropped);
   app_message_register_outbox_sent(prv_outbox_sent);
   app_message_register_outbox_failed(prv_outbox_failed);
-  app_message_open(2048, 512);
+  if (app_message_open(2048, 768) != APP_MSG_OK) {
+    agent_capabilities_set_connection(s_capabilities, "Phone messaging unavailable");
+  }
 
 #if defined(PBL_MICROPHONE)
   s_dictation = dictation_session_create(DICTATION_LENGTH, prv_dictation_callback, NULL);
@@ -377,10 +422,14 @@ static void prv_init(void) {
 #endif
   agent_ui_show(s_ui, true);
   s_ready_timer = app_timer_register(250, prv_send_ready, NULL);
+  if (launch_reason() == APP_LAUNCH_QUICK_LAUNCH) {
+    s_quick_launch_timer = app_timer_register(400, prv_quick_launch, NULL);
+  }
 }
 
 static void prv_deinit(void) {
   if (s_ready_timer) { app_timer_cancel(s_ready_timer); }
+  if (s_quick_launch_timer) { app_timer_cancel(s_quick_launch_timer); }
   if (s_outbox_retry_timer) { app_timer_cancel(s_outbox_retry_timer); }
 #if defined(PBL_MICROPHONE)
   if (s_dictation) { dictation_session_destroy(s_dictation); }

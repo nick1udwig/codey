@@ -6,8 +6,8 @@
 watch input / dictation
         │ AppMessage
         ▼
-PebbleKit JS ── PAM request ──► agent endpoint
-        ▲                         │ streamed PAM lines
+PebbleKit JS ── PAM request ──► Go agent endpoint ── RPC ──► Codex app-server
+        ▲                         │ validated PAM deltas
         └──── parse/model/deltas ─┘
         │ queued compact AppMessage operations
         ▼
@@ -15,6 +15,8 @@ native AgentUi renderer or capability module
 ```
 
 The backend never controls pointers, coordinates for ordinary widgets, Pebble API names, or raw AppMessage dictionaries. It chooses from a bounded semantic UI vocabulary. The phone validates that vocabulary and the watch validates IDs, capacity, request ownership, and capability names again.
+
+The included Go endpoint has separate packages for PAM validation, HTTP/WebSocket ingress, Codex app-server transport, agent/thread orchestration, and session persistence. App-server connections are long-lived and multiplexed; turns for one watch session are serialized while independent sessions can overlap. Transport resolution is Unix daemon socket, managed stdio process, then configured WebSocket.
 
 ## Phone library
 
@@ -113,7 +115,7 @@ Only the module decides which commands and internal action names it accepts. The
 
 ## Testing strategy
 
-`npm test` exercises chunk-boundary parsing, hierarchy validation, every layout name, patch merging, UTF-8 message splitting, queue ordering/retry, incremental HTTP and WebSocket consumption, settings, registry extension, weather cards, and writer output. It also compiles native protocol helpers with strict warnings plus AddressSanitizer and UndefinedBehaviorSanitizer, starts the real demo HTTP server on a loopback port to verify line-by-line delivery, and executes the configuration page against a simulated DOM.
+`npm test` exercises chunk-boundary parsing, hierarchy validation, every layout name, patch merging, UTF-8 message splitting, queue ordering/retry, incremental HTTP and WebSocket consumption, settings, registry extension, weather cards, and writer output. It also compiles native protocol helpers with strict warnings plus AddressSanitizer and UndefinedBehaviorSanitizer, starts the demo HTTP server on a loopback port to verify line-by-line delivery, executes the configuration page against a simulated DOM, and runs the Go server's PAM/RPC/transport/API integration suite.
 
 See [testing.md](testing.md) for the emulator matrix and the remaining hardware-only checks.
 

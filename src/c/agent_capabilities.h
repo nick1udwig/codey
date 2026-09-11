@@ -18,6 +18,7 @@ typedef struct {
   const char *value;
   const char *meta;
   int32_t flags;
+  uint32_t invocation_id;
 } AgentCapabilityCommand;
 
 typedef void (*AgentCapabilityEventHandler)(const char *type, const char *id, const char *action,
@@ -38,6 +39,8 @@ typedef struct {
   AgentCapabilityUiEventHandler event;
   AgentCapabilityWakeupHandler wakeup;
   AgentCapabilityDestroyHandler destroy;
+  void (*tick)(void *module_context);
+  void (*dashboard)(AgentCapabilities *capabilities, void *module_context, bool refresh);
 } AgentCapabilityModule;
 
 AgentCapabilities *agent_capabilities_create(AgentUi *ui, AgentCapabilityEventHandler event_handler,
@@ -49,6 +52,14 @@ bool agent_capabilities_handle_command(AgentCapabilities *capabilities,
                                        const AgentCapabilityCommand *command);
 bool agent_capabilities_handle_ui_event(AgentCapabilities *capabilities, const AgentUiEvent *event);
 bool agent_capabilities_has_active(const AgentCapabilities *capabilities);
+bool agent_capabilities_is_active(const AgentCapabilities *capabilities, const char *name);
+void agent_capabilities_show_dashboard(AgentCapabilities *capabilities);
+void agent_capabilities_rebuild_dashboard(AgentCapabilities *capabilities);
+void agent_capabilities_show_notifications(AgentCapabilities *capabilities);
+void agent_capabilities_refresh_dashboard(AgentCapabilities *capabilities);
+void agent_capabilities_set_connection(AgentCapabilities *capabilities, const char *status);
+uint32_t agent_capabilities_navigation_revision(const AgentCapabilities *capabilities);
+uint32_t agent_capabilities_notification_revision(const AgentCapabilities *capabilities);
 
 // Module host API. New modules only need this header and a registration call.
 AgentUi *agent_capabilities_ui(AgentCapabilities *capabilities);
@@ -58,4 +69,3 @@ void agent_capabilities_set_active(AgentCapabilities *capabilities, const char *
 
 // Installs timer, stopwatch, and reminder. Weather is phone-side because it needs networking.
 bool agent_capabilities_install_builtins(AgentCapabilities *capabilities);
-

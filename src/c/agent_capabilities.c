@@ -22,9 +22,24 @@ struct AgentCapabilities {
   RegisteredModule modules[AGENT_CAPABILITY_MAX_MODULES];
   uint8_t module_count;
   char active_name[AGENT_CAPABILITY_NAME_LENGTH];
+  char connection[72];
+  AppTimer *tick_timer;
+  uint32_t navigation_revision;
+  uint32_t notification_revision;
 };
 
 static AgentCapabilities *s_wakeup_capabilities;
+
+static void prv_tick(void *context) {
+  AgentCapabilities *capabilities = context;
+  capabilities->tick_timer = NULL;
+  for (uint8_t i = 0; i < capabilities->module_count; ++i) {
+    RegisteredModule *module = &capabilities->modules[i];
+    if (module->module.tick) { module->module.tick(module->context); }
+  }
+  agent_capabilities_refresh_dashboard(capabilities);
+  capabilities->tick_timer = app_timer_register(1000, prv_tick, capabilities);
+}
 
 static void prv_wakeup_handler(WakeupId wakeup_id, int32_t cookie) {
   uint8_t index;
@@ -58,12 +73,16 @@ AgentCapabilities *agent_capabilities_create(AgentUi *ui, AgentCapabilityEventHa
     agent_capabilities_destroy(capabilities);
     return NULL;
   }
+  agent_protocol_copy(capabilities->connection, sizeof(capabilities->connection), "Connecting to phone");
+  agent_capabilities_show_dashboard(capabilities);
+  capabilities->tick_timer = app_timer_register(1000, prv_tick, capabilities);
   return capabilities;
 }
 
 void agent_capabilities_destroy(AgentCapabilities *capabilities) {
   uint8_t index;
   if (!capabilities) { return; }
+  if (capabilities->tick_timer) { app_timer_cancel(capabilities->tick_timer); }
   for (index = 0; index < capabilities->module_count; index += 1) {
     RegisteredModule *registered = &capabilities->modules[index];
     if (registered->module.destroy) {
@@ -97,7 +116,7 @@ bool agent_capabilities_register(AgentCapabilities *capabilities, const char *na
 bool agent_capabilities_handle_command(AgentCapabilities *capabilities,
                                        const AgentCapabilityCommand *command) {
   uint8_t index;
-  if (!capabilities || !command || !command->type) { return false; }
+  if (!capabilities || !command || !command->type || !command->command) { return false; }
   for (index = 0; index < capabilities->module_count; index += 1) {
     RegisteredModule *registered = &capabilities->modules[index];
     if (strcmp(registered->name, command->type) == 0) {
@@ -110,6 +129,12 @@ bool agent_capabilities_handle_command(AgentCapabilities *capabilities,
 bool agent_capabilities_handle_ui_event(AgentCapabilities *capabilities, const AgentUiEvent *event) {
   uint8_t index;
   if (!capabilities || !event) { return false; }
+  if (strcmp(event->action, "local.home") == 0 ||
+      (strcmp(event->input, "back") == 0 &&
+       !agent_capabilities_is_active(capabilities, "dashboard"))) {
+    agent_capabilities_show_dashboard(capabilities);
+    return true;
+  }
   for (index = 0; index < capabilities->module_count; index += 1) {
     RegisteredModule *registered = &capabilities->modules[index];
     if (registered->module.event &&
@@ -122,6 +147,68 @@ bool agent_capabilities_handle_ui_event(AgentCapabilities *capabilities, const A
 
 bool agent_capabilities_has_active(const AgentCapabilities *capabilities) {
   return capabilities && capabilities->active_name[0];
+}
+
+bool agent_capabilities_is_active(const AgentCapabilities *capabilities, const char *name) {
+  return capabilities && name && strcmp(capabilities->active_name, name) == 0;
+}
+
+void agent_capabilities_show_dashboard(AgentCapabilities *capabilities) {
+  if (!capabilities) { return; }
+  capabilities->navigation_revision += 1;
+  agent_capabilities_set_active(capabilities, "dashboard", true);
+  agent_ui_begin(capabilities->ui, "dashboard", "list", "Agent", "", "", 16);
+  for (uint8_t i = 0; i < capabilities->module_count; ++i) {
+    RegisteredModule *module = &capabilities->modules[i];
+    if (module->module.dashboard) {
+      module->module.dashboard(capabilities, module->context, false);
+    }
+  }
+  agent_capability_add_element(capabilities->ui, "item", "dictate", "Ask Agent",
+                               "Hold Select to dictate", "", "local.dictate", "", 0);
+  agent_capability_add_element(capabilities->ui, "text", "connection", "", "",
+                               capabilities->connection, "", "", 0);
+  agent_ui_end(capabilities->ui);
+}
+
+uint32_t agent_capabilities_navigation_revision(const AgentCapabilities *capabilities) {
+  return capabilities ? capabilities->navigation_revision : 0;
+}
+
+uint32_t agent_capabilities_notification_revision(const AgentCapabilities *capabilities) {
+  return capabilities ? capabilities->notification_revision : 0;
+}
+
+void agent_capabilities_rebuild_dashboard(AgentCapabilities *capabilities) {
+  if (!capabilities) { return; }
+  uint32_t revision = capabilities->navigation_revision;
+  agent_capabilities_show_dashboard(capabilities);
+  capabilities->navigation_revision = revision;
+}
+
+void agent_capabilities_show_notifications(AgentCapabilities *capabilities) {
+  if (!capabilities) { return; }
+  // A due alert changes focus, but must not cancel an outstanding user command.
+  capabilities->notification_revision += 1;
+  agent_capabilities_rebuild_dashboard(capabilities);
+}
+
+void agent_capabilities_refresh_dashboard(AgentCapabilities *capabilities) {
+  if (!agent_capabilities_is_active(capabilities, "dashboard")) { return; }
+  for (uint8_t i = 0; i < capabilities->module_count; ++i) {
+    RegisteredModule *module = &capabilities->modules[i];
+    if (module->module.dashboard) {
+      module->module.dashboard(capabilities, module->context, true);
+    }
+  }
+}
+
+void agent_capabilities_set_connection(AgentCapabilities *capabilities, const char *status) {
+  if (!capabilities) { return; }
+  agent_protocol_copy(capabilities->connection, sizeof(capabilities->connection), status);
+  if (agent_capabilities_is_active(capabilities, "dashboard")) {
+    agent_capability_patch_value(capabilities->ui, "connection", capabilities->connection);
+  }
 }
 
 AgentUi *agent_capabilities_ui(AgentCapabilities *capabilities) {
@@ -145,17 +232,15 @@ void agent_capabilities_set_active(AgentCapabilities *capabilities, const char *
 }
 
 bool agent_capabilities_install_builtins(AgentCapabilities *capabilities) {
-  return agent_timer_install(capabilities) && agent_stopwatch_install(capabilities) &&
-         agent_reminder_install(capabilities);
+  return agent_schedules_install(capabilities) && agent_stopwatch_install(capabilities);
 }
 
 int32_t agent_capability_parse_duration(const char *value, int32_t fallback) {
-  char *end;
-  long parsed;
+  const char *end;
+  int32_t parsed;
   int32_t multiplier = 1;
   if (!value || !value[0]) { return fallback; }
-  parsed = strtol(value, &end, 10);
-  if (end == value || parsed < 0) { return fallback; }
+  if (!agent_protocol_parse_int32(value, &end, &parsed) || parsed < 0) { return fallback; }
   if (*end == 's' && !end[1]) { multiplier = 1; }
   else if (*end == 'm' && !end[1]) { multiplier = 60; }
   else if (*end == 'h' && !end[1]) { multiplier = 3600; }

@@ -1,0 +1,353 @@
+package agent
+
+import (
+	"context"
+	_ "embed"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/nick1udwig/pebble-agent/internal/appserver"
+	"github.com/nick1udwig/pebble-agent/internal/pam"
+	"github.com/nick1udwig/pebble-agent/internal/state"
+)
+
+//go:embed prompt.md
+var developerInstructions string
+
+const baseInstructions = "You are Pebble Agent, a concise general assistant for a small watch. Follow the developer instructions exactly. Return only PAM and do not use tools."
+
+type Config struct {
+	Model     string
+	Effort    string
+	Workspace string
+	Timeout   time.Duration
+	Logger    *slog.Logger
+}
+
+type Agent struct {
+	client *appserver.Client
+	store  *state.Store
+	config Config
+
+	loadedMu sync.Mutex
+	loaded   map[string]uint64
+	locks    sync.Map
+}
+
+func New(client *appserver.Client, store *state.Store, config Config) *Agent {
+	if config.Model == "" {
+		config.Model = "gpt-5.6-luna"
+	}
+	if config.Effort == "" {
+		config.Effort = "xhigh"
+	}
+	if config.Timeout <= 0 {
+		config.Timeout = 110 * time.Second
+	}
+	return &Agent{client: client, store: store, config: config, loaded: make(map[string]uint64)}
+}
+
+func (agent *Agent) Respond(ctx context.Context, request pam.Request, emit func([]byte) error) error {
+	stream := pam.NewOutputStream(emit)
+	err := agent.respond(ctx, request, stream)
+	if err == nil {
+		err = stream.Finish()
+	}
+	if err != nil {
+		if emitErr := stream.EmitError(err); emitErr != nil {
+			return fmt.Errorf("%w (also failed to send PAM error: %v)", err, emitErr)
+		}
+	}
+	return err
+}
+
+func (agent *Agent) respond(parent context.Context, request pam.Request, stream *pam.OutputStream) error {
+	lockValue, _ := agent.locks.LoadOrStore(request.Session, &sync.Mutex{})
+	lock := lockValue.(*sync.Mutex)
+	lock.Lock()
+	defer lock.Unlock()
+
+	ctx, cancel := context.WithTimeout(parent, agent.config.Timeout)
+	defer cancel()
+	connection, generation, _, err := agent.client.Connection(ctx)
+	if err != nil {
+		return err
+	}
+	threadID := agent.store.Thread(request.Session)
+	if threadID == "" {
+		threadID, err = agent.startThread(ctx, connection, generation, request.Session)
+	} else if !agent.isLoaded(threadID, generation) {
+		err = agent.resumeThread(ctx, connection, generation, threadID)
+		if err != nil && threadMissing(err) {
+			if clearErr := agent.store.Set(request.Session, ""); clearErr != nil {
+				return clearErr
+			}
+			threadID, err = agent.startThread(ctx, connection, generation, request.Session)
+		}
+	}
+	if err != nil {
+		return err
+	}
+	return agent.runTurn(ctx, connection, threadID, request.Raw, stream)
+}
+
+func (agent *Agent) startThread(ctx context.Context, connection *appserver.Connection, generation uint64, session string) (string, error) {
+	var response struct {
+		Thread struct {
+			ID string `json:"id"`
+		} `json:"thread"`
+	}
+	err := connection.Request(ctx, "thread/start", map[string]any{
+		"approvalPolicy":        "never",
+		"baseInstructions":      baseInstructions,
+		"cwd":                   agent.config.Workspace,
+		"developerInstructions": developerInstructions,
+		"ephemeral":             false,
+		"model":                 agent.config.Model,
+		"sandbox":               "read-only",
+		"serviceName":           "pebble-agent",
+	}, &response)
+	if err != nil {
+		return "", fmt.Errorf("start Codex thread: %w", err)
+	}
+	if response.Thread.ID == "" {
+		return "", errors.New("app-server returned an empty thread id")
+	}
+	if err := agent.store.Set(session, response.Thread.ID); err != nil {
+		return "", err
+	}
+	agent.markLoaded(response.Thread.ID, generation)
+	return response.Thread.ID, nil
+}
+
+func (agent *Agent) resumeThread(ctx context.Context, connection *appserver.Connection, generation uint64, threadID string) error {
+	var response map[string]any
+	err := connection.Request(ctx, "thread/resume", map[string]any{
+		"approvalPolicy":        "never",
+		"baseInstructions":      baseInstructions,
+		"cwd":                   agent.config.Workspace,
+		"developerInstructions": developerInstructions,
+		"excludeTurns":          true,
+		"model":                 agent.config.Model,
+		"sandbox":               "read-only",
+		"threadId":              threadID,
+	}, &response)
+	if err != nil {
+		return fmt.Errorf("resume Codex thread: %w", err)
+	}
+	agent.markLoaded(threadID, generation)
+	return nil
+}
+
+func (agent *Agent) runTurn(ctx context.Context, connection *appserver.Connection, threadID, request string, stream *pam.OutputStream) error {
+	subscription, err := connection.Subscribe(threadID)
+	if err != nil {
+		return err
+	}
+	defer subscription.Close()
+	var response struct {
+		Turn struct {
+			ID string `json:"id"`
+		} `json:"turn"`
+	}
+	prompt := "Respond to this watch request. Return only one PAM document.\n\n" + request
+	err = connection.Request(ctx, "turn/start", map[string]any{
+		"approvalPolicy": "never",
+		"cwd":            agent.config.Workspace,
+		"effort":         agent.config.Effort,
+		"input":          []map[string]any{{"type": "text", "text": prompt}},
+		"model":          agent.config.Model,
+		"sandboxPolicy":  map[string]any{"type": "readOnly", "networkAccess": false},
+		"threadId":       threadID,
+	}, &response)
+	if err != nil {
+		return fmt.Errorf("start Codex turn: %w", err)
+	}
+	if response.Turn.ID == "" {
+		return errors.New("app-server returned an empty turn id")
+	}
+	turnID := response.Turn.ID
+	processor := newTurnProcessor(turnID, stream)
+	for {
+		select {
+		case <-ctx.Done():
+			agent.interrupt(connection, threadID, turnID)
+			return ctx.Err()
+		case notification, ok := <-subscription.C:
+			if !ok {
+				return connection.Err()
+			}
+			completed, err := processor.Accept(notification)
+			if err != nil {
+				agent.interrupt(connection, threadID, turnID)
+				return err
+			}
+			if completed {
+				return nil
+			}
+		}
+	}
+}
+
+func (agent *Agent) interrupt(connection *appserver.Connection, threadID, turnID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := connection.Request(ctx, "turn/interrupt", map[string]string{"threadId": threadID, "turnId": turnID}, nil); err != nil && agent.config.Logger != nil {
+		agent.config.Logger.Debug("failed to interrupt Codex turn", "error", err)
+	}
+}
+
+func (agent *Agent) isLoaded(threadID string, generation uint64) bool {
+	agent.loadedMu.Lock()
+	defer agent.loadedMu.Unlock()
+	return agent.loaded[threadID] == generation
+}
+
+func (agent *Agent) markLoaded(threadID string, generation uint64) {
+	agent.loadedMu.Lock()
+	agent.loaded[threadID] = generation
+	agent.loadedMu.Unlock()
+}
+
+func threadMissing(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "thread not found") || strings.Contains(message, "unknown thread")
+}
+
+type itemState struct {
+	phase    string
+	typeName string
+	started  bool
+	text     string
+	pending  []string
+}
+
+type turnProcessor struct {
+	turnID string
+	stream *pam.OutputStream
+	items  map[string]*itemState
+}
+
+func newTurnProcessor(turnID string, stream *pam.OutputStream) *turnProcessor {
+	return &turnProcessor{turnID: turnID, stream: stream, items: make(map[string]*itemState)}
+}
+
+func (processor *turnProcessor) Accept(notification appserver.Notification) (bool, error) {
+	switch notification.Method {
+	case "item/started", "item/completed":
+		var params struct {
+			TurnID string `json:"turnId"`
+			Item   struct {
+				ID    string  `json:"id"`
+				Type  string  `json:"type"`
+				Phase *string `json:"phase"`
+				Text  string  `json:"text"`
+			} `json:"item"`
+		}
+		if err := json.Unmarshal(notification.Params, &params); err != nil {
+			return false, err
+		}
+		if params.TurnID != processor.turnID || params.Item.ID == "" {
+			return false, nil
+		}
+		item := processor.item(params.Item.ID)
+		item.started = true
+		item.typeName = params.Item.Type
+		if params.Item.Phase != nil {
+			item.phase = *params.Item.Phase
+		}
+		if item.typeName == "agentMessage" && item.phase != "commentary" {
+			for _, delta := range item.pending {
+				if err := processor.push(item, delta); err != nil {
+					return false, err
+				}
+			}
+			item.pending = nil
+			if notification.Method == "item/completed" && item.text == "" && params.Item.Text != "" {
+				if err := processor.push(item, params.Item.Text); err != nil {
+					return false, err
+				}
+			}
+		} else if item.phase == "commentary" {
+			item.pending = nil
+		}
+	case "item/agentMessage/delta":
+		var params struct {
+			TurnID string `json:"turnId"`
+			ItemID string `json:"itemId"`
+			Delta  string `json:"delta"`
+		}
+		if err := json.Unmarshal(notification.Params, &params); err != nil {
+			return false, err
+		}
+		if params.TurnID != processor.turnID || params.ItemID == "" || params.Delta == "" {
+			return false, nil
+		}
+		item := processor.item(params.ItemID)
+		if !item.started {
+			item.pending = append(item.pending, params.Delta)
+		} else if item.phase != "commentary" {
+			if err := processor.push(item, params.Delta); err != nil {
+				return false, err
+			}
+		}
+	case "turn/completed":
+		var params struct {
+			Turn struct {
+				ID     string `json:"id"`
+				Status string `json:"status"`
+				Error  *struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			} `json:"turn"`
+		}
+		if err := json.Unmarshal(notification.Params, &params); err != nil {
+			return false, err
+		}
+		if params.Turn.ID != processor.turnID {
+			return false, nil
+		}
+		if params.Turn.Status != "completed" {
+			message := "Codex turn " + params.Turn.Status
+			if params.Turn.Error != nil && params.Turn.Error.Message != "" {
+				message = params.Turn.Error.Message
+			}
+			return false, errors.New(message)
+		}
+		return true, nil
+	case "error":
+		var params struct {
+			TurnID string `json:"turnId"`
+			Error  struct {
+				Message string `json:"message"`
+			} `json:"error"`
+			WillRetry bool `json:"willRetry"`
+		}
+		if err := json.Unmarshal(notification.Params, &params); err == nil && params.TurnID == processor.turnID && !params.WillRetry {
+			if params.Error.Message == "" {
+				params.Error.Message = "Codex turn failed"
+			}
+			return false, errors.New(params.Error.Message)
+		}
+	}
+	return false, nil
+}
+
+func (processor *turnProcessor) item(id string) *itemState {
+	item := processor.items[id]
+	if item == nil {
+		item = &itemState{}
+		processor.items[id] = item
+	}
+	return item
+}
+
+func (processor *turnProcessor) push(item *itemState, delta string) error {
+	item.text += delta
+	return processor.stream.Push(delta)
+}

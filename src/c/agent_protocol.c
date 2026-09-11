@@ -1,6 +1,5 @@
 #include "agent_protocol.h"
 
-#include <ctype.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,7 +8,20 @@ void agent_protocol_copy(char *dest, size_t dest_size, const char *source) {
   if (!dest || !dest_size) {
     return;
   }
-  snprintf(dest, dest_size, "%s", source ? source : "");
+  if (!source) { dest[0] = '\0'; return; }
+  size_t length = strlen(source);
+  if (length >= dest_size) {
+    length = dest_size - 1;
+    // Never end a display string in the middle of a UTF-8 code point.
+    while (length && ((unsigned char)source[length] & 0xc0) == 0x80) { --length; }
+  }
+  memmove(dest, source, length);
+  dest[length] = '\0';
+}
+
+static bool prv_space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'; }
+static bool prv_alnum(char c) {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
 }
 
 static bool prv_key_matches(const char *start, size_t length, const char *key) {
@@ -28,7 +40,7 @@ static char prv_decode_escape(char value) {
   }
 }
 
-bool agent_protocol_meta_get(const char *meta, const char *key, char *dest, size_t dest_size) {
+static bool prv_meta_get(const char *meta, const char *key, char *dest, size_t dest_size, bool *truncated) {
   const char *cursor = meta;
 
   if (dest && dest_size) {
@@ -45,19 +57,19 @@ bool agent_protocol_meta_get(const char *meta, const char *key, char *dest, size
     size_t written = 0;
     char quote = '\0';
 
-    while (*cursor && isspace((unsigned char)*cursor)) {
+    while (*cursor && prv_space(*cursor)) {
       cursor += 1;
     }
     if (!*cursor) {
       break;
     }
     key_start = cursor;
-    while (*cursor && (isalnum((unsigned char)*cursor) || *cursor == '_' || *cursor == '-')) {
+    while (*cursor && (prv_alnum(*cursor) || *cursor == '_' || *cursor == '-')) {
       cursor += 1;
     }
     key_length = (size_t)(cursor - key_start);
     if (!key_length || *cursor != '=') {
-      while (*cursor && !isspace((unsigned char)*cursor)) {
+      while (*cursor && !prv_space(*cursor)) {
         cursor += 1;
       }
       continue;
@@ -81,7 +93,7 @@ bool agent_protocol_meta_get(const char *meta, const char *key, char *dest, size
           cursor += 1;
         }
       } else {
-        while (*cursor && !isspace((unsigned char)*cursor)) {
+        while (*cursor && !prv_space(*cursor)) {
           cursor += 1;
         }
       }
@@ -89,7 +101,7 @@ bool agent_protocol_meta_get(const char *meta, const char *key, char *dest, size
     }
 
     cursor = value_start;
-    while (*cursor && ((quote && *cursor != quote) || (!quote && !isspace((unsigned char)*cursor)))) {
+    while (*cursor && ((quote && *cursor != quote) || (!quote && !prv_space(*cursor)))) {
       char value = *cursor;
       if (value == '\\' && cursor[1]) {
         cursor += 1;
@@ -97,7 +109,7 @@ bool agent_protocol_meta_get(const char *meta, const char *key, char *dest, size
       }
       if (written + 1 < dest_size) {
         dest[written++] = value;
-      }
+      } else if (truncated) { *truncated = true; }
       cursor += 1;
     }
     dest[written] = '\0';
@@ -106,34 +118,47 @@ bool agent_protocol_meta_get(const char *meta, const char *key, char *dest, size
   return false;
 }
 
+bool agent_protocol_meta_get(const char *meta, const char *key, char *dest, size_t dest_size) {
+  return prv_meta_get(meta, key, dest, dest_size, NULL);
+}
+
 int32_t agent_protocol_meta_get_int(const char *meta, const char *key, int32_t fallback) {
   char value[24];
+  int32_t result;
+  bool truncated = false;
+  if (!prv_meta_get(meta, key, value, sizeof(value), &truncated) || truncated) {
+    return fallback;
+  }
+  return agent_protocol_parse_int32(value, NULL, &result) ? result : fallback;
+}
+
+bool agent_protocol_parse_int32(const char *value, const char **end, int32_t *result) {
   const char *cursor;
   uint32_t magnitude = 0;
   uint32_t limit;
   bool negative = false;
 
-  if (!agent_protocol_meta_get(meta, key, value, sizeof(value)) || !value[0]) {
-    return fallback;
-  }
+  if (!value || !value[0] || !result) { return false; }
   cursor = value;
   if (*cursor == '-' || *cursor == '+') {
     negative = *cursor == '-';
     cursor += 1;
   }
-  if (!*cursor) { return fallback; }
+  if (*cursor < '0' || *cursor > '9') { return false; }
   limit = negative ? (uint32_t)INT32_MAX + 1u : (uint32_t)INT32_MAX;
-  while (*cursor) {
+  while (*cursor >= '0' && *cursor <= '9') {
     uint32_t digit;
-    if (*cursor < '0' || *cursor > '9') { return fallback; }
     digit = (uint32_t)(*cursor - '0');
-    if (magnitude > (limit - digit) / 10u) { return fallback; }
+    if (magnitude > (limit - digit) / 10u) { return false; }
     magnitude = magnitude * 10u + digit;
     cursor += 1;
   }
-  if (!negative) { return (int32_t)magnitude; }
-  if (magnitude == (uint32_t)INT32_MAX + 1u) { return INT32_MIN; }
-  return -(int32_t)magnitude;
+  if (!end && *cursor) { return false; }
+  if (end) { *end = cursor; }
+  if (!negative) { *result = (int32_t)magnitude; }
+  else if (magnitude == (uint32_t)INT32_MAX + 1u) { *result = INT32_MIN; }
+  else { *result = -(int32_t)magnitude; }
+  return true;
 }
 
 bool agent_protocol_meta_get_bool(const char *meta, const char *key, bool fallback) {

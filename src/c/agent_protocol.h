@@ -9,3 +9,7 @@ int32_t agent_protocol_meta_get_int(const char *meta, const char *key, int32_t f
 bool agent_protocol_meta_get_bool(const char *meta, const char *key, bool fallback);
 void agent_protocol_copy(char *dest, size_t dest_size, const char *source);
 
+// Parses a signed decimal without linking newlib's non-relocatable strtol.
+// With end == NULL, the entire string must be an integer; otherwise returns
+// the first character after the integer. Leaves result unchanged on failure.
+bool agent_protocol_parse_int32(const char *value, const char **end, int32_t *result);

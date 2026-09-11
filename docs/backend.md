@@ -27,7 +27,7 @@ pam version=1
 request id=42 protocol=pam/1 session=1788123456-12345
   input action=result.open element=row-2 kind=select text= value=
   context layout=list screen=results selected=row-2
-  device model=pebble_time_2 platform=emery shape=rect touch=true
+  device model=pebble_time_2 now=1788220800 platform=emery shape=rect touch=true utc_offset_minutes=-420
 done
 ```
 
@@ -37,7 +37,7 @@ done
 - `input.text` contains dictation.
 - `input.action`, `element`, and `value` contain a semantic UI event.
 - `context` describes the currently rendered agent screen.
-- `device` lets an agent favor, for example, a two-column grid on round hardware without emitting pixel geometry.
+- `device` lets an agent favor, for example, a two-column grid on round hardware without emitting pixel geometry. `now` is Unix time in seconds and `utc_offset_minutes` is the phone's offset east of UTC, allowing absolute reminder times to be resolved without guessing the user's clock.
 
 Treat every field as untrusted client input. Authenticate the session separately and authorize external side effects on the backend.
 
@@ -79,5 +79,4 @@ Supply the detailed layout/element/capability portion of [protocol.md](protocol.
 5. Stop and emit `error message="…"` on invalid structure rather than forwarding arbitrary text.
 6. Persist only the state needed for the next semantic event.
 
-The included `examples/server.mjs` is a deterministic transport fixture, not a production AI or authentication service.
-
+The included `examples/server.mjs` is a deterministic transport fixture, not a production AI or authentication service. The real reference implementation is `cmd/pebble-agent-server`; see [server.md](server.md).

@@ -5,9 +5,8 @@
 #define AGENT_CAP_MAX(a, b) ((a) > (b) ? (a) : (b))
 #define AGENT_CAP_MIN(a, b) ((a) < (b) ? (a) : (b))
 
-bool agent_timer_install(AgentCapabilities *capabilities);
+bool agent_schedules_install(AgentCapabilities *capabilities);
 bool agent_stopwatch_install(AgentCapabilities *capabilities);
-bool agent_reminder_install(AgentCapabilities *capabilities);
 
 int32_t agent_capability_parse_duration(const char *value, int32_t fallback);
 void agent_capability_format_duration(char *dest, size_t dest_size, int32_t seconds, bool hours_always);

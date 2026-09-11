@@ -11,18 +11,23 @@ Install Node.js and a current Repebble Pebble SDK with the Emery and Gabbro plat
 ```sh
 npm test
 npm run build:watch
+npm run build:server
 ```
 
-The watch bundle is written to `build/pebble-agent.pbw`. There are no npm runtime dependencies to install.
+The watch bundle is written to `build/pebble-agent.pbw` and the server binary to `build/pebble-agent-server`. There are no npm runtime dependencies to install. The Go server requires Go 1.24 or newer and `codex` on `PATH` at runtime.
 
 Useful commands:
 
 ```sh
 npm run demo:server       # deterministic streaming PAM endpoint on port 8787
+npm run server            # real Codex-backed PAM server
+npm run build:server      # compile the Go server
 npm run build:settings    # local GitHub Pages artifact
 ```
 
-The demo server is a transport fixture, not a production agent. Point the phone settings at a URL the paired phone can reach; `127.0.0.1` on a development computer is not the phone's loopback address.
+The demo server remains a deterministic transport fixture. The Go server under `cmd/pebble-agent-server` is the actual self-hosted agent. Point the phone settings at a URL the paired phone can reach; `127.0.0.1` on a development computer is not the phone's loopback address.
+
+For runtime debugging, inspect `~/.pebble-agent/server.log` first, followed by `server.log.1` through `server.log.5` if the incident has rotated. The server mirrors stderr there and rotates each file at 10 MiB. These files contain complete Codex app-server inputs and outputs and are sensitive. A completed PAM response followed by a watchapp exit requires Pebble watch logs because that failure is downstream of the Go server.
 
 ## Repository map
 
@@ -33,6 +38,8 @@ The demo server is a transport fixture, not a production agent. Point the phone 
 - `src/c/capabilities/` contains the timer, stopwatch, and reminder modules.
 - `src/pkjs/index.js` connects watch events, agent transport, parsed model operations, settings, and phone capabilities.
 - `src/common/` contains reusable CommonJS protocol, model, writer, transport, settings, and capability modules.
+- `cmd/pebble-agent-server/` is the Codex-backed HTTP/WebSocket PAM service.
+- `internal/appserver/`, `internal/agent/`, `internal/pam/`, `internal/httpapi/`, `internal/state/`, and `internal/logfile/` are its transport, turn, validation, API, persistence, and rotating-log modules.
 - `docs/config/` is the hosted phone configuration page.
 - `examples/server.mjs` is the streaming test backend.
 - `tests/` contains JavaScript, native sanitizer, browser-page, and loopback integration tests.
@@ -43,8 +50,11 @@ The demo server is a transport fixture, not a production agent. Point the phone 
 watch input or dictation
         │ AppMessage
         ▼
-PebbleKit JS ───── PAM request ─────► agent endpoint
-        ▲                                │ streamed PAM lines
+PebbleKit JS ───── PAM request ─────► Go agent endpoint
+        ▲                                │ Codex app-server RPC
+        │                                ▼
+        │                       GPT-5.6 Luna (default)
+        │                                │ PAM deltas
         └──── parser → model → deltas ───┘
         │ compact queued AppMessage operations
         ▼
@@ -52,6 +62,8 @@ native AgentUi renderer or capability module
 ```
 
 The backend chooses semantic layouts, elements, bindings, and capability commands. It never sends Pebble pointers, native API names, or ordinary widget coordinates. Both the phone and watch validate their boundary, and fixed capacities keep agent output from growing watch memory without limit.
+
+The Go service persists the opaque watch session→Codex thread mapping, serializes turns within one watch session, and allows different sessions to run concurrently. Codex is constrained to a read-only, network-disabled sandbox with approval policy `never`; unexpected app-server requests are rejected. Complete output lines are checked against the same layout, element, input, capability, depth, line, and element allowlists before they are flushed to the phone.
 
 See [docs/architecture.md](docs/architecture.md) for ownership and extension details.
 
@@ -69,7 +81,7 @@ done
 
 The phone can begin the screen after line two and add the first row after line three. Supported layouts, elements, patches, input bindings, capability schemas, limits, and escaping rules are specified in [docs/protocol.md](docs/protocol.md).
 
-The backend request/response contract, including HTTP streaming, WebSockets, authentication, and a suggested model instruction, is in [docs/backend.md](docs/backend.md).
+The backend request/response contract, including HTTP streaming, WebSockets, authentication, and model instructions, is in [docs/backend.md](docs/backend.md). Operating the included implementation is covered by [docs/server.md](docs/server.md).
 
 ## JavaScript library
 
@@ -188,7 +200,7 @@ If the repository owner or name changes, update `CONFIG_URL` in `src/common/sett
 
 ## Testing
 
-`npm test` runs the protocol/model/transport suite, strict native C tests under AddressSanitizer and UndefinedBehaviorSanitizer, a real loopback streaming server, and settings-page behavior in a simulated DOM.
+`npm test` runs the JavaScript protocol/model/transport suite, strict native C tests under AddressSanitizer and UndefinedBehaviorSanitizer, the loopback demo server, settings-page behavior in a simulated DOM, and the Go server suite. Go tests cover session persistence, arbitrary model delta boundaries, malformed-output containment, Codex thread reuse/resume, auth, HTTP and downstream WebSocket ingress, and Unix/stdin/WebSocket app-server transports.
 
 `npm run build:watch` compiles and links both Emery and Gabbro. `npm run build:settings` checks that all settings source assets exist and assembles the deployable path structure.
 
@@ -198,6 +210,7 @@ The completed emulator matrix and the microphone, touch, Bluetooth, wakeup, and 
 
 - [Architecture and extension points](docs/architecture.md)
 - [Backend contract](docs/backend.md)
+- [Go server setup](docs/server.md)
 - [PAM 1 specification](docs/protocol.md)
 - [Test matrix](docs/testing.md)
 - [Current Repebble developer documentation](https://developer.repebble.com/)

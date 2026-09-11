@@ -5,6 +5,17 @@ top = '.'
 out = 'build'
 
 
+def check_watch_symbols(task):
+    import subprocess
+    symbols = subprocess.check_output(task.env.NM + [task.inputs[0].abspath()],
+                                      universal_newlines=True)
+    unsafe = {'_impure_ptr', '_impure_data', '__errno', '_ctype_', '__sf', '_sbrk'}
+    found = sorted({line.split()[-1] for line in symbols.splitlines() if line.split()} & unsafe)
+    if found:
+        task.generator.bld.fatal('Unsafe newlib state in relocated watchapp: ' + ', '.join(found))
+    task.outputs[0].write('No unsupported newlib state symbols\n')
+
+
 def options(ctx):
     ctx.load('pebble_sdk')
 
@@ -12,6 +23,7 @@ def options(ctx):
 def configure(ctx):
     ctx.load('pebble_sdk')
     ctx.pbl_suppress_newer_gcc_warnings()
+    ctx.find_program('arm-none-eabi-nm', var='NM')
 
 
 def build(ctx):
@@ -26,6 +38,9 @@ def build(ctx):
         ctx.pbl_build(source=ctx.path.ant_glob('src/c/**/*.c'),
                       target=app_elf,
                       bin_type='app')
+        check = ctx(rule=check_watch_symbols, source=app_elf,
+                    target=app_elf + '.symbols-ok')
+        check.env.NM = cached_env.NM
         binaries.append({'platform': platform, 'app_elf': app_elf})
 
     ctx.env = cached_env
@@ -34,4 +49,3 @@ def build(ctx):
                    js=ctx.path.ant_glob(['src/pkjs/**/*.js',
                                          'src/common/**/*.js']),
                    js_entry_file='src/pkjs/index.js')
-

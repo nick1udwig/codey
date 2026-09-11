@@ -40,6 +40,7 @@ function installBuiltins(registry, weatherHandler) {
   registerWatchCapability(registry, "timer");
   registerWatchCapability(registry, "stopwatch");
   registerWatchCapability(registry, "reminder");
+  registerWatchCapability(registry, "alarm");
   if (weatherHandler) {
     registry.register("weather", weatherHandler);
   }
@@ -51,4 +52,3 @@ module.exports = {
   installBuiltins: installBuiltins,
   registerWatchCapability: registerWatchCapability
 };
-

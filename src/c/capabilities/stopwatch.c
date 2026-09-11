@@ -4,14 +4,15 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #define STOPWATCH_PERSIST_KEY 4110
 #define STOPWATCH_MAGIC 0x53545743
 
 typedef struct {
   uint32_t magic;
-  bool active;
-  bool running;
+  uint8_t active;
+  uint8_t running;
   int32_t elapsed;
   time_t started_at;
   char id[AGENT_UI_ID_LENGTH];
@@ -25,11 +26,11 @@ typedef struct {
 } StopwatchModule;
 
 static int32_t prv_elapsed(StopwatchModule *stopwatch) {
-  int32_t elapsed = stopwatch->state.elapsed;
+  int64_t elapsed = stopwatch->state.elapsed;
   if (stopwatch->state.running) {
-    elapsed += (int32_t)AGENT_CAP_MAX(0, time(NULL) - stopwatch->state.started_at);
+    elapsed += AGENT_CAP_MAX(0, (int64_t)time(NULL) - stopwatch->state.started_at);
   }
-  return elapsed;
+  return (int32_t)AGENT_CAP_MIN(INT32_MAX, elapsed);
 }
 
 static void prv_save(StopwatchModule *stopwatch) {
@@ -78,8 +79,10 @@ static void prv_tick(void *context) {
   elapsed = prv_elapsed(stopwatch);
   agent_capability_format_duration(display, sizeof(display), elapsed, elapsed >= 3600);
   snprintf(seconds, sizeof(seconds), "%ld", (long)(elapsed % 60));
-  agent_capability_patch_value(agent_capabilities_ui(stopwatch->capabilities), "stopwatch-display", display);
-  agent_capability_patch_value(agent_capabilities_ui(stopwatch->capabilities), "stopwatch-progress", seconds);
+  if (agent_capabilities_is_active(stopwatch->capabilities, "stopwatch")) {
+    agent_capability_patch_value(agent_capabilities_ui(stopwatch->capabilities), "stopwatch-display", display);
+    agent_capability_patch_value(agent_capabilities_ui(stopwatch->capabilities), "stopwatch-progress", seconds);
+  }
   prv_schedule_tick(stopwatch);
 }
 
@@ -145,6 +148,7 @@ static bool prv_command(AgentCapabilities *capabilities, const AgentCapabilityCo
 
 static bool prv_event(AgentCapabilities *capabilities, const AgentUiEvent *event, void *module_context) {
   StopwatchModule *stopwatch = module_context;
+  if (strcmp(event->action, "local.stopwatch") == 0) { prv_render(stopwatch); return true; }
   if (strcmp(event->action, "cap.stopwatch.toggle") == 0) {
     AgentCapabilityCommand command = {
       .type = "stopwatch",
@@ -167,12 +171,34 @@ static void prv_destroy(void *module_context) {
   free(stopwatch);
 }
 
+static void prv_dashboard(AgentCapabilities *capabilities, void *context, bool refresh) {
+  StopwatchModule *stopwatch = context;
+  if (!stopwatch->state.active) { return; }
+  char display[40], elapsed[24];
+  agent_capability_format_duration(elapsed, sizeof(elapsed), prv_elapsed(stopwatch), false);
+  snprintf(display, sizeof(display), "%s%s", elapsed, stopwatch->state.running ? " running" : " paused");
+  AgentUi *ui = agent_capabilities_ui(capabilities);
+  if (refresh) {
+    agent_ui_patch(ui, &(AgentUiElementSpec) { .id = "dashboard-stopwatch", .subtitle = display,
+                                             .present = AgentUiPresentSubtitle });
+  } else {
+    agent_capability_add_element(ui, "section", "stopwatch-section", "Stopwatch", "", "", "", "", 0);
+    agent_capability_add_element(ui, "item", "dashboard-stopwatch", stopwatch->state.title,
+                                 display, "", "local.stopwatch", "", 0);
+  }
+}
+
 bool agent_stopwatch_install(AgentCapabilities *capabilities) {
   StopwatchModule *stopwatch = calloc(1, sizeof(StopwatchModule));
   if (!stopwatch) { return false; }
   stopwatch->capabilities = capabilities;
   if (persist_read_data(STOPWATCH_PERSIST_KEY, &stopwatch->state, sizeof(stopwatch->state)) !=
-        sizeof(stopwatch->state) || stopwatch->state.magic != STOPWATCH_MAGIC) {
+        sizeof(stopwatch->state) || stopwatch->state.magic != STOPWATCH_MAGIC ||
+      stopwatch->state.active > 1 || stopwatch->state.running > 1 || stopwatch->state.elapsed < 0 ||
+      (stopwatch->state.running && !stopwatch->state.active) ||
+      stopwatch->state.started_at < 0 ||
+      !memchr(stopwatch->state.id, 0, sizeof(stopwatch->state.id)) ||
+      !memchr(stopwatch->state.title, 0, sizeof(stopwatch->state.title))) {
     memset(&stopwatch->state, 0, sizeof(stopwatch->state));
     stopwatch->state.magic = STOPWATCH_MAGIC;
   }
@@ -180,14 +206,13 @@ bool agent_stopwatch_install(AgentCapabilities *capabilities) {
         .command = prv_command,
         .event = prv_event,
         .destroy = prv_destroy,
+        .dashboard = prv_dashboard,
       }, stopwatch)) {
     free(stopwatch);
     return false;
   }
   if (stopwatch->state.active) {
-    prv_render(stopwatch);
     prv_schedule_tick(stopwatch);
   }
   return true;
 }
-

@@ -14,16 +14,39 @@ Other Pebble models are not included in this build.
 - A supported watch paired with the Pebble mobile app.
 - The Pebble Agent `.pbw` watchapp.
 - An internet connection on the paired phone.
-- The URL of a PAM-compatible agent service, plus a bearer token if that service requires one.
+- A computer or server that can run the bundled Go agent service and the authenticated Codex CLI.
+- A URL the paired phone can use to reach that service, plus its bearer token.
 
-Pebble Agent is the watch client. It does not include an AI provider or a hosted agent account; whoever provides your agent service should give you its endpoint and any required token.
+Pebble Agent includes the watch client and a self-hosted agent service. The service uses your local Codex login; it is not a hosted account or public relay.
+
+## Run the agent service
+
+Install and sign in to the Codex CLI, install Go 1.24 or newer, then build the service from this repository:
+
+```sh
+go build -o build/pebble-agent-server ./cmd/pebble-agent-server
+export PEBBLE_AGENT_TOKEN="replace-with-a-long-random-secret"
+./build/pebble-agent-server --listen 0.0.0.0:8787
+```
+
+The server uses `gpt-5.6-luna` with `xhigh` reasoning by default. Configure either at startup with `--model` and `--effort`, or the `PEBBLE_AGENT_MODEL` and `PEBBLE_AGENT_EFFORT` environment variables.
+
+It first looks for the running Codex app-server daemon over its Unix socket. If none is available, it starts `codex app-server --stdio`; a configured app-server WebSocket is the final fallback. The service exits at startup if no transport can initialize.
+
+The phone endpoint is:
+
+```text
+http://YOUR-SERVER:8787/v1/agent
+```
+
+Use the same `PEBBLE_AGENT_TOKEN` value in the app settings. Plain HTTP is suitable only on a trusted private network for development. For internet access, put the service behind an HTTPS/WSS reverse proxy and keep the Go listener on loopback. See [Server setup](docs/server.md) for connection, security, persistence, and deployment options.
 
 ## Install and connect
 
 1. Install the Pebble Agent `.pbw` with your paired Pebble mobile app.
 2. Find **Agent** in the phone app's watchapp list and open its settings using the gear icon.
-3. Enter the agent endpoint you were given. `https://` and `wss://` are recommended; local development endpoints may also use `http://` or `ws://`.
-4. Add the optional bearer token, choose weather units and a timeout, then tap **Save & close**.
+3. Enter your server's `/v1/agent` endpoint. `https://` and `wss://` are recommended; a trusted local network may also use `http://` or `ws://`.
+4. Enter the server's bearer token, choose weather units and a timeout, then tap **Save & close**.
 5. Launch **Agent** on the watch. The home screen should say **Agent connected**.
 
 The gear icon is supplied by the Pebble mobile app. The settings page requires internet access when it opens.
@@ -32,11 +55,31 @@ The gear icon is supplied by the Pebble mobile app. The settings page requires i
 
 Hold Select until dictation opens, then speak normally. Your transcription is sent to the configured agent. A **Thinking** indicator means the watch accepted the transcription and is waiting for that service to respond.
 
+Agent opens to a local dashboard with the time, unacknowledged notifications,
+running or paused timers, alarms/reminders, and the stopwatch. It works without
+the phone. Select an entry to open its controls. Back returns to the dashboard
+without stopping anything; Back from the dashboard exits the app. On a timer,
+the X (Down) cancels only that timer, Select pauses/resumes it, and the arrow
+(Up) returns home.
+
+You can have four timers and four alarms/reminders at once. Finished alerts
+return you to Notifications and buzz every three seconds until acknowledged or
+snoozed. Open a finished entry and press Select to acknowledge, or Down to
+snooze ten minutes. Acknowledging one leaves other notifications active.
+If you close Agent with an unacknowledged alert, it requests a wakeup to remind
+you again in a minute. Pebble only lets the app vibrate while running; if the
+system refuses a wakeup, Agent displays “keep Agent open” instead of silently
+promising a background alert.
+
+Assign Agent to a button in the watch's Quick Launch settings. Launching with
+that shortcut opens dictation automatically; opening Agent from the app menu
+shows the dashboard, and a scheduled wakeup shows notifications.
+
 The agent can choose the controls and presentation that fit each response:
 
 - Up and Down usually move through or scroll the current screen.
 - Short Select activates the selected item.
-- Back returns or closes the screen unless the agent assigns it another action.
+- Back returns to the dashboard; from the dashboard it exits the app.
 - Taps, hotspots, and swipes may be available when the screen defines them.
 - Long Select is always reserved for new dictation and cannot be replaced by the agent.
 
@@ -44,7 +87,9 @@ Depending on the configured agent, you can ask for things such as “start a ten
 
 ## Troubleshooting
 
-**The watch stays on Thinking.** The transcription reached Pebble Agent, but the endpoint has not returned a usable response. Check the phone's connection, endpoint URL, token, and configured timeout. The endpoint must return Pebble Agent Markup (PAM), not ordinary chat text or JSON.
+**The watch stays on Thinking.** The transcription reached Pebble Agent, but the endpoint has not returned a usable response. Check the phone's connection, endpoint URL, token, timeout, server log, Codex login, and app-server availability. The endpoint must return Pebble Agent Markup (PAM), not ordinary chat text or JSON.
+
+**Where are the server logs?** Start debugging with `~/.pebble-agent/server.log`. The server also writes the same records to stderr. It rotates the file at 10 MiB and retains five backups, from `server.log.1` (newest) through `server.log.5` (oldest). Set `PEBBLE_AGENT_LOG_FILE` or pass `--log-file /absolute/path` to move it; pass `--log-file -` for stderr only.
 
 **The home screen says Configure endpoint.** Open Agent's gear icon in the paired phone app, save a valid endpoint, then reopen the watchapp if needed.
 
@@ -56,6 +101,6 @@ Depending on the configured agent, you can ask for things such as “start a ten
 
 ## Privacy and security
 
-Dictated text and watch interactions are sent to the endpoint you configure. The bearer token is kept in the Pebble phone runtime's local storage and sent to that endpoint. When current-location weather is requested, the phone sends coordinates to Open-Meteo. Use an endpoint you trust and prefer HTTPS or WSS.
+Dictated text and watch interactions are sent to the endpoint you configure, then to Codex through the self-hosted service. The server logs every JSON message to and from Codex app-server, including prompts and model responses, in `~/.pebble-agent/server.log`, so that file and its rotated backups must be treated as sensitive conversation data. The bearer token is kept in the Pebble phone runtime's local storage and sent only to the endpoint authentication boundary. When current-location weather is requested, the phone sends coordinates to Open-Meteo. Use an endpoint you trust and prefer HTTPS or WSS.
 
 For source builds, backend integration, PAM, library APIs, extension points, and testing, see [DEVS.md](DEVS.md).
