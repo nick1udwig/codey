@@ -129,7 +129,48 @@ The PAM `request.session` value and permission profile map to a persisted Codex 
 
 Only final-answer agent-message deltas are forwarded. Commentary is ignored. Output is limited to 128 KiB, 2,048 bytes per line, 96 PAM nodes, eight indentation levels, and 48 screen elements. Layouts, element kinds, bindings, patches, removals, and built-in capability commands are allowlisted before each line is flushed. Invalid output becomes a valid root PAM `error` instead of arbitrary bytes reaching the watch. A missing final `done` is supplied for an otherwise valid screen.
 
-The default turn timeout is 110 seconds, configurable with `--turn-timeout`. The watch setting must be long enough for the selected model and effort; its client-side maximum is 120 seconds.
+Agent execution is unlimited by default (`--turn-timeout 0`). A positive duration
+sets an execution deadline independent of the phone notification window.
+
+## Persistent request jobs
+
+The phone generates and saves a 30-character hexadecimal ID before submitting
+PAM to `POST /v1/jobs/{id}`. The server persists the accepted job before replying
+with JSON. Repeating the ID and identical request returns that job; a different
+request using the same ID receives HTTP 409. All job routes use the same bearer
+authentication as `/v1/agent`.
+
+- `GET /v1/jobs/{id}` returns status and a completed PAM result, if available.
+- `GET /v1/jobs/{id}?wait=45` waits once for completion, bounded to 120 seconds.
+  Disconnecting this GET never cancels the job. The phone uses one wait and
+  makes no further automatic polls after it expires. Opening Notifications
+  explicitly refreshes all ongoing jobs once; overlapping checks for the same
+  job are coalesced. This batch never opens result screens or buzzes.
+- `POST /v1/jobs/{id}/cancel` explicitly cancels the work. The transitional
+  `canceling` status becomes `canceled` after execution unwinds.
+- `POST /v1/jobs/{id}/ack` releases the server result only after the phone has
+  cached it and the watch confirms presentation. The ID/hash remain as a
+  deduplication tombstone.
+
+Jobs are stored as private JSON files beside session state, under `jobs/`.
+Unretrieved results have no expiry by default. `--job-retention 168h` expires
+terminal jobs seven days after completion, whether retrieved or not; cleanup
+runs every minute and during lookups/submissions. The finite retention setting
+also bounds tombstone lifetime and therefore the duplicate-submission guarantee.
+Running jobs are never removed by retention. On restart, unfinished jobs become
+failed with an explicit restart message; completed results remain retrievable.
+Cancellation does not roll back prior changes.
+
+Work in the same conversation is serialized. Up to 32 agent jobs may be active
+on the server, with 24 unviewed requests in the phone/watch notification list.
+Retrieved results remain cached on the phone. Failed/canceled entries can be
+dismissed. Restoring the original endpoint is required to check a job after
+changing servers, so a new server token is never sent to an old endpoint.
+
+The legacy streaming `/v1/agent` endpoint remains available for compatible
+clients. The updated watch uses the job routes. Reverse proxies must route
+`/v1/jobs/` as well; a shorter proxy timeout only ends the completion wait, not
+the work.
 
 ## Internet-facing deployment
 
@@ -146,7 +187,8 @@ Run `pebble-agent-server -h` for the complete set. Common options include:
 --model gpt-5.6-luna
 --effort xhigh
 --connect-timeout 5s
---turn-timeout 110s
+--turn-timeout 0
+--job-retention 0
 --state /absolute/path/sessions.json
 --workspace /absolute/path/empty-workspace
 --log-level debug|info|warn|error

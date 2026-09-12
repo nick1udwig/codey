@@ -22,6 +22,7 @@ var developerInstructions string
 const baseInstructions = "You are Pebble Agent, a concise general assistant for a small watch. Follow the developer instructions exactly. Use only the tools permitted by the session configuration when needed. Return the final answer only as PAM."
 
 type Config struct {
+	SkillPath string
 	Model     string
 	Effort    string
 	Workspace string
@@ -46,9 +47,7 @@ func New(client *appserver.Client, store *state.Store, config Config) *Agent {
 	if config.Effort == "" {
 		config.Effort = "xhigh"
 	}
-	if config.Timeout <= 0 {
-		config.Timeout = 110 * time.Second
-	}
+
 	return &Agent{client: client, store: store, config: config, loaded: make(map[string]uint64)}
 }
 
@@ -67,13 +66,20 @@ func (agent *Agent) Respond(ctx context.Context, request pam.Request, emit func(
 }
 
 func (agent *Agent) respond(parent context.Context, request pam.Request, stream *pam.OutputStream) error {
-	lockValue, _ := agent.locks.LoadOrStore(request.Session, &sync.Mutex{})
-	lock := lockValue.(*sync.Mutex)
-	lock.Lock()
-	defer lock.Unlock()
-
-	ctx, cancel := context.WithTimeout(parent, agent.config.Timeout)
-	defer cancel()
+	lockValue, _ := agent.locks.LoadOrStore(request.Session, make(chan struct{}, 1))
+	lock := lockValue.(chan struct{})
+	select {
+	case lock <- struct{}{}:
+	case <-parent.Done():
+		return parent.Err()
+	}
+	defer func() { <-lock }()
+	ctx := parent
+	if agent.config.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(parent, agent.config.Timeout)
+		defer cancel()
+	}
 	connection, generation, _, err := agent.client.Connection(ctx)
 	if err != nil {
 		return err

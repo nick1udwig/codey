@@ -27,3 +27,5 @@ void vibes_double_pulse(void);
 void vibes_short_pulse(void);
 bool quiet_time_is_active(void);
 void vibes_cancel(void);
+
+int persist_delete(uint32_t key);

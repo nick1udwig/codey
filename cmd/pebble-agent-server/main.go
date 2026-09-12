@@ -19,6 +19,7 @@ import (
 	"github.com/nick1udwig/pebble-agent/internal/agent"
 	"github.com/nick1udwig/pebble-agent/internal/appserver"
 	"github.com/nick1udwig/pebble-agent/internal/httpapi"
+	"github.com/nick1udwig/pebble-agent/internal/jobs"
 	"github.com/nick1udwig/pebble-agent/internal/logfile"
 	"github.com/nick1udwig/pebble-agent/internal/state"
 )
@@ -37,6 +38,7 @@ type options struct {
 	allowUnauthenticatedPublic bool
 	connectTimeout             time.Duration
 	turnTimeout                time.Duration
+	jobRetention               time.Duration
 	statePath                  string
 	workspace                  string
 	logLevel                   string
@@ -70,7 +72,8 @@ func run(arguments []string) error {
 	flags.StringVar(&config.authTokenEnvironment, "auth-token-env", "PEBBLE_AGENT_TOKEN", "environment variable containing the phone bearer token")
 	flags.BoolVar(&config.allowUnauthenticatedPublic, "allow-unauthenticated-public", false, "allow a non-loopback listener without a phone bearer token")
 	flags.DurationVar(&config.connectTimeout, "connect-timeout", 5*time.Second, "timeout per app-server transport")
-	flags.DurationVar(&config.turnTimeout, "turn-timeout", 110*time.Second, "maximum Codex turn duration")
+	flags.DurationVar(&config.turnTimeout, "turn-timeout", 0, "maximum Codex turn duration; 0 means unlimited")
+	flags.DurationVar(&config.jobRetention, "job-retention", 0, "completed job retention (e.g. 168h); 0 keeps unreceived results forever")
 	flags.StringVar(&config.statePath, "state", defaults.state, "session state JSON path")
 	flags.StringVar(&config.workspace, "workspace", defaults.workspace, "absolute Codex cwd and writable root when phone settings allow workspace writes")
 	flags.StringVar(&config.logLevel, "log-level", environment("PEBBLE_AGENT_LOG_LEVEL", "info"), "debug, info, warn, or error")
@@ -84,8 +87,8 @@ func run(arguments []string) error {
 	if strings.TrimSpace(config.model) == "" || strings.TrimSpace(config.effort) == "" {
 		return errors.New("model and effort must not be empty")
 	}
-	if config.connectTimeout <= 0 || config.turnTimeout <= 0 {
-		return errors.New("connect-timeout and turn-timeout must be positive")
+	if config.connectTimeout <= 0 || config.turnTimeout < 0 || config.jobRetention < 0 {
+		return errors.New("connect-timeout must be positive; turn-timeout and job-retention must be nonnegative")
 	}
 	if !filepath.IsAbs(config.statePath) || !filepath.IsAbs(config.workspace) ||
 		(config.logFile != "-" && !filepath.IsAbs(config.logFile)) {
@@ -141,14 +144,24 @@ func run(arguments []string) error {
 	if err != nil {
 		return err
 	}
+	skillPath, err := agent.InstallSkill(filepath.Dir(config.statePath))
+	if err != nil {
+		return err
+	}
 	responder := agent.New(client, store, agent.Config{
+		SkillPath: skillPath,
 		Model:     config.model,
 		Effort:    config.effort,
 		Workspace: config.workspace,
 		Timeout:   config.turnTimeout,
 		Logger:    logger,
 	})
-	handler := httpapi.New(httpapi.Config{Responder: responder, Token: phoneToken, Logger: logger})
+	jobStore, err := jobs.Open(filepath.Join(filepath.Dir(config.statePath), "jobs"), config.jobRetention, responder, logger)
+	if err != nil {
+		return err
+	}
+	defer jobStore.Close()
+	handler := httpapi.New(httpapi.Config{Jobs: jobStore, Responder: responder, Token: phoneToken, Logger: logger})
 	listener, err := net.Listen("tcp", config.listen)
 	if err != nil {
 		return err

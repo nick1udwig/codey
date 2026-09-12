@@ -46,7 +46,7 @@ Use the same `PEBBLE_AGENT_TOKEN` value in the app settings. Plain HTTP is suita
 1. Install the Pebble Agent `.pbw` with your paired Pebble mobile app.
 2. Find **Agent** in the phone app's watchapp list and open its settings using the gear icon.
 3. Enter your server's `/v1/agent` endpoint. `https://` and `wss://` are recommended; a trusted local network may also use `http://` or `ws://`.
-4. Enter the server's bearer token, choose weather units and a timeout, then tap **Save & close**.
+4. Enter the server's bearer token, choose weather units and a completion notification window, then tap **Save & close**.
 5. Launch **Agent** on the watch. The home screen should say **Agent connected**.
 
 Settings default to GPT-5.6 Luna, extra-high reasoning effort, fast mode, and live
@@ -105,9 +105,20 @@ other screens, hold Select to dictate into the current conversation.
 
 Todos and their archive persist on the watch (32 items total, up to 179 UTF-8
 bytes each). Local lists work offline; weather and voice require the phone.
-Request failures open a scrollable **Request failed** screen with the received
-reason, **Try again**, and **Dashboard** actions. HTTP 0 explains that no server
-response arrived instead of displaying only the code.
+Agent requests immediately animate into **Notifications**. A completed response
+buzzes during the configured notification window (45 seconds by default), without
+replacing the current screen. After that window there is no automatic polling.
+Opening Notifications immediately marks ongoing requests as **Checking** and
+refreshes them once. Tap a request to refresh its status; finished requests open their PAM response,
+and ongoing requests offer **Cancel request**. Connection failures keep the job
+available for another check. Canceling does not undo work already performed.
+
+The server keeps running when the phone disconnects and saves completed results
+until the phone confirms retrieval. `--job-retention 0` (the default) retains
+unreceived results indefinitely; use `--job-retention 168h` for seven days.
+There is no execution deadline by default; `--turn-timeout` sets an optional one.
+Restarting the server preserves finished results and marks unfinished work as
+interrupted; it does not automatically repeat potentially destructive work.
 
 The generated PNGs and font are in `resources/images/`; regenerate them with
 `python3 scripts/generate_dashboard_icons.py`. The generator includes concrete
@@ -143,7 +154,7 @@ Depending on the configured agent, you can ask for things such as “start a ten
 
 ## Troubleshooting
 
-**The watch stays on Thinking.** The transcription reached Pebble Agent, but the endpoint has not returned a usable response. Check the phone's connection, endpoint URL, token, timeout, server log, Codex login, and app-server availability. The endpoint must return Pebble Agent Markup (PAM), not ordinary chat text or JSON.
+**A request is still working.** Open Notifications and tap it to fetch current status. The 45-second completion notification window does not stop the agent. Check the server log for job acceptance/completion and agent activity. Unconfirmed delivery means the phone has not received an acknowledgement; checking can safely retry the same job ID. Upgrade both the server and watch app for the job API.
 
 **Where are the server logs?** Start debugging with `~/.pebble-agent/server.log`. The server also writes the same records to stderr. It rotates the file at 10 MiB and retains five backups, from `server.log.1` (newest) through `server.log.5` (oldest). Set `PEBBLE_AGENT_LOG_FILE` or pass `--log-file /absolute/path` to move it; pass `--log-file -` for stderr only.
 
@@ -160,3 +171,10 @@ Depending on the configured agent, you can ask for things such as “start a ten
 Dictated text and watch interactions are sent to the endpoint you configure, then to Codex through the self-hosted service. The server logs every JSON message to and from Codex app-server, including prompts and model responses, in `~/.pebble-agent/server.log`, so that file and its rotated backups must be treated as sensitive conversation data. The bearer token is kept in the Pebble phone runtime's local storage and sent only to the endpoint authentication boundary. When current-location weather is requested, the phone sends coordinates to Open-Meteo. Use an endpoint you trust and prefer HTTPS or WSS.
 
 For source builds, backend integration, PAM, library APIs, extension points, and testing, see [DEVS.md](DEVS.md).
+
+PAM forms can offer concrete timer/reminder choices that execute on the watch,
+plus sliders and winding dials for adjustable durations. Dragging adjusts the
+value; confirmation starts the timer/reminder. Each form offers **Dictate answer**
+for custom speech sent back to the agent. Advanced authoring guidance is packaged
+as [pam-ui](internal/agent/skills/pam-ui/SKILL.md) and installed beside server
+state on startup; restart the updated server to activate the new guidance.

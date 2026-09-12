@@ -6,6 +6,7 @@
 #define AGENT_CAP_MIN(a, b) ((a) < (b) ? (a) : (b))
 
 bool agent_schedules_install(AgentCapabilities *capabilities);
+bool agent_jobs_install(AgentCapabilities *capabilities);
 bool agent_todos_install(AgentCapabilities *capabilities);
 bool agent_stopwatch_install(AgentCapabilities *capabilities);
 

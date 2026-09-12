@@ -25,6 +25,7 @@ typedef enum {
 } AgentUiLayout;
 
 typedef struct {
+  char meta[AGENT_UI_META_LENGTH];
   char input[20];
   char element_id[AGENT_UI_ID_LENGTH];
   char action[AGENT_UI_ACTION_LENGTH];
@@ -84,3 +85,5 @@ const char *agent_ui_layout_name(const AgentUi *ui);
 // outside tap or Back. Item strings are copied; callers may use stack arrays.
 typedef struct { const char *title; const char *action; } AgentUiMenuItem;
 void agent_ui_open_menu(AgentUi *ui, const AgentUiMenuItem *items, uint8_t count);
+
+void agent_ui_animate_request(AgentUi *ui);

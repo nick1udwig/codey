@@ -1,4 +1,5 @@
 #include "agent_ui.h"
+#include "range_control.h"
 
 #include "agent_protocol.h"
 #include "../../resources/images/pixel-font-5x7.h"
@@ -67,6 +68,8 @@ struct AgentUi {
   Layer *content_layer;
   Layer *action_bar_layer;
   Layer *menu_layer;
+  AppTimer *activity_timer;
+  uint8_t request_frame, spinner_frame;
   AppTimer *menu_timer;
   uint8_t menu_count, menu_selected, menu_step;
   struct { char title[48]; char action[AGENT_UI_ACTION_LENGTH]; } menu_items[4];
@@ -107,6 +110,9 @@ struct AgentUi {
   bool touch_was_menu;
   bool touch_row;
   bool touch_vertical;
+  int16_t touch_control;
+  int32_t touch_angle;
+  int64_t touch_raw_value;
   bool touch_subscribed;
   bool touch_down;
   bool touch_dragged;
@@ -243,6 +249,7 @@ static void prv_emit(AgentUi *ui, const char *input, const AgentUiElement *eleme
   agent_protocol_copy(event.element_id, sizeof(event.element_id), element ? element->id : "");
   agent_protocol_copy(event.action, sizeof(event.action), action);
   agent_protocol_copy(event.value, sizeof(event.value), value ? value : (element ? element->value : ""));
+  agent_protocol_copy(event.meta, sizeof(event.meta), element ? element->meta : "");
   ui->event_handler(&event, ui->context);
 }
 
@@ -275,8 +282,16 @@ static void prv_pan_todo(AgentUi *ui, AgentUiElement *e, int direction) {
   layer_mark_dirty(ui->content_layer);
 }
 
+static int prv_control_kind(const AgentUiElement *e) {
+  char type[20];
+  if (!e || e->kind != AgentUiElementField) { return 0; }
+  agent_protocol_meta_get(e->meta, "type", type, sizeof(type));
+  return strcmp(type, "slider") == 0 ? 1 : strcmp(type, "dial") == 0 ? 2 : 0;
+}
+
 static int16_t prv_row_height(AgentUi *ui, AgentUiElement *element, int16_t width) {
   if (prv_todo_row(element)) { return 42; }
+  if (prv_control_kind(element)) { return prv_control_kind(element) == 1 ? 104 : 152; }
   GFont body_font = fonts_get_system_font(FONT_KEY_GOTHIC_18);
   int16_t content_width = AGENT_MAX(30, width - 12);
   switch (element->kind) {
@@ -515,6 +530,38 @@ static void prv_draw_element(AgentUi *ui, GContext *ctx, AgentUiElement *element
     graphics_fill_rect(ctx, frame, 4, GCornersAll);
   }
 
+  if (prv_control_kind(element)) {
+    int32_t min = agent_protocol_meta_get_int(element->meta, "min", 0);
+    int32_t max = agent_protocol_meta_get_int(element->meta, "max", 100);
+    int32_t value = min; agent_protocol_parse_int32(element->value, NULL, &value);
+    value = AGENT_MAX(min, AGENT_MIN(max, value));
+    int32_t fraction = max > min ? (int64_t)(value - min) * TRIG_MAX_ANGLE / (max - min) : 0;
+    prv_draw_text(ctx, element->title, body_font, GRect(frame.origin.x + 8, frame.origin.y + 2, frame.size.w - 16, 24),
+                  GTextAlignmentLeft, foreground, GTextOverflowModeTrailingEllipsis);
+    char label[48], unit[16]; agent_protocol_meta_get(element->meta, "unit", unit, sizeof(unit));
+    snprintf(label, sizeof(label), "%ld %s", (long)value, unit);
+    graphics_context_set_stroke_color(ctx, foreground);
+    graphics_context_set_fill_color(ctx, foreground);
+    graphics_context_set_stroke_width(ctx, 3);
+    if (prv_control_kind(element) == 1) {
+      int16_t left = frame.origin.x + 14, right = frame.origin.x + frame.size.w - 14, y = frame.origin.y + 64;
+      graphics_draw_line(ctx, GPoint(left, y), GPoint(right, y));
+      graphics_fill_circle(ctx, GPoint(left + (int64_t)(right - left) * fraction / TRIG_MAX_ANGLE, y), 7);
+      prv_draw_text(ctx, label, body_font, GRect(left, frame.origin.y + 28, right-left, 24), GTextAlignmentCenter, foreground, GTextOverflowModeTrailingEllipsis);
+      char low[16], high[16]; snprintf(low, sizeof(low), "%ld", (long)min); snprintf(high, sizeof(high), "%ld", (long)max);
+      prv_draw_text(ctx, low, small_font, GRect(left, frame.origin.y + 78, (right-left)/2, 20), GTextAlignmentLeft, foreground, GTextOverflowModeTrailingEllipsis);
+      prv_draw_text(ctx, high, small_font, GRect(left+(right-left)/2, frame.origin.y + 78, (right-left)/2, 20), GTextAlignmentRight, foreground, GTextOverflowModeTrailingEllipsis);
+    } else {
+      GPoint center = GPoint(frame.origin.x + frame.size.w / 2, frame.origin.y + 80);
+      graphics_draw_circle(ctx, center, 43);
+      graphics_draw_line(ctx, center, GPoint(center.x + (int64_t)sin_lookup(fraction) * 37 / TRIG_MAX_RATIO,
+                           center.y - (int64_t)cos_lookup(fraction) * 37 / TRIG_MAX_RATIO));
+      prv_draw_text(ctx, label, body_font, GRect(frame.origin.x + 8, frame.origin.y + 123, frame.size.w - 16, 24), GTextAlignmentCenter, foreground, GTextOverflowModeTrailingEllipsis);
+    }
+    graphics_context_set_stroke_width(ctx, 1);
+    return;
+  }
+
   if (prv_todo_row(element)) {
     int16_t cx = frame.origin.x + 13, cy = frame.origin.y + frame.size.h / 2;
     graphics_context_set_stroke_color(ctx, foreground);
@@ -745,7 +792,7 @@ static void prv_draw_dashboard(AgentUi *ui, GContext *ctx) {
       for (uint8_t j = 0; j < ui->element_count; ++j) {
         AgentUiElement *item = &ui->elements[j];
         if (item->used && (strncmp(item->id, "schedule-", 9) == 0 ||
-            strcmp(item->id, "dashboard-stopwatch") == 0)) { items[count++] = item; }
+            strcmp(item->id, "dashboard-stopwatch") == 0 || strcmp(item->action, "local.job.open") == 0)) { items[count++] = item; }
       }
       // No category placeholders: only actual records occupy the tile. The
       // complete list remains one Select/tap away when there are more than four.
@@ -788,7 +835,7 @@ static void prv_draw_dashboard(AgentUi *ui, GContext *ctx) {
           graphics_draw_line(ctx, center, GPoint(cx, center.y - 3));
           graphics_draw_line(ctx, GPoint(cx - 2, center.y - 6), GPoint(cx + 2, center.y - 6));
         } else {
-          prv_dashboard_icon(ui, ctx, strcmp(items[item]->id, "dashboard-stopwatch") == 0 ? 8 : 9,
+          prv_dashboard_icon(ui, ctx, strcmp(kind, "job") == 0 ? 2 : strcmp(items[item]->id, "dashboard-stopwatch") == 0 ? 8 : 9,
                              cx - 10, cy + (diameter - 20) / 2);
         }
         char label[16];
@@ -829,14 +876,30 @@ static void prv_content_update_proc(Layer *layer, GContext *ctx) {
   bool dashboard = strcmp(ui->screen_id, "dashboard") == 0;
   graphics_context_set_fill_color(ctx, dashboard ? GColorBlack : GColorWhite);
   graphics_fill_rect(ctx, layer_get_bounds(layer), 0, GCornerNone);
-  if (dashboard) { prv_draw_dashboard(ui, ctx); }
+  if (dashboard) {
+    prv_draw_dashboard(ui, ctx);
+    if (ui->request_frame) {
+      GRect from = prv_dashboard_frame(ui, "dictate"), to = prv_dashboard_frame(ui, "dashboard-summary");
+      int t = ui->request_frame;
+      int x = from.origin.x + from.size.w/2 + ((to.origin.x + to.size.w/2) - (from.origin.x + from.size.w/2))*t/20;
+      int y = from.origin.y + from.size.h/2 + ((to.origin.y + to.size.h/2) - (from.origin.y + from.size.h/2))*t/20;
+      graphics_context_set_fill_color(ctx, GColorBlue);
+      graphics_fill_circle(ctx, GPoint(x,y), 12 - t/4);
+      graphics_context_set_stroke_color(ctx, GColorWhite);
+      graphics_draw_circle(ctx, GPoint(x,y), 13 - t/4);
+    }
+  }
 
   if (ui->title[0]) {
     int16_t header_inset = prv_header_inset();
     prv_draw_text(ctx, ui->title, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
                   GRect(header_inset, 1, ui->viewport_width - header_inset * 2, 31),
                   GTextAlignmentLeft, GColorBlack, GTextOverflowModeTrailingEllipsis);
-    if (!ui->complete || ui->loading) {
+    if (ui->loading && strcmp(ui->screen_id, "job-status") == 0) {
+      graphics_context_set_fill_color(ctx, GColorBlack);
+      int angle = ui->spinner_frame * TRIG_MAX_ANGLE / 12;
+      graphics_fill_radial(ctx, GRect(ui->viewport_width - header_inset - 22, 8, 16, 16), GOvalScaleModeFitCircle, 3, angle, angle + TRIG_MAX_ANGLE / 3);
+    } else if (!ui->complete || ui->loading) {
       prv_draw_text(ctx, "...", fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
                     GRect(ui->viewport_width - header_inset - 28, 5, 26, 22),
                     GTextAlignmentRight, GColorBlack, GTextOverflowModeTrailingEllipsis);
@@ -1134,11 +1197,20 @@ static void prv_open_number(AgentUi *ui, AgentUiElement *element) {
 static void prv_activate_element(AgentUi *ui, AgentUiElement *element, const char *input) {
   char field_type[20];
   if (!ui || !element || !prv_is_selectable(element)) { return; }
+  if (strcmp(element->action, "local.submit") == 0) {
+    char target[32]; agent_protocol_meta_get(element->meta, "control", target, sizeof(target));
+    AgentUiElement *control = prv_find_element(ui, target);
+    if (control && prv_control_kind(control) && !(control->flags & AGENT_UI_FLAG_DISABLED)) {
+      control->flags |= AGENT_UI_FLAG_DISABLED;
+      prv_emit(ui, "field", control, control->action, control->value);
+    }
+    return;
+  }
   ui->selected_element = prv_index_of(ui, element);
   layer_mark_dirty(ui->content_layer);
   if (element->kind == AgentUiElementField &&
       agent_protocol_meta_get(element->meta, "type", field_type, sizeof(field_type)) &&
-      strcmp(field_type, "number") == 0) {
+      (strcmp(field_type, "number") == 0 || prv_control_kind(element))) {
     prv_open_number(ui, element);
     return;
   }
@@ -1361,6 +1433,32 @@ static void prv_touch_hold(void *context) {
   }
 }
 
+static void prv_control_touch(AgentUi *ui, int x, int y, bool first) {
+  AgentUiElement *e = &ui->elements[ui->touch_control];
+  int32_t min = agent_protocol_meta_get_int(e->meta, "min", 0), max = agent_protocol_meta_get_int(e->meta, "max", 100);
+  int32_t step = agent_protocol_meta_get_int(e->meta, "step", 1), value = min;
+  if (min >= max || min < 0 || max > 604800) { return; }
+  if (prv_control_kind(e) == 1) {
+    value = range_slider(x - e->frame.origin.x - 14, e->frame.size.w - 28, min, max, step);
+  } else {
+    int dx = x - (e->frame.origin.x + e->frame.size.w / 2);
+    int dy = y - (e->frame.origin.y + 80);
+    if (first) { agent_protocol_parse_int32(e->value, NULL, &value); ui->touch_raw_value = (int64_t)value * TRIG_MAX_ANGLE; }
+    if (dx * dx + dy * dy < 100) { ui->touch_angle = -1; return; }
+    int32_t angle = atan2_lookup(dx, -dy);
+    if (angle < 0) { angle += TRIG_MAX_ANGLE; }
+    if (!first && ui->touch_angle >= 0) { ui->touch_raw_value += (int64_t)range_angle_delta(angle, ui->touch_angle) * (max - min); }
+    ui->touch_angle = angle;
+    ui->touch_raw_value = AGENT_MAX((int64_t)min * TRIG_MAX_ANGLE, AGENT_MIN((int64_t)max * TRIG_MAX_ANGLE, ui->touch_raw_value));
+    value = range_quantize(ui->touch_raw_value / TRIG_MAX_ANGLE, min, max, step);
+  }
+  snprintf(e->value, sizeof(e->value), "%ld", (long)value);
+  layer_mark_dirty(ui->content_layer);
+}
+static int prv_content_y(AgentUi *ui, int y) {
+  return y - layer_get_frame(scroll_layer_get_layer(ui->scroll_layer)).origin.y - scroll_layer_get_content_offset(ui->scroll_layer).y;
+}
+
 static void prv_touch_handler(const TouchEvent *event, void *context) {
   AgentUi *ui = context;
   int dx;
@@ -1370,6 +1468,7 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
     case TouchEvent_Touchdown:
       prv_cancel_hold(ui);
       ui->touch_consumed = false;
+      ui->touch_control = -1;
       ui->touch_horizontal = ui->touch_vertical = false;
       ui->touch_was_menu = ui->menu_count != 0;
       ui->touch_last_x = event->x;
@@ -1380,6 +1479,10 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
       ui->touch_last_y = event->y;
       if (!ui->menu_count) {
         AgentUiElement *hit = prv_hit_test(ui, event->x, event->y);
+        if (prv_control_kind(hit) && !(hit->flags & AGENT_UI_FLAG_DISABLED) && prv_content_y(ui, event->y) >= hit->frame.origin.y + 28) {
+          ui->touch_control = prv_index_of(ui, hit); ui->selected_element = ui->touch_control;
+          prv_control_touch(ui, event->x, prv_content_y(ui, event->y), true);
+        }
         ui->touch_row = prv_todo_row(hit);
         if (ui->touch_row) { ui->selected_element = prv_index_of(ui, hit); }
         if (hit && strcmp(hit->id, "dictate") == 0 && strcmp(ui->screen_id, "dashboard") == 0) {
@@ -1389,6 +1492,7 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
       break;
     case TouchEvent_PositionUpdate:
       if (!ui->touch_down || ui->touch_consumed || ui->touch_was_menu) { break; }
+      if (ui->touch_control >= 0) { prv_control_touch(ui, event->x, prv_content_y(ui, event->y), false); break; }
       if (prv_abs(event->x - ui->touch_down_x) > AGENT_UI_TOUCH_TAP_MAX ||
           prv_abs(event->y - ui->touch_down_y) > AGENT_UI_TOUCH_TAP_MAX) {
         ui->touch_dragged = true;
@@ -1413,6 +1517,7 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
       if (!ui->touch_down) { break; }
       ui->touch_down = false;
       prv_cancel_hold(ui);
+      if (ui->touch_control >= 0) { ui->touch_control = -1; break; }
       if (ui->touch_consumed) { ui->touch_consumed = false; break; }
       if (ui->touch_was_menu) {
         GPoint tap = GPoint(event->x, event->y);
@@ -1578,6 +1683,7 @@ void agent_ui_destroy(AgentUi *ui) {
 #if defined(PBL_TOUCH)
   if (ui->touch_subscribed) { touch_service_unsubscribe(); }
 #endif
+  if (ui->activity_timer) { app_timer_cancel(ui->activity_timer); }
   if (ui->number_window) { number_window_destroy(ui->number_window); }
   if (ui->window) { window_destroy(ui->window); }
   for (int i = 0; i < 12; ++i) { if (ui->dashboard_icons[i]) { gbitmap_destroy(ui->dashboard_icons[i]); } }
@@ -1741,12 +1847,31 @@ static void prv_show_error(AgentUi *ui, const char *reason) {
   agent_ui_end(ui);
 }
 
+static void prv_activity_tick(void *context) {
+  AgentUi *ui = context;
+  ui->activity_timer = NULL;
+  if (ui->request_frame) {
+    if (strcmp(ui->screen_id,"dashboard") != 0 || ++ui->request_frame > 20) { ui->request_frame = 0; }
+  }
+  ui->spinner_frame = (ui->spinner_frame + 1) % 12;
+  if (ui->content_layer) { layer_mark_dirty(ui->content_layer); }
+  if (ui->request_frame || (ui->loading && strcmp(ui->screen_id,"job-status") == 0)) {
+    ui->activity_timer = app_timer_register(ui->request_frame ? 30 : 80, prv_activity_tick, ui);
+  }
+}
+void agent_ui_animate_request(AgentUi *ui) {
+  if (!ui) { return; }
+  ui->request_frame = 1;
+  if (!ui->activity_timer) { ui->activity_timer = app_timer_register(30, prv_activity_tick, ui); }
+}
+
 void agent_ui_set_status(AgentUi *ui, const char *status, bool is_error, bool loading) {
   if (!ui) { return; }
   if (is_error) { prv_show_error(ui, status); return; }
   agent_protocol_copy(ui->status, sizeof(ui->status), status);
   ui->error = is_error;
   ui->loading = loading;
+  if (loading && strcmp(ui->screen_id,"job-status") == 0 && !ui->activity_timer) { ui->activity_timer = app_timer_register(80, prv_activity_tick, ui); }
   if (is_error) { ui->complete = true; }
   prv_refresh(ui);
 }

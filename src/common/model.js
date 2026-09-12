@@ -116,6 +116,7 @@ ScreenModel.prototype.accept = function(node) {
       layout: node.attrs.layout,
       attrs: cloneAttrs(node.attrs)
     };
+    this.needsAnswer = node.attrs.layout === "choice" || node.attrs.layout === "form";
     this.elements = Object.create(null);
     this.elements[node.attrs.id] = node;
     this._emit("begin", node);
@@ -141,6 +142,16 @@ ScreenModel.prototype.accept = function(node) {
       this._fail("patch target does not exist", node);
       return;
     }
+    var existing = this.elements[target];
+    var interactive = existing.attrs.action === "local.run" || existing.attrs.type === "slider" || existing.attrs.type === "dial";
+    if (interactive || node.attrs.action === "local.run" || node.attrs.type === "slider" || node.attrs.type === "dial") {
+      if (!Object.keys(node.attrs).every(function(key) { return ["target", "value", "title"].indexOf(key) >= 0; })) {
+        this._fail("Interactive definitions require a new screen", node); return;
+      }
+      if (node.attrs.value != null && (!/^\d+$/.test(node.attrs.value) || +node.attrs.value < +(existing.attrs.min || 1) || +node.attrs.value > +(existing.attrs.max || 604800))) {
+        this._fail("Invalid control value", node); return;
+      }
+    }
     attrs = cloneAttrs(node.attrs);
     delete attrs.target;
     Object.keys(attrs).forEach(function(key) {
@@ -164,6 +175,15 @@ ScreenModel.prototype.accept = function(node) {
   }
   if (node.kind === "done") {
     if (this.activeScreen) {
+      var ids = Object.keys(this.elements);
+      var hasAnswer = ids.some(function(key) { return this.elements[key].attrs.action === "local.answer"; }, this);
+      if (this.needsAnswer && !hasAnswer) {
+        if (ids.length >= 49) { this._fail("Form must leave room for Dictate answer", node); return; }
+        var answerId = "_dictate_answer";
+        while (this.elements[answerId]) { answerId += "_"; }
+        this.accept({ kind: "action", depth: 1, attrs: { id: answerId, title: "Dictate answer", action: "local.answer" },
+          parent: this.elements[this.activeScreen.id] });
+      }
       this._emit("end", node);
     }
     return;
@@ -179,6 +199,26 @@ ScreenModel.prototype.accept = function(node) {
   if (!this.activeScreen) {
     this._fail(node.kind + " appears before a screen", node);
     return;
+  }
+  if (node.kind === "field" || node.kind === "choice") { this.needsAnswer = true; }
+  if (node.kind === "field" && (node.attrs.type === "slider" || node.attrs.type === "dial")) {
+    var a = node.attrs;
+    if (![a.min, a.max, a.step, a.value].every(function(v) { return /^-?\d+$/.test(String(v)); }) ||
+        +a.min < 0 || +a.max > 604800 || +a.min >= +a.max || +a.step < 1 || +a.step > +a.max - +a.min ||
+        +a.value < +a.min || +a.value > +a.max) { this._fail("Invalid control range", node); return; }
+  }
+  if (node.attrs.action === "local.run") {
+    var local = node.attrs;
+    if (["timer", "reminder", "alarm"].indexOf(local.capability) < 0 || !local.task ||
+        !(local.seconds === "$value" && node.kind === "field") && !(/^[0-9]+$/.test(local.seconds) && +local.seconds >= 1 && +local.seconds <= 604800)) {
+      this._fail("Invalid local action", node); return;
+    }
+  }
+  if (node.attrs.action === "local.submit") {
+    var control = this.elements[node.attrs.control];
+    if (!control || control.kind !== "field" || ["slider", "dial"].indexOf(control.attrs.type) < 0) {
+      this._fail("Submit requires an existing slider or dial", node); return;
+    }
   }
   id = this._idFor(node);
   if (this.elements[id]) {

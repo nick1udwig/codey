@@ -144,6 +144,15 @@ test("PAM parser lifecycle rejects writes after finish", function() {
   assert.throws(function() { parser.push("done\n"); }, /cannot push after finish/);
 });
 
+test("forms add one dictated fallback and preserve deferred local actions", function() {
+  var ops = [], m = new Model.ScreenModel({ onOperation: function(op) { ops.push(op); } });
+  parse('pam version=1\nscreen id=q layout=choice\n  choice id=day title="Day" action=local.run capability=reminder seconds=86400 task="Card"\ndone\n').forEach(function(n) { m.accept(n); });
+  assert.strictEqual(ops.filter(function(op) { return op.type === "capability"; }).length, 0);
+  assert.strictEqual(ops.filter(function(op) { return op.node.attrs.action === "local.answer"; }).length, 1);
+  assert.strictEqual(m.elements.day.attrs.seconds, "86400");
+  assert.throws(function() { var bad = new Model.ScreenModel(); parse('pam version=1\nscreen id=q layout=form\n  field id=x type=dial min=10 max=1 step=1 value=2\ndone\n').forEach(function(n) { bad.accept(n); }); }, /Invalid control/);
+});
+
 test("screen model supports every public layout", function() {
   Object.keys(Model.LAYOUTS).forEach(function(layout) {
     var operations = [];
@@ -151,7 +160,7 @@ test("screen model supports every public layout", function() {
     var nodes = parse("pam version=1\nscreen id=s layout=" + layout + "\n  text value=Hello\ndone\n");
     nodes.forEach(function(node) { model.accept(node); });
     assert.deepStrictEqual(operations.map(function(op) { return op.type; }),
-                           ["header", "begin", "node", "end"]);
+                           (layout === "form" || layout === "choice") ? ["header", "begin", "node", "node", "end"] : ["header", "begin", "node", "end"]);
     assert.ok(operations[2].node.attrs.id.indexOf("_text") === 0);
   });
 });
@@ -877,6 +886,16 @@ function loadPkjsHarness(options) {
   };
 }
 
+function jobReply(h, xhr, source, status, open) {
+  var entries = JSON.parse(h.storageData["pebble-agent.jobs.v1"]);
+  var job = entries[entries.length - 1];
+  xhr.status = 200;
+  xhr.responseText = JSON.stringify({id:job.id,status:status || "done",result:source,error:status === "failed" ? "Request failed: invalid agent response" : ""});
+  xhr.onload();
+  if (open !== false) { h.handlers.appmessage({payload:{0:"capability_event",2:"job",4:job.id,9:"check"}}); }
+  return job.id;
+}
+
 test("PebbleKit bridge renders onboarding and round-trips configuration", function() {
   var harness = loadPkjsHarness();
   try {
@@ -901,7 +920,7 @@ test("PebbleKit bridge renders onboarding and round-trips configuration", functi
   }
 });
 
-test("new-session settings cancel the old response and persist a fresh conversation", function() {
+test("new-session settings preserve old jobs and persist a fresh conversation", function() {
   var requests = [], aborted = 0;
   function FakeXHR() { this.responseText = ""; requests.push(this); }
   FakeXHR.prototype.open = function() {};
@@ -921,16 +940,16 @@ test("new-session settings cancel the old response and persist a fresh conversat
     query();
     assert.strictEqual(parse(requests[0].body)[1].attrs.session, "old-session");
     requests[0].responseText = "pam version=1\nscreen id=old layout=card\n";
-    requests[0].readyState = 3; requests[0].onreadystatechange();
+
     h.handlers.webviewclosed({ response: encodeURIComponent(JSON.stringify(Object.assign({}, config, { newSession: true }))) });
     fresh = storage["pebble-agent.session.v1"];
     assert.notStrictEqual(fresh, "old-session");
-    assert.strictEqual(aborted, 1);
+    assert.strictEqual(aborted, 0);
     assert.strictEqual(JSON.parse(storage[Settings.STORAGE_KEY]).newSession, undefined);
     assert.strictEqual(JSON.parse(storage[Settings.STORAGE_KEY]).answerVibrate, false);
     var sent = h.sent.length;
-    requests[0].status = 200; requests[0].readyState = 4; requests[0].responseText += "done\n"; requests[0].onreadystatechange();
-    assert.strictEqual(h.sent.length, sent);
+    jobReply(h, requests[0], "pam version=1\nscreen id=old layout=card\ndone\n", "done", false);
+    assert.ok(h.sent.slice(sent).every(function(m) { return m[0] === "job"; }));
     query();
     var nodes = parse(requests[1].body);
     assert.strictEqual(nodes[1].attrs.session, fresh);
@@ -961,8 +980,8 @@ test("New Chat resets the session before acknowledging dictation and carries no 
     h.handlers.appmessage({ payload: { 0: "input", 1: 91, 2: "new-chat", 9: "local.new-chat" } });
     var fresh = storage["pebble-agent.session.v1"];
     assert.notStrictEqual(fresh, "old-session");
-    assert.strictEqual(aborted, 1);
-    assert.strictEqual(requests[0].aborted, true);
+    assert.strictEqual(aborted, 0);
+    assert.strictEqual(requests[0].aborted, undefined);
     var control = h.sent.filter(function(message) { return message[Watch.Key.messageType] === "control"; })[0];
     assert.ok(control);
     assert.strictEqual(control[Watch.Key.operation], "dictate");
@@ -999,103 +1018,72 @@ test("Weather dashboard action opens the built-in local weather capability witho
   } finally { h.cleanup(); }
 });
 
-test("PebbleKit bridge carries watch input through HTTP streaming to render operations", function() {
-  var xhr;
-  function FakeXHR() { this.headers = {}; this.responseText = ""; xhr = this; }
-  FakeXHR.prototype.open = function(method, url) { this.method = method; this.url = url; };
-  FakeXHR.prototype.setRequestHeader = function(name, value) { this.headers[name] = value; };
-  FakeXHR.prototype.send = function(body) { this.body = body; };
-  FakeXHR.prototype.abort = function() {};
-  var storage = {};
-  storage[Settings.STORAGE_KEY] = JSON.stringify({
-    endpoint: "https://agent.test/respond", token: "secret", units: "metric",
-    locationLabel: "Here", timeoutSeconds: 30
-  });
-  var harness = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
+test("Agent jobs notify without replacing the dashboard, render on tap, and acknowledge watch delivery", function() {
+  var requests=[];
+  function XHR(){requests.push(this);} XHR.prototype.open=function(m,u){this.method=m;this.url=u;};
+  XHR.prototype.setRequestHeader=function(){}; XHR.prototype.send=function(body){this.body=body;};
+  var storage={};storage[Settings.STORAGE_KEY]=JSON.stringify({endpoint:"https://agent.test/v1/agent"});
+  var h=loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
   try {
-    harness.handlers.appmessage({ payload: {
-      0: "input", 2: "dictation", 4: "", 8: "show choices", 9: ""
-    } });
-    assert.strictEqual(xhr.method, "POST");
-    assert.strictEqual(xhr.url, "https://agent.test/respond");
-    assert.strictEqual(xhr.headers.Authorization, "Bearer secret");
-    var requestNodes = parse(xhr.body);
-    assert.strictEqual(requestNodes[2].attrs.kind, "dictation");
-    assert.strictEqual(requestNodes[2].attrs.text, "show choices");
-    assert.match(requestNodes[4].attrs.now, /^\d+$/);
-    assert.match(requestNodes[4].attrs.utc_offset_minutes, /^-?\d+$/);
-    xhr.responseText = "pam version=1\nscreen id=answer layout=choice title=Choose\n" +
-      "  choice id=a title=Alpha action=choose.a\n";
-    xhr.readyState = 3;
-    xhr.onreadystatechange();
-    assert.ok(harness.sent.some(function(message) {
-      return message[Watch.Key.operation] === "add" && message[Watch.Key.elementId] === "a";
-    }));
-    xhr.responseText += "done\n";
-    assert.ok(!harness.sent.some(function(message) { return message[Watch.Key.messageType] === "answer" && message[Watch.Key.operation] === "complete"; }));
-    xhr.status = 200;
-    xhr.readyState = 4;
-    xhr.onreadystatechange();
-    var operations = harness.sent.map(function(message) { return message[Watch.Key.operation]; });
-    assert.ok(operations.indexOf("loading") >= 0);
-    assert.ok(operations.indexOf("begin") >= 0);
-    assert.ok(operations.indexOf("end") >= 0);
-    assert.ok(operations.indexOf("idle") >= 0);
-    var arrived = harness.sent.filter(function(message) { return message[Watch.Key.messageType] === "answer" && message[Watch.Key.operation] === "complete"; });
-    assert.strictEqual(arrived.length, 1);
-    assert.strictEqual(arrived[0][Watch.Key.flags], 1);
-  } finally {
-    harness.cleanup();
-  }
+    h.handlers.appmessage({payload:{0:"input",2:"dictation",8:"show choices"}});
+    assert.match(requests[0].url,/\/v1\/jobs\/[a-f0-9]{30}$/);
+    assert.ok(!h.sent.some(function(m){return m[0]==="render"||m[2]==="loading";}));
+    var id=jobReply(h,requests[0],'pam version=1\nscreen id=answer layout=choice title=Choose\n  choice id=a title=Alpha action=choose.a\ndone\n',"done",false);
+    assert.ok(h.sent.some(function(m){return m[0]==="job"&&m[7]==="done"&&m[11]===1;}));
+    assert.ok(!h.sent.some(function(m){return m[0]==="render";}));
+    h.handlers.appmessage({payload:{0:"capability_event",2:"job",4:id,9:"check"}});
+    assert.ok(h.sent.some(function(m){return m[2]==="add"&&m[4]==="a";}));
+    assert.ok(h.sent.some(function(m){return m[0]==="job-result";}));
+    assert.strictEqual(requests.length,1,"no acknowledgement before watch confirms delivery");
+    h.handlers.appmessage({payload:{0:"capability_event",2:"job",4:id,9:"retrieved"}});
+    assert.ok(requests[1].url.endsWith("/ack"));
+    assert.ok(JSON.parse(storage["pebble-agent.jobs.v1"])[0].result);
+  } finally {h.cleanup();}
 });
 
-test("server failures before or after a screen clear loading and retain the failure reason", function() {
-  [false, true].forEach(function(partial) {
-    var xhr;
-    function FakeXHR() { xhr = this; this.responseText = ""; }
-    FakeXHR.prototype.open = FakeXHR.prototype.setRequestHeader = FakeXHR.prototype.send = FakeXHR.prototype.abort = function() {};
-    var storage = {};
-    storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test" });
-    var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
-    try {
-      h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "find local files" } });
-      var begin = h.sent.find(function(m) { return m[Watch.Key.messageType] === "answer" && m[Watch.Key.operation] === "begin"; });
-      assert.ok(begin);
-      xhr.responseText = "pam version=1\n" + (partial ? "screen id=a layout=card\n" : "") +
-        'error message="Request failed: invalid agent response"\n';
-      xhr.status = 200; xhr.readyState = 4; xhr.onreadystatechange();
-      var errors = h.sent.filter(function(m) { return m[Watch.Key.operation] === "error"; });
-      assert.strictEqual(errors.length, 1);
-      assert.strictEqual(errors[0][Watch.Key.requestId], begin[Watch.Key.requestId]);
-      assert.strictEqual(errors[0][Watch.Key.value], "Request failed: invalid agent response");
-      assert.ok(!h.sent.some(function(m) { return m[Watch.Key.operation] === "idle" || m[Watch.Key.operation] === "complete"; }));
-      // A subsequent response succeeds; failure does not strand the pipeline.
-      h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "try again" } });
-      xhr.responseText = "pam version=1\nscreen id=b layout=card\ndone\n";
-      xhr.status = 200; xhr.readyState = 4; xhr.onreadystatechange();
-      assert.ok(h.sent.some(function(m) { return m[Watch.Key.operation] === "idle"; }));
-    } finally { h.cleanup(); }
-  });
+test("Notifications refresh updates rows without opening results", function() {
+  var requests=[];
+  function XHR(){requests.push(this);} XHR.prototype.open=function(method,url){this.url=url;};
+  XHR.prototype.setRequestHeader=function(){}; XHR.prototype.send=function(){};
+  var a="111111111111111111111111111111",b="222222222222222222222222222222";
+  var storage={};storage[Settings.STORAGE_KEY]=JSON.stringify({endpoint:"https://agent.test"});
+  storage["pebble-agent.jobs.v1"]=JSON.stringify([a,b].map(function(id){return {id:id,title:"Request",status:"working",accepted:true,endpoint:"https://agent.test/v1/jobs/"};}));
+  var h=loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
+  try {
+    h.handlers.appmessage({payload:{0:"capability_event",2:"job",9:"refresh"}});
+    assert.strictEqual(requests.length,2);
+    assert.deepStrictEqual(h.sent.map(function(m){return m[2];}),["checking","checking"]);
+    requests[0].status=200;requests[0].responseText=JSON.stringify({id:a,status:"done",result:"pam version=1\nscreen id=a layout=card\ndone\n"});requests[0].onload();
+    requests[1].ontimeout();
+    assert.ok(h.sent.every(function(m){return m[0]==="job"&&m[11]===0;}));
+    assert.ok(h.sent.some(function(m){return m[4]===a&&m[7]==="done";}));
+    assert.ok(h.sent.some(function(m){return m[4]===b&&/timed out/.test(m[8]);}));
+    assert.strictEqual(requests.length,2);
+  }finally{h.cleanup();}
 });
 
-test("HTTP zero explains connection failure and ignores non-PAM server error pages", function() {
-  [0, 401, 503].forEach(function(status) {
-    var xhr;
-    function FakeXHR() { xhr = this; this.responseText = ""; }
-    FakeXHR.prototype.open = FakeXHR.prototype.setRequestHeader = FakeXHR.prototype.send = FakeXHR.prototype.abort = function() {};
-    var storage = {};
-    storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test" });
-    var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
-    try {
-      h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "find files" } });
-      xhr.responseText = status ? "<html>service unavailable</html>" : "";
-      xhr.status = status; xhr.readyState = 4; xhr.onreadystatechange();
-      var errors = h.sent.filter(function(m) { return m[Watch.Key.operation] === "error"; });
-      assert.strictEqual(errors.length, 1);
-      assert.ok(errors[0][Watch.Key.value].indexOf(status === 0 ? "No response from server" : status === 401 ? "Check the token" : "HTTP 503") >= 0);
-      assert.ok(!h.sent.some(function(m) { return m[Watch.Key.operation] === "complete"; }));
-    } finally { h.cleanup(); }
-  });
+test("Failed jobs retain the agent error in notifications", function() {
+  var xhr;function XHR(){xhr=this;}XHR.prototype.open=XHR.prototype.setRequestHeader=XHR.prototype.send=function(){};
+  var storage={};storage[Settings.STORAGE_KEY]=JSON.stringify({endpoint:"https://agent.test"});
+  var h=loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
+  try {
+    h.handlers.appmessage({payload:{0:"input",2:"dictation",8:"find files"}});
+    jobReply(h,xhr,"","failed");
+    assert.ok(h.sent.some(function(m){return m[0]==="job"&&m[7]==="failed"&&m[8]==="Request failed: invalid agent response";}));
+    assert.ok(!h.sent.some(function(m){return m[0]==="render";}));
+  }finally{h.cleanup();}
+});
+
+test("Job submission timeout preserves an unconfirmed ID and a useful error", function() {
+  var xhr;function XHR(){xhr=this;}XHR.prototype.open=XHR.prototype.setRequestHeader=XHR.prototype.send=function(){};
+  var storage={};storage[Settings.STORAGE_KEY]=JSON.stringify({endpoint:"https://agent.test"});
+  var h=loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
+  try{
+    h.handlers.appmessage({payload:{0:"input",2:"dictation",8:"find files"}});
+    xhr.ontimeout();
+    var j=JSON.parse(storage["pebble-agent.jobs.v1"])[0];assert.strictEqual(j.status,"unconfirmed");assert.match(j.error,/timed out/);
+    assert.ok(h.sent.some(function(m){return m[0]==="job"&&m[7]==="unconfirmed";}));
+  }finally{h.cleanup();}
 });
 
 test("todo phrases accept creation verbs and preserve the complete task", function() {
@@ -1134,33 +1122,17 @@ test("todo voice commands preserve item text and use the local capability", func
   assert.ok(Capabilities.installBuiltins(new Capabilities.CapabilityRegistry()).has("todo"));
 });
 
-test("answer completion respects settings and excludes invalid, failed, and superseded responses", function() {
-  ["disabled", "invalid", "error", "network", "stale"].forEach(function(scenario) {
-    var requests = [];
-    function FakeXHR() { this.responseText = ""; requests.push(this); }
-    FakeXHR.prototype.open = function() {};
-    FakeXHR.prototype.setRequestHeader = function() {};
-    FakeXHR.prototype.send = function() {};
-    FakeXHR.prototype.abort = function() {};
-    var storage = {};
-    storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test", answerVibrate: scenario !== "disabled" });
-    var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
-    try {
-      h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "look up the app version" } });
-      var xhr = requests[0];
-      if (scenario === "stale") {
-        h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "look up another app" } });
-      }
-      xhr.responseText = scenario === "invalid" ? "pam version=1\nscreen id=a layout=card\ninvalid\n" :
-        scenario === "error" ? "pam version=1\nscreen id=a layout=card\nerror message=failed\n" :
-        "pam version=1\nscreen id=a layout=card\ndone\n";
-      xhr.status = scenario === "network" ? 500 : 200;
-      xhr.readyState = 4;
-      xhr.onreadystatechange();
-      var arrived = h.sent.filter(function(m) { return m[Watch.Key.messageType] === "answer" && m[Watch.Key.operation] === "complete"; });
-      assert.strictEqual(arrived.length, scenario === "disabled" ? 1 : 0, scenario);
-      if (arrived.length) { assert.strictEqual(arrived[0][Watch.Key.flags], 0); }
-    } finally { h.cleanup(); }
+test("Background completion honors vibration settings and keeps independent jobs alive", function() {
+  [true,false].forEach(function(enabled){
+    var requests=[];function XHR(){requests.push(this);}XHR.prototype.open=XHR.prototype.setRequestHeader=XHR.prototype.send=function(){};
+    var storage={};storage[Settings.STORAGE_KEY]=JSON.stringify({endpoint:"https://agent.test",answerVibrate:enabled});
+    var h=loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
+    try{
+      h.handlers.appmessage({payload:{0:"input",2:"dictation",8:"first request"}});
+      jobReply(h,requests[0],"pam version=1\nscreen id=a layout=card\ndone\n","done",false);
+      var arrived=h.sent.filter(function(m){return m[0]==="job"&&m[7]==="done";});
+      assert.strictEqual(arrived.length,1);assert.strictEqual(arrived[0][11],enabled?1:0);
+    }finally{h.cleanup();}
   });
 });
 
@@ -1175,11 +1147,11 @@ test("answer arrival waits for phone weather and suppresses failed weather", fun
     var storage = {};
     storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test" });
     var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
-    function completions() { return h.sent.filter(function(m) { return m[Watch.Key.messageType] === "answer" && m[Watch.Key.operation] === "complete"; }); }
+    function completions() { return h.sent.filter(function(m) { return m[Watch.Key.messageType] === "job-result"; }); }
     try {
       h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "look up Portland conditions" } });
       requests[0].responseText = 'pam version=1\ncapability type=weather command=current latitude=45.5 longitude=-122.6\ndone\n';
-      requests[0].status = 200; requests[0].readyState = 4; requests[0].onreadystatechange();
+      jobReply(h, requests[0], requests[0].responseText);
       assert.strictEqual(requests.length, 2);
       assert.strictEqual(completions().length, 0);
       if (success) {
@@ -1209,13 +1181,18 @@ test("Capability delivery IDs distinguish identical model commands and survive b
       xhr.responseText = "pam version=1\n" +
         "capability type=timer command=start id=timer duration=10s\n" +
         "capability type=timer command=start id=timer duration=60s\n";
-      xhr.status = 200; xhr.readyState = 4; xhr.onreadystatechange();
+      jobReply(harness, xhr, xhr.responseText);
       var messages = harness.sent.filter(function(m) { return m[Watch.Key.messageType] === "capability"; });
       assert.strictEqual(messages.length, 2);
       assert.ok(messages[0][Watch.Key.index] > lastId);
       assert.ok(messages[1][Watch.Key.index] > messages[0][Watch.Key.index]);
       assert.strictEqual(messages[0][Watch.Key.elementId], "timer");
       assert.strictEqual(messages[1][Watch.Key.elementId], "timer");
+      var savedJob = JSON.parse(storage["pebble-agent.jobs.v1"]).slice(-1)[0];
+      harness.handlers.appmessage({payload:{0:"capability_event",2:"job",4:savedJob.id,9:"check"}});
+      var replay = harness.sent.filter(function(m){return m[Watch.Key.messageType] === "capability";}).slice(-2);
+      assert.strictEqual(replay[0][Watch.Key.index], messages[0][Watch.Key.index]);
+      assert.strictEqual(replay[1][Watch.Key.index], messages[1][Watch.Key.index]);
       lastId = messages[1][Watch.Key.index];
     } finally { harness.cleanup(); }
   }
@@ -1237,7 +1214,7 @@ test("background weather updates only the tile and caches the forecast", functio
     requests[0].responseText = JSON.stringify({ current: { temperature_2m: 12, weather_code: 0, is_day: 0 },
       daily: { time: ["2026-09-12"], temperature_2m_max: [18], temperature_2m_min: [8], weather_code: [0] } });
     requests[0].onload();
-    assert.ok(h.sent.every(function(m) { return m[0] === "bridge"; }));
+    assert.ok(h.sent.every(function(m) { return m[0] === "bridge" || (m[0] === "job" && m[2] === "reset"); }));
     var last = h.sent[h.sent.length - 1];
     assert.strictEqual(last[10], "icon=moon");
     assert.strictEqual(last[7], "L 8 H 18");
@@ -1245,8 +1222,27 @@ test("background weather updates only the tile and caches the forecast", functio
     h.handlers.appmessage({ payload: { 0: "capability_event", 2: "weather", 9: "refresh" } });
     assert.strictEqual(requests.length, 2);
     requests[1].ontimeout();
-    assert.ok(h.sent.every(function(m) { return m[0] === "bridge"; }));
+    assert.ok(h.sent.every(function(m) { return m[0] === "bridge" || (m[0] === "job" && m[2] === "reset"); }));
   } finally { h.cleanup(); }
+});
+
+test("dictated form answers bypass local regexes and retain question context", function() {
+  var requests = [];
+  function XHR() { this.responseText = ""; requests.push(this); }
+  XHR.prototype.open = function() {}; XHR.prototype.setRequestHeader = function() {};
+  XHR.prototype.send = function(body) { this.body = body; }; XHR.prototype.abort = function() {};
+  var storage = {}; storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test" });
+  var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: XHR });
+  try {
+    h.handlers.appmessage({ payload: { 0:"input", 2:"dictation", 8:"Ask me about timing" } });
+    requests[0].responseText = 'pam version=1\nscreen id=when layout=choice\n  choice id=day title="Day" action=choose_day\ndone\n';
+    jobReply(h, requests[0], requests[0].responseText);
+    h.handlers.appmessage({ payload: { 0:"input", 2:"dictate-answer", 4:"custom", 9:"local.answer", 8:"set a timer for five minutes" } });
+    assert.strictEqual(requests.length, 2);
+    var nodes = parse(requests[1].body);
+    assert.strictEqual(nodes.filter(function(n) {return n.kind === "input";})[0].attrs.kind, "dictate-answer");
+    assert.strictEqual(nodes.filter(function(n) {return n.kind === "context";})[0].attrs.screen, "when");
+  } finally {h.cleanup();}
 });
 
 test("Native dashboard survives bridge startup, configuration, and local notifications", function() {
@@ -1255,19 +1251,21 @@ test("Native dashboard survives bridge startup, configuration, and local notific
   var harness = loadPkjsHarness({ XMLHttpRequest: FakeXHR });
   try {
     harness.handlers.appmessage({ payload: { 0: "ready", 8: "local-active" } });
-    assert.strictEqual(harness.sent.length, 2);
-    assert.strictEqual(harness.sent[1][Watch.Key.operation], "weather");
-    assert.strictEqual(harness.sent[0][Watch.Key.messageType], "bridge");
+    assert.strictEqual(harness.sent.length, 3);
+    assert.strictEqual(harness.sent[0][Watch.Key.messageType], "job");
+    assert.strictEqual(harness.sent[2][Watch.Key.operation], "weather");
+    assert.strictEqual(harness.sent[1][Watch.Key.messageType], "bridge");
     ["timer.finished", "reminder.acknowledged", "stopwatch.reset"].forEach(function(action) {
       harness.handlers.appmessage({ payload: { 0: "capability_event", 9: action } });
     });
     assert.strictEqual(requests, 0);
     harness.handlers.webviewclosed({ response: encodeURIComponent(JSON.stringify({ endpoint: "https://agent.test" })) });
-    assert.ok(harness.sent.every(function(message) { return message[Watch.Key.messageType] === "bridge"; }));
+    assert.ok(harness.sent.every(function(message) { return message[Watch.Key.messageType] === "bridge" || message[Watch.Key.messageType] === "job"; }));
   } finally { harness.cleanup(); }
 });
 
 require("./local-dictation")(test);
+require("./jobs")(test);
 
 test("Local dictation bypasses Codex and gives concurrent timers distinct delivery IDs", function() {
   var requests = 0;
@@ -1291,7 +1289,7 @@ test("Local dictation bypasses Codex and gives concurrent timers distinct delive
   } finally { harness.cleanup(); }
 });
 
-test("Local commands abort earlier Codex requests and unmatched dictation falls back unchanged", function() {
+test("Local commands leave earlier agent jobs running and unmatched dictation falls back unchanged", function() {
   var requests = [], aborted = 0;
   function FakeXHR() { this.responseText = ""; requests.push(this); }
   FakeXHR.prototype.open = function() {};
@@ -1307,16 +1305,16 @@ test("Local commands abort earlier Codex requests and unmatched dictation falls 
     dictate(unmatched);
     assert.strictEqual(parse(requests[0].body)[2].attrs.text, unmatched);
     dictate("set a timer for 10 seconds");
-    assert.strictEqual(aborted, 1);
+    assert.strictEqual(aborted, 0);
     var count = harness.sent.length;
     requests[0].responseText = "pam version=1\ncapability type=timer command=start duration=5m\ndone\n";
-    requests[0].readyState = 4; requests[0].status = 200; requests[0].onreadystatechange();
-    assert.strictEqual(harness.sent.length, count);
+    jobReply(harness, requests[0], requests[0].responseText, "done", false);
+    assert.ok(harness.sent.slice(count).every(function(m) { return m[0] === "job"; }));
     dictate("set an alarm for seven");
     assert.strictEqual(requests.length, 2);
     requests[1].status = 200; requests[1].readyState = 4;
     requests[1].responseText = "pam version=1\nscreen id=clarify layout=list title=Clarify\ndone\n";
-    requests[1].onreadystatechange();
+    jobReply(harness, requests[1], requests[1].responseText);
   } finally { harness.cleanup(); }
 });
 
@@ -1354,7 +1352,7 @@ test("backend preferences persist and reach Codex separately from dictated text"
     h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "explain gravity" } });
     var backend = parse(xhr.body).filter(function(n) { return n.kind === "backend"; })[0];
     assert.deepStrictEqual(Object.assign({}, backend.attrs), { model: "test-model", effort: "high", fast_mode: "true", web_search: "live", file_access: "workspace-write", network_access: "true", shell_access: "true", auto_review: "true" });
-    xhr.status = 200; xhr.readyState = 4; xhr.responseText = "pam version=1\nscreen id=answer layout=card\ndone\n"; xhr.onreadystatechange();
+    jobReply(h, xhr, "pam version=1\nscreen id=answer layout=card\ndone\n");
   } finally { h.cleanup(); }
 });
 

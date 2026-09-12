@@ -4,6 +4,7 @@ var Pam = require("../common/pam");
 var Model = require("../common/model");
 var WatchProtocol = require("../common/watch-protocol");
 var AgentClient = require("../common/agent-client").AgentClient;
+var JobModule = require("../common/jobs");
 var Settings = require("../common/settings");
 var Capabilities = require("../common/capabilities");
 var Weather = require("../common/weather");
@@ -18,6 +19,7 @@ var activePipeline = null;
 var currentScreen = { id: "", layout: "", selected: "" };
 var watchInfo = {};
 var nativeDashboard = false;
+var failedDeliveries = {};
 var sessionId = loadSessionId();
 var commandSequence = loadCommandSequence();
 
@@ -69,7 +71,8 @@ var watchQueue = new WatchProtocol.MessageQueue(function(message, success, failu
   maxQueue: 96,
   maxRetries: 3,
   retryDelay: 120,
-  onError: function(error) {
+  onError: function(error, message) {
+    if (message && message[Key.requestId]) { failedDeliveries[message[Key.requestId]] = true; watchQueue.clearRequest(message[Key.requestId]); }
     log("watch message failed", error);
   }
 });
@@ -160,7 +163,7 @@ function refreshWeather() {
   });
 }
 
-function capabilityContext(requestId, complete, isFailed) {
+function capabilityContext(requestId, complete, isFailed, job, commandIndex) {
   return {
     settings: settings,
     summary: saveWeather,
@@ -168,7 +171,10 @@ function capabilityContext(requestId, complete, isFailed) {
       if (requestId !== activeRequestId || (isFailed && isFailed())) { return; }
       // Assign once before queueing; retries retain the same ID, while new
       // model commands (even in the same response) receive different IDs.
-      operation.invocationId = nextCommandId();
+      if (job) {
+        if (!job.commands[commandIndex]) { job.commands[commandIndex] = nextCommandId(); jobManager.save(); }
+        operation.invocationId = job.commands[commandIndex];
+      } else { operation.invocationId = nextCommandId(); }
       watchQueue.enqueueOperation(operation, requestId);
       if (complete) { complete(true); }
     },
@@ -196,7 +202,8 @@ var capabilityRegistry = Capabilities.installBuiltins(
   weatherHandler
 );
 
-function createPipeline(requestId) {
+function createPipeline(requestId, job) {
+  var capabilityIndex = 0;
   var pipeline = {};
   var sawRenderable = false;
   var failed = false;
@@ -207,7 +214,7 @@ function createPipeline(requestId) {
     if (finished && !pendingCapabilities && !failed && sawRenderable && !notified && requestId === activeRequestId) {
       notified = true;
       sendStatus("", "idle", requestId);
-      sendAnswerNotification(requestId);
+      if (!job) { sendAnswerNotification(requestId); } else { sendJobPresented(job, requestId); }
     }
   }
   var model = new Model.ScreenModel({
@@ -233,7 +240,7 @@ function createPipeline(requestId) {
           pendingCapabilities -= 1;
           if (!success) { failed = true; }
           notifyIfFinished();
-        }, function() { return failed; }))) {
+        }, function() { return failed; }, job, capabilityIndex++))) {
           pendingCapabilities -= 1;
           failed = true;
           sendStatus("Unsupported capability: " + operation.node.attrs.type, "error", requestId);
@@ -288,8 +295,9 @@ function requestAgent(input) {
   activeRequestId = requestId;
   activePipeline = pipeline;
   var local = input.kind === "dictation" ? LocalDictation.parse(input.text, now) : null;
-  sendAnswerNotification(requestId, "begin");
+  if (local) { sendAnswerNotification(requestId, "begin"); }
   if (local) {
+    sendJob({ id:"pending" }, false, "remove");
     // Invalidate callbacks before aborting: a canceled server response must not
     // replace a local result or start a second timer. Use the normal capability
     // queue so delivery retries keep the same invocation ID.
@@ -298,15 +306,15 @@ function requestAgent(input) {
     pipeline.finishAnswer();
     return;
   }
-  sendStatus(input.kind === "dictation" ? "Thinking" : "Loading", "loading", requestId);
-  client.send({
+  selectedJob = "";
+  try { jobManager.submit({
     id: requestId,
     session: sessionId,
     endpoint: settings.endpoint,
     token: settings.token,
     timeoutSeconds: settings.timeoutSeconds,
     input: input,
-    context: currentScreen,
+    context: { screen: currentScreen.id, layout: currentScreen.layout, selected: currentScreen.selected },
     backend: {
       model: settings.codexModel, effort: settings.codexEffort, fast_mode: String(settings.fastMode),
       web_search: settings.webSearch, file_access: settings.fileAccess,
@@ -321,29 +329,63 @@ function requestAgent(input) {
       now: Math.floor(now.getTime() / 1000),
       utc_offset_minutes: -now.getTimezoneOffset()
     }
-  }, {
-    onChunk: function(chunk) {
-      if (requestId !== activeRequestId) { return; }
-      pipeline.parser.push(chunk);
-    },
-    onDone: function() {
-      if (requestId !== activeRequestId) { return; }
-      pipeline.parser.finish();
-      if (!pipeline.sawRenderable() && !pipeline.failed()) {
-        sendStatus("Agent returned no screen", "error", requestId);
-      } else if (!pipeline.failed()) {
-        pipeline.finishAnswer();
-      }
-    },
-    onError: function(error) {
-      if (requestId !== activeRequestId) { return; }
-      log("agent request failed", error);
-      pipeline.fail(error.message || "Agent request failed");
-    },
-    onStatus: function(status) {
-      log(status);
+  }); }
+  catch(error) { sendJob({id:"pending",title:input.text || "Agent request",status:"failed",error:error.message},false); }
+
+}
+
+
+var selectedJob = "";
+function sendJob(job, buzz, operation) {
+  var message = {};
+  message[Key.messageType] = "job";
+  message[Key.operation] = operation || (job.status === "checking" ? "checking" : "upsert");
+  message[Key.elementId] = job.id || "";
+  message[Key.title] = WatchProtocol.truncateUtf8(job.title || "Agent request", 71);
+  message[Key.subtitle] = job.status || "";
+  message[Key.value] = WatchProtocol.truncateUtf8(job.error || "", 179);
+  message[Key.flags] = buzz && settings.answerVibrate ? 1 : 0;
+  watchQueue.enqueue(message);
+}
+var jobManager = new JobModule.Jobs({
+  storage: localStorage, XMLHttpRequest: typeof XMLHttpRequest !== "undefined" ? XMLHttpRequest : null,
+  token: function() { return settings.token; },
+  endpoint: function() { return JobModule.endpoint(settings.endpoint); },
+  update: function(job, buzz) { if (!job.opened) { sendJob(job, buzz); } }
+});
+function sendJobPresented(job, requestId) {
+  if (failedDeliveries[requestId]) { return; }
+  var presented = {};
+  presented[Key.messageType] = "job-result";
+  presented[Key.requestId] = requestId;
+  presented[Key.elementId] = job.id;
+  watchQueue.enqueue(presented);
+}
+function openJob(id, cancel) {
+  selectedJob = id;
+  var requestId = nextRequestId();
+  activeRequestId = requestId;
+  delete failedDeliveries[requestId];
+  sendAnswerNotification(requestId, "begin");
+  var callback = function(error, job) {
+    if (selectedJob !== id || activeRequestId !== requestId) { return; }
+    if (error) {
+      var cached = jobManager.find(id);
+      sendJob({id:id,title:cached ? cached.title : "Agent request",status:cached ? cached.status : "Unknown",error:error.message},false);
+      return;
     }
-  });
+    if (job.status === "done" && job.result) {
+      // Resume the conversation that produced this form, even if the user
+      // started another thread while it was running.
+      sessionId = job.session;
+      localStorage.setItem("pebble-agent.session.v1", sessionId);
+      var pipeline = createPipeline(requestId, job);
+      activePipeline = pipeline;
+      pipeline.parser.push(job.result); pipeline.parser.finish(); pipeline.finishAnswer();
+
+    } else { sendJob(job, false); }
+  };
+  if (cancel) { jobManager.cancel(id, callback); } else { jobManager.check(id, callback); }
 }
 
 function onboardingPam() {
@@ -378,10 +420,22 @@ function handleWatchMessage(event) {
 
   if (type === "ready") {
     nativeDashboard = value === "local-active";
+    if (nativeDashboard) {
+      sendJob({}, false, "reset");
+      jobManager.entries.forEach(function(job) { if (!job.opened) { sendJob(job, false); } });
+    }
     if (nativeDashboard) { sendConnection(); refreshWeather(); }
     if (value !== "local-active") {
       renderOnboarding();
     }
+    return;
+  }
+  if (type === "capability_event" && operation === "job") {
+    if (action === "refresh") { jobManager.refreshAll(); return; }
+    if (action === "retrieved" || action === "dismiss") {
+      var job = jobManager.find(element);
+      if (job) { jobManager.acknowledge(job); sendJob(job, false, "remove"); }
+    } else { openJob(element, action === "cancel"); }
     return;
   }
   if (type === "capability_event" && operation === "weather" && action === "refresh") { refreshWeather(); return; }

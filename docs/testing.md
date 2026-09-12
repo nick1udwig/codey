@@ -135,3 +135,32 @@ Todo and failure regressions also cover local voice parsing with preserved case/
 The revised dashboard and conversation overlay were visually checked on Emery and Gabbro. Emery button checks confirmed Back dismisses the overlay, Down opens Todos, and Up opens Notifications. Screenshots are in `docs/screenshots/`.
 
 Time-bar tests verify Todos and Calendar flags and absence of an Add item row. Weather tests cover summary values, day/night/precipitation icons, background refresh isolation, cache writes, timeouts, and retaining a new summary across dashboard navigation. `dashboard-weather-emery.png` uses an injected synthetic 58F moon forecast for layout verification, not live weather.
+
+### Interactive PAM controls
+
+Regression coverage includes local action construction and bounds, range snapping,
+clockwise/counterclockwise dial seam handling, generated dictation fallback,
+custom answers bypassing regexes with screen context, server validation of skill
+examples, and skill installation into a temporary state directory. Slider/dial
+screens were rendered using an isolated emulator fixture; the slider confirmation
+opened a native five-minute timer without an agent request, then the synthetic
+timer was canceled. See `pam-slider-emery.png` and `pam-dial-emery.png`. Physical
+slider/dial gestures and microphone answers still need hardware checks.
+
+## Background requests
+
+`internal/jobs` tests connection cancellation without worker cancellation,
+explicit cancellation, duplicate submission, durable retrieval acknowledgements,
+restart recovery, and retention. HTTP tests check authentication and job routes.
+`tests/jobs.js` covers the single bounded wait, no continued polling, manual
+refresh/cancel, durable IDs, ambiguous-submission retries, and stale responses.
+The bridge tests verify completion buzz messages without unsolicited rendering,
+manual PAM retrieval, conversation context, stable capability invocation IDs,
+and acknowledgement only after watch presentation. Native tests cover job rows,
+status checks, cancel/dismiss actions, and watch persistence.
+
+Opening Notifications is covered by native tests for immediate Checking labels,
+failed-check fallback, and no refresh loop during list rebuilds. JS tests cover
+all ongoing jobs, exclusion of terminal/retrieved jobs, overlapping pane opens,
+transient checking state, and row-only bridge updates without unsolicited
+rendering or vibration.

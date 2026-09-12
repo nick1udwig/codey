@@ -166,6 +166,34 @@ func (validator *OutputValidator) acceptNode(node *Node) error {
 	if err := boundedAttribute(node, "action", 47); err != nil {
 		return err
 	}
+	if node.Kind == "field" && (node.Attrs["type"] == "slider" || node.Attrs["type"] == "dial") {
+		values := make(map[string]int)
+		for _, key := range []string{"min", "max", "step", "value"} {
+			v, err := strconv.Atoi(node.Attrs[key])
+			if err != nil {
+				return nodeError(node, "control requires integer "+key)
+			}
+			values[key] = v
+		}
+		if values["min"] < 0 || values["max"] > 604800 || values["min"] >= values["max"] || values["step"] < 1 || values["step"] > values["max"]-values["min"] || values["value"] < values["min"] || values["value"] > values["max"] {
+			return nodeError(node, "invalid control range")
+		}
+	}
+	if node.Attrs["action"] == "local.run" {
+		kind := node.Attrs["capability"]
+		if (kind != "timer" && kind != "reminder" && kind != "alarm") || node.Attrs["task"] == "" {
+			return nodeError(node, "invalid local capability")
+		}
+		if err := boundedAttribute(node, "task", 71); err != nil {
+			return err
+		}
+		if node.Attrs["seconds"] != "$value" || node.Kind != "field" {
+			seconds, err := strconv.Atoi(node.Attrs["seconds"])
+			if err != nil || seconds < 1 || seconds > 604800 {
+				return nodeError(node, "local seconds must be 1..604800 or field $value")
+			}
+		}
+	}
 	validator.elementCount++
 	if validator.elementCount > MaxElements {
 		return nodeError(node, fmt.Sprintf("screen exceeds %d elements", MaxElements))

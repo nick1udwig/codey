@@ -126,7 +126,12 @@ function addPresent(message, key, value, maxBytes, includeEmpty) {
 }
 
 function attrsMeta(attrs) {
-  return truncateUtf8(Pam.formatAttributes(attrs, CORE_ATTRS), MAX_META_BYTES);
+  if (attrs.action === "local.run" && truncateUtf8(attrs.task || "", 71) !== attrs.task) { throw new Error("Local task exceeds 71 bytes"); }
+  var meta = Pam.formatAttributes(attrs, CORE_ATTRS);
+  if ((attrs.action === "local.run" || attrs.type === "slider" || attrs.type === "dial") && splitUtf8(meta, MAX_META_BYTES).length > 1) {
+    throw new Error("Interactive control metadata exceeds 220 bytes");
+  }
+  return truncateUtf8(meta, MAX_META_BYTES);
 }
 
 function elementMessages(operation, requestId, opName, target) {
@@ -246,7 +251,7 @@ function MessageQueue(sendFunction, options) {
 
 MessageQueue.prototype.enqueue = function(message) {
   if (this.queue.length >= this.maxQueue) {
-    this.onError(new Error("watch message queue is full"));
+    this.onError(new Error("watch message queue is full"), message);
     return false;
   }
   this.queue.push({ message: message, retries: 0 });
@@ -287,7 +292,7 @@ MessageQueue.prototype._flush = function() {
     entry.retries += 1;
     if (entry.retries > self.maxRetries) {
       self.queue.shift();
-      self.onError(error || new Error("watch message failed"));
+      self.onError(error || new Error("watch message failed"), entry.message);
       self._flush();
       return;
     }

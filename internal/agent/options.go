@@ -76,7 +76,7 @@ func (agent *Agent) threadOptions(ctx context.Context, connection *appserver.Con
 	}
 	return map[string]any{
 		"approvalPolicy": policy, "approvalsReviewer": reviewer,
-		"baseInstructions": baseInstructions, "developerInstructions": developerInstructions,
+		"baseInstructions": baseInstructions, "developerInstructions": agent.instructions(options.ShellAccess && options.FileAccess != "none"),
 		"cwd": agent.config.Workspace, "model": model, "permissions": "pebble", "config": config,
 	}, nil
 }

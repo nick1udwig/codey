@@ -13,7 +13,7 @@ static WakeupId wake_id = -1;
 static time_t wake_at;
 static int32_t wake_cookie;
 static WakeupHandler wake_handler;
-static struct { size_t size; unsigned char data[256]; } storage[4400];
+static struct { size_t size; unsigned char data[256]; } storage[4700];
 struct AppTimer { bool used; time_t at; void (*callback)(void *); void *context; };
 static AppTimer timers[16];
 struct AgentUi { char screen[32], status[100]; int count; int32_t flags;
@@ -38,14 +38,14 @@ WakeupId wakeup_schedule(time_t at, int32_t cookie, bool notify) {
   assert(wake_id == -1);
   wake_at = at; wake_cookie = cookie; wake_id = ++next_wake; return wake_id;
 }
-bool persist_exists(uint32_t key) { assert(key < 4400); return storage[key].size != 0; }
+bool persist_exists(uint32_t key) { assert(key < 4700); return storage[key].size != 0; }
 int persist_write_data(uint32_t key, const void *data, size_t size) {
-  assert(key < 4400 && size <= 256);
+  assert(key < 4700 && size <= 256);
   if (writes_fail) { return -1; }
   memcpy(storage[key].data, data, size); storage[key].size = size; return (int)size;
 }
 int persist_read_data(uint32_t key, void *data, size_t size) {
-  assert(key < 4400);
+  assert(key < 4700);
   if (!storage[key].size) { return -1; }
   size_t copy = size < storage[key].size ? size : storage[key].size;
   memcpy(data, storage[key].data, copy); return (int)copy;
@@ -53,6 +53,9 @@ int persist_read_data(uint32_t key, void *data, size_t size) {
 int32_t persist_read_int(uint32_t key) { int32_t value = 0; persist_read_data(key, &value, sizeof(value)); return value; }
 int persist_write_int(uint32_t key, int32_t value) { return persist_write_data(key, &value, sizeof(value)); }
 bool clock_is_24h_style(void) { return true; }
+bool quiet_time_is_active(void) { return false; }
+void vibes_short_pulse(void) { ++buzzes; }
+int persist_delete(uint32_t key) { storage[key].size = 0; return 0; }
 void vibes_double_pulse(void) { ++buzzes; }
 void vibes_cancel(void) { ++canceled; }
 void agent_ui_begin(AgentUi *u, const char *id, const char *layout, const char *title,
@@ -386,10 +389,40 @@ static void test_previous_dashboard_upgrade(void) {
   assert(strstr(ui.elements[element("schedule-1")].subtitle, "Finished"));
   agent_capabilities_destroy(caps);
 }
+static char job_event[24], job_id[32];
+static void job_event_handler(const char *type,const char *id,const char *action,const char *value,void *context) {
+  (void)value; (void)context;
+  if (!strcmp(type,"job")) { agent_protocol_copy(job_event,sizeof(job_event),action); agent_protocol_copy(job_id,sizeof(job_id),id); }
+}
+static void test_jobs(void) {
+  reset(); AgentCapabilities *caps=agent_capabilities_create(&ui,job_event_handler,NULL);
+  AgentCapabilityCommand cmd={.type="job",.command="upsert",.id="123456789012345678901234567890",.title="Find gift cards",.subtitle="working",.value="",.meta=""};
+  assert(agent_capabilities_handle_command(caps,&cmd)); assert(!strcmp(ui.screen,"dashboard"));
+  event(caps,"local.dashboard.notifications"); assert(element(cmd.id)>=0);
+  assert(!strcmp(ui.elements[element(cmd.id)].subtitle,"Checking…"));assert(!strcmp(job_event,"refresh"));
+  agent_capabilities_rebuild_dashboard(caps); assert(!strcmp(ui.elements[element(cmd.id)].subtitle,"Checking…"));
+  assert(agent_capabilities_handle_command(caps,&cmd)); assert(!strcmp(ui.elements[element(cmd.id)].subtitle,"working"));
+  event(caps,"local.home");event(caps,"local.dashboard.notifications");
+  advance(23);assert(!strcmp(ui.elements[element(cmd.id)].subtitle,"Check unavailable"));
+  assert(agent_capabilities_handle_command(caps,&cmd));
+
+  AgentUiEvent tap={.action="local.job.open"}; agent_protocol_copy(tap.element_id,sizeof(tap.element_id),cmd.id);
+  assert(agent_capabilities_handle_ui_event(caps,&tap)); assert(!strcmp(ui.screen,"job-status")); assert(!strcmp(job_event,"check")); assert(!strcmp(job_id,cmd.id));
+  assert(element("cancel-job")>=0); assert(!strcmp(ui.elements[element("job-state")].value,"Checking…"));
+  assert(agent_capabilities_handle_command(caps,&cmd)); assert(!strcmp(ui.elements[element("job-state")].value,"working"));
+  event(caps,"local.job.cancel"); assert(!strcmp(job_event,"cancel"));
+  cmd.subtitle="canceled";cmd.value="Work already performed is not undone";
+  assert(agent_capabilities_handle_command(caps,&cmd)); assert(element("cancel-job")<0);assert(element("dismiss-job")>=0);
+  agent_capabilities_destroy(caps); caps=agent_capabilities_create(&ui,job_event_handler,NULL);
+  assert(element(cmd.id)>=0);assert(!strcmp(ui.elements[element(cmd.id)].subtitle,"canceled"));
+  assert(agent_capabilities_handle_ui_event(caps,&tap)); event(caps,"local.job.dismiss");assert(!strcmp(job_event,"dismiss"));
+  cmd.command="remove";assert(agent_capabilities_handle_command(caps,&cmd));assert(element(cmd.id)<0);
+  agent_capabilities_destroy(caps);
+}
 int main(void) {
   test_weather_summary(); test_todos(); test_dashboard_progress(); test_dashboard_destinations(); test_multiple_and_ack(); test_pause_cancel_restore(); test_failures_and_capacity(); test_stopwatch_dashboard(); test_migration(); test_explicit_replacement();
   test_reused_ids_and_screen_independent_expiry(); test_delivery_replay_after_relaunch();
-  test_previous_dashboard_upgrade();
-  puts("✓ schedules: concurrent deadlines, repeated alerts, acknowledge, snooze, navigation, persistence, failures, bounds, stopwatch");
+  test_previous_dashboard_upgrade(); test_jobs();
+  puts("✓ schedules: concurrent deadlines, repeated alerts, acknowledge, snooze, navigation, persistence, failures, bounds, stopwatch, jobs");
   return 0;
 }

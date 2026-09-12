@@ -145,6 +145,8 @@ bool agent_capabilities_handle_ui_event(AgentCapabilities *capabilities, const A
   if (strcmp(event->action, "local.dashboard.notifications") == 0) {
     capabilities->navigation_revision += 1;
     prv_show_notifications(capabilities);
+    AgentCapabilityCommand refresh = { .type = "job", .command = "refresh", .id = "" };
+    agent_capabilities_handle_command(capabilities, &refresh);
     return true;
   }
   if (strcmp(event->action, "local.calendar") == 0) {
@@ -274,7 +276,7 @@ void agent_capabilities_set_active(AgentCapabilities *capabilities, const char *
 }
 
 bool agent_capabilities_install_builtins(AgentCapabilities *capabilities) {
-  return agent_schedules_install(capabilities) && agent_stopwatch_install(capabilities) && agent_todos_install(capabilities);
+  return agent_jobs_install(capabilities) && agent_schedules_install(capabilities) && agent_stopwatch_install(capabilities) && agent_todos_install(capabilities);
 }
 
 int32_t agent_capability_parse_duration(const char *value, int32_t fallback) {

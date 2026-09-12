@@ -4,6 +4,7 @@
 #include "agent_protocol.h"
 #include "agent_ui.h"
 #include "answer_notification.h"
+#include "local_action.h"
 #include "watch_response.h"
 #include "message_keys.auto.h"
 
@@ -44,6 +45,8 @@ static bool s_accept_remote;
 static AnswerNotification s_answer_notification;
 static WatchResponse s_response;
 static bool s_dictation_active;
+static bool s_answer_dictation;
+static char s_answer_element[AGENT_UI_ID_LENGTH];
 static uint32_t s_navigation_revision;
 static uint32_t s_notification_revision;
 static uint32_t s_next_action_request_id;
@@ -213,12 +216,33 @@ static bool prv_queue_message(const char *type, uint32_t request_id, const char 
   return true;
 }
 
+static void prv_background_request(const char *title) {
+  agent_capabilities_show_dashboard(s_capabilities);
+  AgentCapabilityCommand job = { .type="job", .command="upsert", .id="pending", .title=title,
+    .subtitle="Sending to phone", .value="", .meta="" };
+  agent_capabilities_handle_command(s_capabilities, &job);
+  agent_ui_animate_request(s_ui);
+  prv_begin_request();
+}
+
 static void prv_ui_event(const AgentUiEvent *event, void *context) {
   (void)context;
   // Any newer interaction supersedes an unacknowledged new-chat request. Its
   // delayed phone acknowledgment must never open dictation on another screen.
   prv_cancel_new_chat();
   if (strcmp(event->action, "local.dictate") == 0) { prv_start_dictation(NULL); return; }
+  if (strcmp(event->action, "local.answer") == 0) {
+    agent_protocol_copy(s_answer_element, sizeof(s_answer_element), event->element_id);
+    prv_start_dictation((void *)1); return;
+  }
+  if (strcmp(event->action, "local.run") == 0) {
+    AgentCapabilityCommand command; char type[20], task[72], args[48];
+    if (!local_action_build(event, &command, type, task, args, sizeof(args))) {
+      agent_ui_set_status(s_ui, "Invalid local action", true, false); return;
+    }
+    s_accept_remote = false; watch_response_fail(&s_response); prv_stop_response_timer();
+    agent_capabilities_handle_command(s_capabilities, &command); return;
+  }
   if (strcmp(event->action, "local.new-chat") == 0) {
     s_accept_remote = false;
     s_next_action_request_id = s_next_action_request_id == INT32_MAX ? 1 : s_next_action_request_id + 1;
@@ -245,10 +269,9 @@ static void prv_ui_event(const AgentUiEvent *event, void *context) {
   if (agent_capabilities_handle_ui_event(s_capabilities, event)) {
     return;
   }
-  prv_begin_request();
+  prv_background_request(event->value[0] ? event->value : "Agent request");
   prv_queue_message("input", s_request_id, event->input, event->element_id,
                     event->action, event->value, "");
-  agent_ui_set_status(s_ui, "Loading", false, true);
 }
 
 static const char *prv_dictation_error(DictationSessionStatus status) {
@@ -278,9 +301,11 @@ static void prv_dictation_callback(DictationSession *session, DictationSessionSt
     agent_ui_set_status(s_ui, prv_dictation_error(status), true, false);
     return;
   }
-  prv_begin_request();
-  prv_queue_message("input", s_request_id, "dictation", "", "", transcription, "");
-  agent_ui_set_status(s_ui, "Thinking", false, true);
+  prv_background_request(transcription);
+  prv_queue_message("input", s_request_id, s_answer_dictation ? "dictate-answer" : "dictation",
+                    s_answer_dictation ? s_answer_element : "", s_answer_dictation ? "local.answer" : "", transcription, "");
+  s_answer_dictation = false;
+
 }
 
 static void prv_start_dictation(void *context) {
@@ -290,6 +315,7 @@ static void prv_start_dictation(void *context) {
   prv_cancel_new_chat();
 #if defined(PBL_MICROPHONE)
   if (s_dictation_active) { return; }
+  s_answer_dictation = context != NULL;
   if (!s_dictation) {
     agent_ui_set_status(s_ui, "Voice unavailable", true, false);
     return;
@@ -308,6 +334,7 @@ static void prv_start_dictation(void *context) {
 static void prv_capability_event(const char *type, const char *id, const char *action,
                                  const char *value, void *context) {
   (void)context;
+  if (strcmp(type, "job") == 0 && (!strcmp(action,"check") || !strcmp(action,"cancel"))) { prv_begin_request(); }
   prv_queue_message("capability_event", s_request_id, type, id, action, value, "");
 }
 
@@ -410,6 +437,19 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   const char *operation = prv_tuple_string(iter, MESSAGE_KEY_Operation);
   uint32_t request_id = (uint32_t)prv_tuple_int(iter, MESSAGE_KEY_RequestId, 0);
   (void)context;
+  if (strcmp(type, "job") == 0) {
+    const char *id = prv_tuple_string(iter, MESSAGE_KEY_ElementId);
+    if (strcmp(operation, "upsert") == 0 && strcmp(id, "pending") != 0) {
+      AgentCapabilityCommand remove = { .type="job", .command="remove", .id="pending" };
+      agent_capabilities_handle_command(s_capabilities, &remove);
+    }
+    AgentCapabilityCommand command = { .type="job", .command=operation, .id=id,
+      .title=prv_tuple_string(iter, MESSAGE_KEY_Title), .subtitle=prv_tuple_string(iter, MESSAGE_KEY_Subtitle),
+      .value=prv_tuple_string(iter, MESSAGE_KEY_Value), .meta="", .flags=prv_tuple_int(iter, MESSAGE_KEY_Flags, 0) };
+    agent_capabilities_handle_command(s_capabilities, &command);
+    if (strcmp(command.subtitle, "sending") == 0) { prv_stop_response_timer(); }
+    return;
+  }
   if (strcmp(type, "bridge") == 0 && strcmp(operation, "weather") == 0) {
     agent_capabilities_set_weather(s_capabilities, prv_tuple_string(iter, MESSAGE_KEY_Value),
       prv_tuple_string(iter, MESSAGE_KEY_Subtitle), prv_tuple_string(iter, MESSAGE_KEY_Meta));
@@ -448,7 +488,10 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   if (strcmp(type, "capability") != 0 &&
       s_notification_revision != agent_capabilities_notification_revision(s_capabilities)) { return; }
   if (!watch_response_accepts(&s_response, request_id)) { return; }
-  if (strcmp(type, "render") == 0) {
+  if (strcmp(type, "job-result") == 0) {
+    prv_stop_response_timer();
+    prv_queue_message("capability_event", request_id, "job", prv_tuple_string(iter, MESSAGE_KEY_ElementId), "retrieved", "", "");
+  } else if (strcmp(type, "render") == 0) {
     prv_handle_render(iter, request_id, operation);
   } else if (strcmp(type, "capability") == 0) {
     prv_handle_capability(iter, request_id, operation);

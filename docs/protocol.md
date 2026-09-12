@@ -339,3 +339,32 @@ whole-phrase local regex matching accepts add/create/make/set/put down plus
 todo/to-do/to do/task, preserving the trailing task text. The public Pebble SDK
 supports Timeline pins and launches from pins, but no direct open-Timeline call;
 Calendar remains a placeholder.
+
+### Deferred local actions and range controls
+
+A selectable row can declare `action=local.run capability=reminder seconds=86400
+task="Send a card"`. Nothing runs while rendering; selection creates a native
+reminder without phone/model traffic. Supported capability types are timer,
+reminder and alarm; seconds are 1..604800 and task labels at most 71 UTF-8 bytes.
+
+`field type=slider|dial` declares min, max, step and value integers (0 <= min <
+max <= 604800), plus an optional unit label. A local field uses `seconds="$value"`.
+Dragging only adjusts; `action=local.submit control=<field-id>` confirms. Select
+on a field opens the button-operated number picker, whose Select confirms and
+Back cancels. A dial winds through the range clockwise/counterclockwise without
+jumping at noon. An ordinary field action sends the confirmed value to the agent.
+Interactive metadata must fit 220 bytes; the bridge rejects oversized declarations.
+For existing interactive definitions, patches may update only title or an in-range
+value; replace the screen to change ranges or actions.
+
+Every generated form/question should include `action=local.answer` titled
+"Dictate answer". The phone inserts a fallback for choice/form layouts or screens
+containing choice/field elements if omitted; reserve one of 48 slots. Its
+`input.kind=dictate-answer` bypasses local speech regexes and goes to the same
+agent thread with screen context. Local actions do not generate a model turn.
+
+The maintained advanced examples live in the server's
+`internal/agent/skills/pam-ui/` package. On startup the server installs it under
+`<state-directory>/skills/pam-ui/`, points the base prompt to SKILL.md, and supplies
+full fallback guidance when file-reading tools are disabled. The Codex app-server
+must share that filesystem. Native notification and timer behavior is unchanged.
