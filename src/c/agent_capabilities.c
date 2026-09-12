@@ -41,11 +41,21 @@ static void prv_tick(void *context) {
     if (module->module.tick) { module->module.tick(module->context); }
   }
   agent_capabilities_refresh_dashboard(capabilities);
-  if (++capabilities->weather_ticks >= 900) {
+  agent_ui_refresh_clock(capabilities->ui);
+  if (++capabilities->weather_ticks >= 15) {
     capabilities->weather_ticks = 0;
     agent_capabilities_emit(capabilities, "weather", "", "refresh", "");
   }
-  capabilities->tick_timer = app_timer_register(1000, prv_tick, capabilities);
+  capabilities->tick_timer = app_timer_register(60000, prv_tick, capabilities);
+}
+
+void agent_capabilities_refresh_now(AgentCapabilities *capabilities) {
+  for (uint8_t i=0;i<capabilities->module_count;++i) {
+    RegisteredModule *module=&capabilities->modules[i];
+    if(module->module.tick)module->module.tick(module->context);
+  }
+  agent_capabilities_refresh_dashboard(capabilities);
+  agent_ui_refresh_clock(capabilities->ui);
 }
 
 static void prv_wakeup_handler(WakeupId wakeup_id, int32_t cookie) {
@@ -82,7 +92,7 @@ AgentCapabilities *agent_capabilities_create(AgentUi *ui, AgentCapabilityEventHa
   }
   agent_protocol_copy(capabilities->connection, sizeof(capabilities->connection), "Connecting to phone");
   agent_capabilities_show_dashboard(capabilities);
-  capabilities->tick_timer = app_timer_register(1000, prv_tick, capabilities);
+  capabilities->tick_timer = app_timer_register(60000, prv_tick, capabilities);
   return capabilities;
 }
 

@@ -1,6 +1,7 @@
 #include "agent_ui.h"
 #include "range_control.h"
 #include "touch_guard.h"
+#include "refresh_policy.h"
 
 #include "agent_protocol.h"
 #include "../../resources/images/pixel-font-5x7.h"
@@ -74,7 +75,11 @@ struct AgentUi {
   AppTimer *menu_timer;
   uint8_t menu_count, menu_selected, menu_step;
   struct { char title[48]; char action[AGENT_UI_ACTION_LENGTH]; } menu_items[4];
-  StatusBarLayer *status_bar_layer;
+  Layer *status_bar_layer;
+  RefreshPolicy refresh_policy;
+  AppTimer *refresh_timer;
+  uint32_t input_until;
+  bool dirty, root_dirty, input_active;
   NumberWindow *number_window;
   GBitmap *dashboard_icons[12];
   AgentUiEventHandler event_handler;
@@ -266,6 +271,12 @@ static void prv_emit(AgentUi *ui, const char *input, const AgentUiElement *eleme
   ui->event_handler(&event, ui->context);
 }
 
+static void prv_input(AgentUi *ui) {
+  agent_ui_note_input(ui);
+  prv_emit(ui,"activity",NULL,"local.activity","");
+  agent_ui_note_input(ui);
+}
+
 static void prv_emit_binding(AgentUi *ui, const char *input, AgentUiElement *binding) {
   if (binding) {
     prv_emit(ui, input, binding, binding->action, binding->value);
@@ -440,16 +451,61 @@ static void prv_calculate_layout(AgentUi *ui) {
   scroll_layer_set_content_size(ui->scroll_layer, GSize(ui->viewport_width, ui->content_height));
 }
 
-static void prv_refresh(AgentUi *ui) {
-  if (!ui || !ui->loaded) {
-    return;
+static void prv_relayout_root(AgentUi *ui);
+static uint32_t prv_now_ms(void) {
+  time_t seconds; uint16_t milliseconds; time_ms(&seconds,&milliseconds);
+  return (uint32_t)seconds*1000u+milliseconds;
+}
+static bool prv_input_active(AgentUi *ui) {
+  return ui->input_active && (int32_t)(ui->input_until-prv_now_ms()) >= 0;
+}
+static void prv_paint(void *context) {
+  AgentUi *ui=context;ui->refresh_timer=NULL;
+  if(!ui->loaded || !ui->complete || !ui->dirty)return;
+  uint32_t delay=refresh_policy_delay(&ui->refresh_policy,prv_now_ms(),prv_input_active(ui));
+  if(delay){ui->refresh_timer=app_timer_register(delay,prv_paint,ui);return;}
+  if (ui->root_dirty) {
+    if (ui->number_window) {
+      if (window_stack_get_top_window() == number_window_get_window(ui->number_window)) {
+        window_stack_pop(false);
+      }
+      number_window_destroy(ui->number_window);
+      ui->number_window = NULL;
+    }
+    ui->root_dirty=false;
+    prv_dismiss_menu(ui);
+    scroll_layer_set_content_offset(ui->scroll_layer,GPointZero,false);
+    prv_relayout_root(ui);
   }
   prv_calculate_layout(ui);
   layer_mark_dirty(ui->content_layer);
-  if (ui->action_bar_layer) {
-    layer_mark_dirty(ui->action_bar_layer);
+  layer_mark_dirty(ui->action_bar_layer);
+  layer_mark_dirty(ui->status_bar_layer);
+  ui->dirty=false;
+  refresh_policy_painted(&ui->refresh_policy,prv_now_ms());
+}
+static void prv_refresh(AgentUi *ui) {
+  if(!ui)return;
+  ui->dirty=true;
+  if(!ui->loaded || !ui->complete)return;
+  uint32_t delay=refresh_policy_delay(&ui->refresh_policy,prv_now_ms(),prv_input_active(ui));
+  if(ui->refresh_timer) {
+    if(delay)return; // Already have one pending flush, not a polling timer.
+    app_timer_cancel(ui->refresh_timer);ui->refresh_timer=NULL;
+  }
+  ui->refresh_timer=app_timer_register(delay?delay:1,prv_paint,ui);
+}
+void agent_ui_note_input(AgentUi *ui) {
+  if(!ui)return;
+  ui->input_active=true;ui->input_until=prv_now_ms()+1000;
+  refresh_policy_painted(&ui->refresh_policy,prv_now_ms());
+  if(ui->dirty && ui->complete && ui->loaded) {
+    if(ui->refresh_timer){app_timer_cancel(ui->refresh_timer);ui->refresh_timer=NULL;}
+    prv_paint(ui); // Fresh geometry before hit-testing the user's contact.
   }
 }
+void agent_ui_refresh_clock(AgentUi *ui) {prv_refresh(ui);}
+
 
 static void prv_draw_text(GContext *ctx, const char *text, GFont font, GRect frame,
                           GTextAlignment alignment, GColor color, GTextOverflowMode overflow) {
@@ -951,6 +1007,7 @@ static GRect prv_menu_row(AgentUi *ui, int index) {
 }
 static void prv_menu_update(Layer *layer, GContext *ctx) {
   AgentUi *ui = *(AgentUi **)layer_get_data(layer);
+  refresh_policy_painted(&ui->refresh_policy, prv_now_ms());
   if (!ui->menu_count) { return; }
   GRect target = prv_menu_frame(ui), frame = target;
   frame.size.h = AGENT_MAX(4, target.size.h * ui->menu_step / 8);
@@ -1082,7 +1139,7 @@ static void prv_relayout_root(AgentUi *ui) {
     action_height = AGENT_MAX(60, bounds.size.h - action_top - 32);
   }
 #endif
-  layer_set_hidden(status_bar_layer_get_layer(ui->status_bar_layer), !status_visible);
+  layer_set_hidden(ui->status_bar_layer, !status_visible);
   layer_set_hidden(ui->action_bar_layer, !action_visible);
   layer_set_frame(ui->action_bar_layer,
                   GRect(bounds.size.w - action_width, action_top, action_width, action_height));
@@ -1090,7 +1147,6 @@ static void prv_relayout_root(AgentUi *ui) {
                   GRect(0, top, bounds.size.w - action_width, bounds.size.h - top));
   ui->viewport_width = bounds.size.w - action_width;
   ui->viewport_height = bounds.size.h - top;
-  prv_refresh(ui);
 }
 
 static void prv_ensure_visible(AgentUi *ui, bool animated) {
@@ -1232,6 +1288,7 @@ static void prv_activate_element(AgentUi *ui, AgentUiElement *element, const cha
 }
 
 static void prv_handle_input(AgentUi *ui, const char *input) {
+  prv_input(ui);
   prv_reset_touch_guard(ui);
   if (ui->menu_count) {
     if (strcmp(input, "up") == 0 && ui->menu_selected) { --ui->menu_selected; }
@@ -1283,6 +1340,7 @@ static void prv_back_click(ClickRecognizerRef recognizer, void *context) {
   AgentUi *ui = context;
   AgentUiElement *binding;
   (void)recognizer;
+  prv_input(ui);
   prv_reset_touch_guard(ui);
   if (ui->menu_count) { prv_dismiss_menu(ui); return; }
   binding = prv_find_binding(ui, "back");
@@ -1298,6 +1356,7 @@ static void prv_back_click(ClickRecognizerRef recognizer, void *context) {
 static void prv_select_long_click(ClickRecognizerRef recognizer, void *context) {
   AgentUi *ui = context;
   (void)recognizer;
+  prv_input(ui);
   prv_reset_touch_guard(ui);
   if (ui->menu_count) { return; }
   if (strcmp(ui->screen_id, "dashboard") == 0) { prv_agent_menu(ui); return; }
@@ -1520,6 +1579,7 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
   if (!ui || !event) { return; }
   // Gate the complete gesture before any scrolling, field changes, selection,
   // activation, or long-press timer can run.
+  if(event->type==TouchEvent_Touchdown)prv_input(ui);
   bool allowed = false;
   switch (event->type) {
     case TouchEvent_Touchdown:
@@ -1645,6 +1705,13 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
 }
 #endif
 
+static void prv_clock_update(Layer *layer,GContext *ctx) {
+  GRect bounds=layer_get_bounds(layer); char clock[16];clock_copy_time_string(clock,sizeof(clock));
+  graphics_context_set_fill_color(ctx,GColorWhite);graphics_fill_rect(ctx,bounds,0,GCornerNone);
+  prv_draw_text(ctx,clock,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),GRect(0,-2,bounds.size.w,18),GTextAlignmentCenter,GColorBlack,GTextOverflowModeTrailingEllipsis);
+  graphics_context_set_stroke_color(ctx,GColorBlack);
+  for(int x=0;x<bounds.size.w;x+=2)graphics_draw_pixel(ctx,GPoint(x,STATUS_BAR_LAYER_HEIGHT-1));
+}
 static void prv_window_load(Window *window) {
   AgentUi *ui = window_get_user_data(window);
   Layer *root = window_get_root_layer(window);
@@ -1656,11 +1723,10 @@ static void prv_window_load(Window *window) {
     layer_set_update_proc(ui->menu_layer, prv_menu_update);
     layer_set_hidden(ui->menu_layer, true);
   }
-  ui->status_bar_layer = status_bar_layer_create();
+  ui->status_bar_layer = layer_create(GRect(0,0,bounds.size.w,STATUS_BAR_LAYER_HEIGHT));
   if (!ui->status_bar_layer) { return; }
-  status_bar_layer_set_colors(ui->status_bar_layer, GColorWhite, GColorBlack);
-  status_bar_layer_set_separator_mode(ui->status_bar_layer, StatusBarLayerSeparatorModeDotted);
-  layer_add_child(root, status_bar_layer_get_layer(ui->status_bar_layer));
+  layer_set_update_proc(ui->status_bar_layer,prv_clock_update);
+  layer_add_child(root, ui->status_bar_layer);
 
   ui->scroll_layer = scroll_layer_create(bounds);
   if (!ui->scroll_layer) { return; }
@@ -1683,6 +1749,8 @@ static void prv_window_load(Window *window) {
 
   ui->loaded = true;
   prv_relayout_root(ui);
+  agent_ui_note_input(ui);
+  prv_refresh(ui);
 }
 
 static void prv_window_unload(Window *window) {
@@ -1696,7 +1764,7 @@ static void prv_window_unload(Window *window) {
   if (ui->action_bar_layer) { layer_destroy(ui->action_bar_layer); ui->action_bar_layer = NULL; }
   if (ui->content_layer) { layer_destroy(ui->content_layer); ui->content_layer = NULL; }
   if (ui->scroll_layer) { scroll_layer_destroy(ui->scroll_layer); ui->scroll_layer = NULL; }
-  if (ui->status_bar_layer) { status_bar_layer_destroy(ui->status_bar_layer); ui->status_bar_layer = NULL; }
+  if (ui->status_bar_layer) { layer_destroy(ui->status_bar_layer); ui->status_bar_layer = NULL; }
 }
 
 static void prv_window_appear(Window *window) {
@@ -1761,6 +1829,7 @@ void agent_ui_destroy(AgentUi *ui) {
 #if defined(PBL_TOUCH)
   if (ui->touch_subscribed) { touch_service_unsubscribe(); }
 #endif
+  if (ui->refresh_timer) { app_timer_cancel(ui->refresh_timer); }
   if (ui->activity_timer) { app_timer_cancel(ui->activity_timer); }
   if (ui->number_window) { number_window_destroy(ui->number_window); }
   if (ui->window) { window_destroy(ui->window); }
@@ -1781,14 +1850,7 @@ void agent_ui_show(AgentUi *ui, bool animated) {
 void agent_ui_begin(AgentUi *ui, const char *screen_id, const char *layout, const char *title,
                     const char *subtitle, const char *meta, int32_t flags) {
   if (!ui) { return; }
-  if (ui->number_window) {
-    if (window_stack_get_top_window() == number_window_get_window(ui->number_window)) {
-      window_stack_pop(false);
-    }
-    number_window_destroy(ui->number_window);
-    ui->number_window = NULL;
-  }
-  prv_dismiss_menu(ui);
+  ui->root_dirty=true;
 #if defined(PBL_TOUCH)
   prv_cancel_hold(ui);
   ui->touch_down = false;
@@ -1809,8 +1871,6 @@ void agent_ui_begin(AgentUi *ui, const char *screen_id, const char *layout, cons
   agent_protocol_copy(ui->subtitle, sizeof(ui->subtitle), subtitle);
   agent_protocol_copy(ui->meta, sizeof(ui->meta), meta);
   if (ui->loaded) {
-    scroll_layer_set_content_offset(ui->scroll_layer, GPointZero, false);
-    prv_relayout_root(ui);
     window_set_click_config_provider_with_context(ui->window, prv_click_config_provider, ui);
   }
 }
@@ -1862,7 +1922,9 @@ bool agent_ui_patch(AgentUi *ui, const AgentUiElementSpec *spec) {
   if (!ui || !spec) { return false; }
   element = prv_find_element(ui, spec->id);
   if (!element) { return false; }
+  AgentUiElement before = *element;
   prv_apply_spec(element, spec, true);
+  if(memcmp(&before,element,sizeof(before))==0)return true;
   prv_refresh(ui);
   return true;
 }
@@ -1933,7 +1995,7 @@ static void prv_activity_tick(void *context) {
   }
   ui->spinner_frame = (ui->spinner_frame + 1) % 12;
   if (ui->content_layer) { layer_mark_dirty(ui->content_layer); }
-  if (ui->request_frame || (ui->loading && strcmp(ui->screen_id,"job-status") == 0)) {
+  if (ui->request_frame) {
     ui->activity_timer = app_timer_register(ui->request_frame ? 30 : 80, prv_activity_tick, ui);
   }
 }
@@ -1946,10 +2008,11 @@ void agent_ui_animate_request(AgentUi *ui) {
 void agent_ui_set_status(AgentUi *ui, const char *status, bool is_error, bool loading) {
   if (!ui) { return; }
   if (is_error) { prv_show_error(ui, status); return; }
+  if(ui->loading==loading && ui->error==is_error && strcmp(ui->status,status?status:"")==0)return;
   agent_protocol_copy(ui->status, sizeof(ui->status), status);
   ui->error = is_error;
   ui->loading = loading;
-  if (loading && strcmp(ui->screen_id,"job-status") == 0 && !ui->activity_timer) { ui->activity_timer = app_timer_register(80, prv_activity_tick, ui); }
+
   if (is_error) { ui->complete = true; }
   prv_refresh(ui);
 }

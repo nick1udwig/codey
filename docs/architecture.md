@@ -120,3 +120,27 @@ Only the module decides which commands and internal action names it accepts. The
 See [testing.md](testing.md) for the emulator matrix and the remaining hardware-only checks.
 
 `npm run build:watch` compiles and links every native module independently for both round and rectangular targets and reports the platform memory footprint.
+
+## Screen refresh and power use
+
+Passive UI changes share a 60-second refresh limit, including the app-owned
+clock, weather, countdowns, and server status/results. Changes accumulate in the
+model and complete screens are laid out once when painted. An interaction
+refreshes elapsed values and flushes pending changes immediately; its short
+animations remain responsive. Subsequent passive updates wait until at least
+60 seconds after the most recent paint. Checking uses a static indicator.
+This controls Agent's layers; system-owned dictation and notification screens
+are controlled by Pebble OS.
+
+The capability host runs once per minute and also refreshes on input. Stopwatch
+elapsed time uses wall-clock timestamps, so reduced repainting does not lose
+elapsed time. Timer/alarm deadlines still use OS wakeups; three-second alert
+vibrations and retries after wakeup failures have scoped timers. Job checks
+use one-shot timeout timers rather than a per-second polling counter. Completed
+job responses can buzz immediately while their visual changes wait for a paint.
+
+No-op element/status patches avoid layout work, and unchanged job records avoid
+flash writes. The phone reuses weather for 15 minutes and suppresses identical
+weather packets; unit/location-setting changes invalidate the cache. These reduce
+scheduled CPU work, storage writes, and radio/network traffic. Battery-life
+improvements have not been measured on hardware.

@@ -133,6 +133,7 @@ function nextRequestId() {
 
 var weatherBusy = false;
 var weatherHandler = Weather.createWeatherHandler();
+var lastWeatherMessage = "";
 var weatherCacheKey = "pebble-agent.weather.v1";
 function sendWeather(summary) {
   var message = {};
@@ -141,7 +142,11 @@ function sendWeather(summary) {
   message[Key.value] = summary ? summary.temperature + summary.unit : "";
   message[Key.subtitle] = summary ? "L " + summary.low + " H " + summary.high : "";
   message[Key.meta] = summary ? "icon=" + summary.icon : "";
-  watchQueue.enqueue(message);
+  var signature = JSON.stringify(message);
+  if (signature !== lastWeatherMessage) {
+    lastWeatherMessage = signature;
+    watchQueue.enqueue(message);
+  }
 }
 function saveWeather(summary) {
   try { localStorage.setItem(weatherCacheKey, JSON.stringify(summary)); } catch (_) {}
@@ -152,6 +157,7 @@ function refreshWeather() {
   try {
     var cached = JSON.parse(localStorage.getItem(weatherCacheKey) || "null");
     sendWeather(cached && Date.now() - cached.updated < 60 * 60 * 1000 ? cached : null);
+    if (cached && Date.now() >= cached.updated && Date.now() - cached.updated < 15 * 60 * 1000) { return; }
   } catch (_) { sendWeather(null); }
   weatherBusy = true;
   weatherHandler({ command: "current" }, {
@@ -420,6 +426,7 @@ function handleWatchMessage(event) {
 
   if (type === "ready") {
     nativeDashboard = value === "local-active";
+    lastWeatherMessage = "";
     if (nativeDashboard) {
       sendJob({}, false, "reset");
       jobManager.entries.forEach(function(job) { if (!job.opened) { sendJob(job, false); } });
@@ -524,6 +531,9 @@ Pebble.addEventListener("webviewclosed", function(event) {
   var updated = Settings.parseConfigResponse(event ? event.response : null);
   if (!updated) {
     return;
+  }
+  if (updated.units !== settings.units || updated.locationLabel !== settings.locationLabel) {
+    localStorage.setItem(weatherCacheKey, "null");
   }
   settings = Settings.save(updated);
   if (updated.newSession) { startNewSession(); }

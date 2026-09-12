@@ -6,7 +6,7 @@
 #include <string.h>
 
 static time_t now = 100000;
-static int buzzes, canceled, writes_fail;
+static int buzzes, canceled, writes_fail, writes, timer_callbacks;
 static bool wake_fail;
 static int next_wake;
 static WakeupId wake_id = -1;
@@ -42,6 +42,7 @@ bool persist_exists(uint32_t key) { assert(key < 4700); return storage[key].size
 int persist_write_data(uint32_t key, const void *data, size_t size) {
   assert(key < 4700 && size <= 256);
   if (writes_fail) { return -1; }
+  ++writes;
   memcpy(storage[key].data, data, size); storage[key].size = size; return (int)size;
 }
 int persist_read_data(uint32_t key, void *data, size_t size) {
@@ -87,6 +88,8 @@ bool agent_ui_patch(AgentUi *u, const AgentUiElementSpec *spec) {
   if (spec->present & AgentUiPresentSubtitle) { agent_protocol_copy(u->elements[i].subtitle, 100, spec->subtitle); }
   return true;
 }
+void agent_ui_note_input(AgentUi *u) { (void)u; }
+void agent_ui_refresh_clock(AgentUi *u) { (void)u; }
 void agent_ui_end(AgentUi *u) { (void)u; }
 void agent_ui_set_status(AgentUi *u, const char *status, bool error, bool loading) {
   (void)error; (void)loading; agent_protocol_copy(u->status, sizeof(u->status), status);
@@ -99,7 +102,7 @@ static void advance(int seconds) {
     }
     for (int i = 0; i < 16; ++i) { if (timers[i].used && timers[i].at <= now) {
       void (*cb)(void *) = timers[i].callback; void *ctx = timers[i].context;
-      timers[i].used = false; cb(ctx);
+      timers[i].used = false; ++timer_callbacks; cb(ctx);
     } }
   }
 }
@@ -113,7 +116,7 @@ static void event(AgentCapabilities *caps, const char *action) {
 }
 static void reset(void) {
   memset(storage, 0, sizeof(storage)); memset(timers, 0, sizeof(timers)); memset(&ui, 0, sizeof(ui));
-  wake_id = -1; buzzes = canceled = writes_fail = 0; wake_fail = false; now = 100000;
+  wake_id = -1; buzzes = canceled = writes_fail = writes = timer_callbacks = 0; wake_fail = false; now = 100000;
 }
 static void test_weather_summary(void) {
   reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
@@ -174,11 +177,12 @@ static void test_dashboard_progress(void) {
   command(caps, "timer", "start", "Pasta", "duration=100s show=false");
   assert(timer_progress() == 0);
   assert(strcmp(ui.elements[element("schedule-0")].title, "Pasta") == 0);
-  advance(25); assert(timer_progress() == 25);
+  advance(25); assert(timer_progress() == 0);
+  agent_capabilities_refresh_now(caps); assert(timer_progress() == 25);
   command(caps, "timer", "pause", "Pasta", ""); event(caps, "local.home");
   advance(10); assert(timer_progress() == 25);
   command(caps, "timer", "resume", "Pasta", ""); event(caps, "local.home");
-  advance(25); assert(timer_progress() == 50);
+  advance(25); agent_capabilities_refresh_now(caps); assert(timer_progress() == 50);
   advance(50); assert(timer_progress() == 100);
   event(caps, "local.schedule.0"); event(caps, "local.schedule.toggle");
   assert(element("schedule-0") < 0);
@@ -205,7 +209,7 @@ static void test_dashboard_destinations(void) {
   assert(element("all-clear") >= 0);
   command(caps, "timer", "start", "tea", "duration=60s show=false");
   assert(strcmp(ui.screen, "notifications") == 0 && element("schedule-0") >= 0);
-  advance(2); assert(strstr(ui.elements[element("schedule-0")].subtitle, "00:58"));
+  advance(2); agent_capabilities_refresh_now(caps); assert(strstr(ui.elements[element("schedule-0")].subtitle, "00:58"));
   event(caps, "local.home"); assert(strcmp(ui.screen, "dashboard") == 0);
   event(caps, "local.dashboard.notifications");
   event(caps, "local.schedule.0"); assert(strcmp(ui.screen, "tea") == 0);
@@ -314,6 +318,8 @@ static void test_explicit_replacement(void) {
 static void test_stopwatch_dashboard(void) {
   reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
   command(caps, "stopwatch", "start", "run", ""); event(caps, "local.home"); advance(5);
+  assert(timer_callbacks == 0);
+  agent_capabilities_refresh_now(caps);
   assert(strstr(ui.elements[element("dashboard-stopwatch")].subtitle, "00:05"));
   assert(strcmp(ui.screen, "dashboard") == 0);
   event(caps, "local.stopwatch"); assert(strcmp(ui.screen, "run") == 0);
@@ -398,6 +404,8 @@ static void test_jobs(void) {
   reset(); AgentCapabilities *caps=agent_capabilities_create(&ui,job_event_handler,NULL);
   AgentCapabilityCommand cmd={.type="job",.command="upsert",.id="123456789012345678901234567890",.title="Find gift cards",.subtitle="working",.value="",.meta=""};
   assert(agent_capabilities_handle_command(caps,&cmd)); assert(!strcmp(ui.screen,"dashboard"));
+  int saved_writes = writes;
+  assert(agent_capabilities_handle_command(caps,&cmd)); assert(writes == saved_writes);
   event(caps,"local.dashboard.notifications"); assert(element(cmd.id)>=0);
   assert(!strcmp(ui.elements[element(cmd.id)].subtitle,"Checking…"));assert(!strcmp(job_event,"refresh"));
   agent_capabilities_rebuild_dashboard(caps); assert(!strcmp(ui.elements[element(cmd.id)].subtitle,"Checking…"));
@@ -419,7 +427,16 @@ static void test_jobs(void) {
   cmd.command="remove";assert(agent_capabilities_handle_command(caps,&cmd));assert(element(cmd.id)<0);
   agent_capabilities_destroy(caps);
 }
+static void test_idle_cadence(void) {
+  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  advance(59); assert(timer_callbacks == 0);
+  advance(1); assert(timer_callbacks == 1);
+  advance(120); assert(timer_callbacks == 3);
+  agent_capabilities_destroy(caps);
+  advance(120); assert(timer_callbacks == 3);
+}
 int main(void) {
+  test_idle_cadence();
   test_weather_summary(); test_todos(); test_dashboard_progress(); test_dashboard_destinations(); test_multiple_and_ack(); test_pause_cancel_restore(); test_failures_and_capacity(); test_stopwatch_dashboard(); test_migration(); test_explicit_replacement();
   test_reused_ids_and_screen_independent_expiry(); test_delivery_replay_after_relaunch();
   test_previous_dashboard_upgrade(); test_jobs();

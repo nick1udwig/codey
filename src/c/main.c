@@ -227,6 +227,8 @@ static void prv_background_request(const char *title) {
 
 static void prv_ui_event(const AgentUiEvent *event, void *context) {
   (void)context;
+  if (!strcmp(event->action,"local.activity")) { agent_capabilities_refresh_now(s_capabilities); return; }
+  agent_ui_note_input(s_ui);
   // Any newer interaction supersedes an unacknowledged new-chat request. Its
   // delayed phone acknowledgment must never open dictation on another screen.
   prv_cancel_new_chat();
@@ -297,6 +299,7 @@ static void prv_dictation_callback(DictationSession *session, DictationSessionSt
   (void)session;
   (void)context;
   s_dictation_active = false;
+  agent_ui_note_input(s_ui);
   if (status != DictationSessionStatusSuccess || !transcription || !transcription[0]) {
     agent_ui_set_status(s_ui, prv_dictation_error(status), true, false);
     return;

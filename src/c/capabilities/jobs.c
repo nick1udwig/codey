@@ -12,9 +12,24 @@ typedef struct {
   AgentCapabilities *host;
   Job jobs[MAX_JOBS];
   char selected[32];
-  uint8_t checking;
-  uint8_t refreshing[MAX_JOBS];
+  time_t checking;
+  time_t refreshing[MAX_JOBS];
+  AppTimer *timeout_timer;
 } Jobs;
+static void tick(void *context);
+static void schedule_timeout(Jobs *s) {
+  if (s->timeout_timer) {
+    app_timer_cancel(s->timeout_timer);
+    s->timeout_timer = NULL;
+  }
+  time_t next = s->checking;
+  for (int i = 0; i < MAX_JOBS; ++i)
+    if (s->refreshing[i] && (!next || s->refreshing[i] < next))
+      next = s->refreshing[i];
+  if (next)
+    s->timeout_timer =
+        app_timer_register((uint32_t)AGENT_CAP_MAX(1, next - time(NULL)) * 1000, tick, s);
+}
 static Job *find(Jobs *s, const char *id) {
   for (int i = 0; i < MAX_JOBS; i++) {
     if (strcmp(s->jobs[i].id, id) == 0)
@@ -29,7 +44,8 @@ static void show(Jobs *s, Job *j, bool checking) {
   AgentUi *ui = agent_capabilities_ui(s->host);
   agent_capabilities_set_active(s->host, "jobs", true);
   agent_protocol_copy(s->selected, sizeof(s->selected), j->id);
-  s->checking = checking ? 1 : 0;
+  s->checking = checking ? time(NULL) + 12 : 0;
+  schedule_timeout(s);
   agent_ui_begin(ui, "job-status", "list", "Agent request", "", "", 16);
   agent_capability_add_element(ui, "text", "job-title", "", "", j->title, "", "", 0);
   agent_capability_add_element(ui, "text", "job-state", "", "", checking ? "Checking…" : j->status,
@@ -67,10 +83,11 @@ static bool command(AgentCapabilities *host, const AgentCapabilityCommand *c, vo
     bool any = false;
     for (int i = 0; i < MAX_JOBS; ++i) {
       if (s->jobs[i].id[0] && strcmp(s->jobs[i].id, "pending") && running(&s->jobs[i])) {
-        s->refreshing[i] = 1;
+        s->refreshing[i] = time(NULL) + 22;
         any = true;
       }
     }
+    schedule_timeout(s);
     if (any) {
       agent_capabilities_rebuild_dashboard(host);
       agent_capabilities_emit(host, "job", "", "refresh", "");
@@ -80,13 +97,15 @@ static bool command(AgentCapabilities *host, const AgentCapabilityCommand *c, vo
   if (!strcmp(c->command, "checking")) {
     Job *j = find(s, c->id);
     if (j && running(j)) {
-      s->refreshing[j - s->jobs] = 1;
+      s->refreshing[j - s->jobs] = time(NULL) + 22;
       if (agent_capabilities_is_active(host, "notifications"))
         agent_capabilities_rebuild_dashboard(host);
     }
+    schedule_timeout(s);
     return true;
   }
   if (!strcmp(c->command, "reset")) {
+    s->checking = 0;
     memset(s->refreshing, 0, sizeof(s->refreshing));
     memset(s->jobs, 0, sizeof(s->jobs));
     for (int i = 0; i < MAX_JOBS; i++)
@@ -112,6 +131,7 @@ static bool command(AgentCapabilities *host, const AgentCapabilityCommand *c, vo
       }
       if (!j)
         return false;
+      Job before = *j;
       bool changed = strcmp(j->status, c->subtitle) != 0;
       agent_protocol_copy(j->id, sizeof(j->id), c->id);
       agent_protocol_copy(j->title, sizeof(j->title), c->title);
@@ -119,14 +139,17 @@ static bool command(AgentCapabilities *host, const AgentCapabilityCommand *c, vo
       agent_protocol_copy(j->error, sizeof(j->error), c->value);
       // Split to keep every Pebble persistence record below 256 bytes.
       int i = j - s->jobs;
-      persist_write_data(JOB_KEY + i, j, 128);
-      persist_write_data(JOB_KEY + MAX_JOBS + i, ((char *)j) + 128, sizeof(*j) - 128);
+      if (memcmp(&before, j, sizeof(before)) != 0) {
+        persist_write_data(JOB_KEY + i, j, 128);
+        persist_write_data(JOB_KEY + MAX_JOBS + i, ((char *)j) + 128, sizeof(*j) - 128);
+      }
       if (agent_capabilities_is_active(host, "jobs") && !strcmp(s->selected, j->id))
         show(s, j, false);
-      if (changed && c->flags == 1 && !quiet_time_is_active())
+      if (changed && (c->flags & 1) && !quiet_time_is_active())
         vibes_short_pulse();
     }
   }
+  schedule_timeout(s);
   if (agent_capabilities_is_active(host, "notifications") ||
       agent_capabilities_is_active(host, "dashboard"))
     agent_capabilities_rebuild_dashboard(host);
@@ -151,26 +174,34 @@ static bool event(AgentCapabilities *host, const AgentUiEvent *e, void *context)
 }
 static void tick(void *context) {
   Jobs *s = context;
+  s->timeout_timer = NULL;
   bool expired = false;
-  for (int i = 0; i < MAX_JOBS; ++i) {
-    if (s->refreshing[i] && ++s->refreshing[i] > 22) {
+  time_t now = time(NULL);
+  for (int i = 0; i < MAX_JOBS; ++i)
+    if (s->refreshing[i] && s->refreshing[i] <= now) {
       s->refreshing[i] = 0;
+      expired = true;
       agent_protocol_copy(s->jobs[i].error, sizeof(s->jobs[i].error),
                           "Phone unavailable. Tap to check again.");
-      expired = true;
+    }
+  if (expired && agent_capabilities_is_active(s->host, "notifications")) {
+    agent_capabilities_rebuild_dashboard(s->host);
+  }
+  if (s->checking && s->checking <= now) {
+    s->checking = 0;
+    if (agent_capabilities_is_active(s->host, "jobs")) {
+      agent_ui_set_status(agent_capabilities_ui(s->host), "Phone unavailable. Check again.", false,
+                          false);
     }
   }
-  if (expired && agent_capabilities_is_active(s->host, "notifications"))
-    agent_capabilities_rebuild_dashboard(s->host);
-  if (!s->checking || !agent_capabilities_is_active(s->host, "jobs"))
-    return;
-  if (++s->checking > 12) {
-    s->checking = 0;
-    agent_ui_set_status(agent_capabilities_ui(s->host), "Phone unavailable. Check again.", false,
-                        false);
-  }
+  schedule_timeout(s);
 }
-static void destroy(void *context) { free(context); }
+static void destroy(void *context) {
+  Jobs *s = context;
+  if (s->timeout_timer)
+    app_timer_cancel(s->timeout_timer);
+  free(s);
+}
 bool agent_jobs_install(AgentCapabilities *host) {
   Jobs *s = calloc(1, sizeof(*s));
   if (!s)
@@ -186,7 +217,7 @@ bool agent_jobs_install(AgentCapabilities *host) {
     }
   }
   AgentCapabilityModule m = {
-      .command = command, .event = event, .dashboard = dashboard, .destroy = destroy, .tick = tick};
+      .command = command, .event = event, .dashboard = dashboard, .destroy = destroy};
   if (!agent_capabilities_register(host, "job", m, s)) {
     free(s);
     return false;

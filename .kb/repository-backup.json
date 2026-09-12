@@ -1,7 +1,21 @@
 {
   "version": 1,
-  "created_at": "2026-09-12T23:07:16.853329306+00:00",
+  "created_at": "2026-09-12T23:27:12.190265857+00:00",
   "documents": [
+    {
+      "id": "01a097ea-d805-7c22-9326-792e1e76bdb5",
+      "slug": "issues/minute-refresh-efficiency",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Limit passive screen updates and remove redundant background work",
+      "content": "Acceptance: passive rendering including clock is coalesced to at most one update per minute; user input is immediate; delayed responses remain subject to the passive limit. Batch complete screen layouts, skip no-op patches/status updates, replace one-second host/stopwatch loops with shared minute work, preserve exact timer/alarm alerts with wakeups and scoped retry/alert timers, use one-shot job-check deadlines, skip unchanged job persistence, and use fresh weather cache rather than needless requests. Verify policy/native behavior, timer accuracy, JS behavior and both watch builds; clean up emulators and commit.\n\nImplemented and verified: full npm suite (79 phone tests, native sanitizer tests, integration tests and Go packages), both SDK watch builds, and Emery dashboard/Todos clock screenshots. Native coverage verifies minute cadence, accurate stopwatch values on input, deadline alerts/fallback, job check deadlines and unchanged persistence. Weather tests verify cache reuse, duplicate suppression, stale fetch and settings invalidation. Emulator cleaned with pebble kill. Actual battery savings require hardware measurement.\n",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-12T23:27:10.753622780Z",
+      "modified_at": "2026-09-12T23:27:10.753622780Z"
+    },
     {
       "id": "01a097dc-e948-7670-8daa-96ba0c263952",
       "slug": "issues/touchscreen-arming-tap",
@@ -350,10 +364,10 @@
     {
       "id": "01a091eb-4932-78f2-9ff6-e28ffc4f16fc",
       "slug": "reference/docs/architecture",
-      "version": 1,
+      "version": 2,
       "doc_type": "reference",
       "title": "docs/architecture.md",
-      "content": "Source: `docs/architecture.md`\n\n# Architecture and extension points\n\n## Data flow\n\n```text\nwatch input / dictation\n        │ AppMessage\n        ▼\nPebbleKit JS ── PAM request ──► Go agent endpoint ── RPC ──► Codex app-server\n        ▲                         │ validated PAM deltas\n        └──── parse/model/deltas ─┘\n        │ queued compact AppMessage operations\n        ▼\nnative AgentUi renderer or capability module\n```\n\nThe backend never controls pointers, coordinates for ordinary widgets, Pebble API names, or raw AppMessage dictionaries. It chooses from a bounded semantic UI vocabulary. The phone validates that vocabulary and the watch validates IDs, capacity, request ownership, and capability names again.\n\nThe included Go endpoint has separate packages for PAM validation, HTTP/WebSocket ingress, Codex app-server transport, agent/thread orchestration, and session persistence. App-server connections are long-lived and multiplexed; turns for one watch session are serialized while independent sessions can overlap. Transport resolution is Unix daemon socket, managed stdio process, then configured WebSocket.\n\n## Phone library\n\n`require(\"pebble-agent\")` exposes:\n\n```js\nconst Agent = require(\"pebble-agent\");\n\nconst writer = new Agent.writer.Writer({\n  onLine(line) {\n    response.write(line); // each call is independently renderable\n  }\n});\n\nwriter.beginScreen(\"results\", \"list\", { title: \"Results\", status: true })\n  .item({ id: \"one\", title: \"First\", action: \"result.open\" })\n  .item({ id: \"two\", title: \"Second\", action: \"result.open\" })\n  .endScreen();\n```\n\nThe writer's convenience methods match all element kinds. `open(kind, attrs)` and `close()` create deeper hierarchy when a consumer needs nested sections or groups.\n\nThe parser is push-based:\n\n```js\nconst parser = new Agent.pam.Parser({\n  onNode(node) {\n    // Called at the newline, not at end-of-response.\n  },\n  onError(error) {\n    // line and column are available.\n  }\n});\n\nparser.push(networkChunk);\nparser.finish();\n```\n\n`ScreenModel` turns parsed nodes into `begin`, `node`, `patch`, `remove`, `end`, and `capability` operations. `MessageQueue` converts them into bounded AppMessage dictionaries, splits UTF-8 text safely, and provides ordered retry/backpressure handling.\n\n## Native UI library\n\n`src/c/agent_ui.h` is independent of AppMessage. A different transport can drive it with:\n\n```c\nagent_ui_begin(ui, \"results\", \"list\", \"Results\", \"\", \"\", 16);\nagent_ui_add(ui, &(AgentUiElementSpec) {\n  .kind = \"item\",\n  .id = \"one\",\n  .title = \"First\",\n  .action = \"result.open\",\n  .present = AgentUiPresentAll,\n});\nagent_ui_end(ui);\n```\n\nThe renderer owns display adaptation, selection, scroll position, status/action rails, touch hit-testing, and numeric field windows. It reports semantic `AgentUiEvent` values through a callback.\n\nTo add a layout:\n\n1. Add its name to `LAYOUTS` in `src/common/model.js`.\n2. Add the enum/mapping in `agent_ui.h` and `agent_ui.c`.\n3. Define geometry in `prv_calculate_layout()` and drawing behavior in `prv_draw_element()`.\n4. Add parser/model and watch builds to the test pass.\n\n## Capability registries\n\nPhone modules register a name and handler:\n\n```js\nregistry.register(\"calendar\", function(attrs, host) {\n  // Fetch on the phone, then call host.renderPam(...).\n});\n```\n\nNative modules use a descriptor instead of a central switch:\n\n```c\nagent_capabilities_register(capabilities, \"counter\", (AgentCapabilityModule) {\n  .command = counter_command,\n  .event = counter_event,\n  .wakeup = counter_wakeup,\n  .destroy = counter_destroy,\n}, counter_state);\n```\n\nOnly the module decides which commands and internal action names it accepts. The manager supplies access to `AgentUi`, semantic event emission back to the phone, wakeup dispatch, and active-screen ownership. Timer, stopwatch, and reminder are separate examples in `src/c/capabilities/`; weather is a phone example in `src/common/weather.js`.\n\n## Resource and platform choices\n\n- Target platforms are Emery and Gabbro, matching the touch-capable Core Devices supported by the sibling Bibble project.\n- The current linked footprint is about 30 KB of the 128 KB app RAM budget on both targets; screen data is fixed-capacity and does not grow without bound.\n- Symbolic images avoid accepting arbitrary agent-provided bitmap allocations.\n- Raw touch is used because hotspots and gesture bindings are agent-defined. Button navigation remains a complete fallback whenever touch is disabled.\n- Dictation is owned above the binding layer, which prevents a PAM response from replacing long Select.\n\n## Testing strategy\n\n`npm test` exercises chunk-boundary parsing, hierarchy validation, every layout name, patch merging, UTF-8 message splitting, queue ordering/retry, incremental HTTP and WebSocket consumption, settings, registry extension, weather cards, and writer output. It also compiles native protocol helpers with strict warnings plus AddressSanitizer and UndefinedBehaviorSanitizer, starts the demo HTTP server on a loopback port to verify line-by-line delivery, executes the configuration page against a simulated DOM, and runs the Go server's PAM/RPC/transport/API integration suite.\n\nSee [testing.md](testing.md) for the emulator matrix and the remaining hardware-only checks.\n\n`npm run build:watch` compiles and links every native module independently for both round and rectangular targets and reports the platform memory footprint.\n",
+      "content": "# Architecture and extension points\n\n## Data flow\n\n```text\nwatch input / dictation\n        │ AppMessage\n        ▼\nPebbleKit JS ── PAM request ──► Go agent endpoint ── RPC ──► Codex app-server\n        ▲                         │ validated PAM deltas\n        └──── parse/model/deltas ─┘\n        │ queued compact AppMessage operations\n        ▼\nnative AgentUi renderer or capability module\n```\n\nThe backend never controls pointers, coordinates for ordinary widgets, Pebble API names, or raw AppMessage dictionaries. It chooses from a bounded semantic UI vocabulary. The phone validates that vocabulary and the watch validates IDs, capacity, request ownership, and capability names again.\n\nThe included Go endpoint has separate packages for PAM validation, HTTP/WebSocket ingress, Codex app-server transport, agent/thread orchestration, and session persistence. App-server connections are long-lived and multiplexed; turns for one watch session are serialized while independent sessions can overlap. Transport resolution is Unix daemon socket, managed stdio process, then configured WebSocket.\n\n## Phone library\n\n`require(\"pebble-agent\")` exposes:\n\n```js\nconst Agent = require(\"pebble-agent\");\n\nconst writer = new Agent.writer.Writer({\n  onLine(line) {\n    response.write(line); // each call is independently renderable\n  }\n});\n\nwriter.beginScreen(\"results\", \"list\", { title: \"Results\", status: true })\n  .item({ id: \"one\", title: \"First\", action: \"result.open\" })\n  .item({ id: \"two\", title: \"Second\", action: \"result.open\" })\n  .endScreen();\n```\n\nThe writer's convenience methods match all element kinds. `open(kind, attrs)` and `close()` create deeper hierarchy when a consumer needs nested sections or groups.\n\nThe parser is push-based:\n\n```js\nconst parser = new Agent.pam.Parser({\n  onNode(node) {\n    // Called at the newline, not at end-of-response.\n  },\n  onError(error) {\n    // line and column are available.\n  }\n});\n\nparser.push(networkChunk);\nparser.finish();\n```\n\n`ScreenModel` turns parsed nodes into `begin`, `node`, `patch`, `remove`, `end`, and `capability` operations. `MessageQueue` converts them into bounded AppMessage dictionaries, splits UTF-8 text safely, and provides ordered retry/backpressure handling.\n\n## Native UI library\n\n`src/c/agent_ui.h` is independent of AppMessage. A different transport can drive it with:\n\n```c\nagent_ui_begin(ui, \"results\", \"list\", \"Results\", \"\", \"\", 16);\nagent_ui_add(ui, &(AgentUiElementSpec) {\n  .kind = \"item\",\n  .id = \"one\",\n  .title = \"First\",\n  .action = \"result.open\",\n  .present = AgentUiPresentAll,\n});\nagent_ui_end(ui);\n```\n\nThe renderer owns display adaptation, selection, scroll position, status/action rails, touch hit-testing, and numeric field windows. It reports semantic `AgentUiEvent` values through a callback.\n\nTo add a layout:\n\n1. Add its name to `LAYOUTS` in `src/common/model.js`.\n2. Add the enum/mapping in `agent_ui.h` and `agent_ui.c`.\n3. Define geometry in `prv_calculate_layout()` and drawing behavior in `prv_draw_element()`.\n4. Add parser/model and watch builds to the test pass.\n\n## Capability registries\n\nPhone modules register a name and handler:\n\n```js\nregistry.register(\"calendar\", function(attrs, host) {\n  // Fetch on the phone, then call host.renderPam(...).\n});\n```\n\nNative modules use a descriptor instead of a central switch:\n\n```c\nagent_capabilities_register(capabilities, \"counter\", (AgentCapabilityModule) {\n  .command = counter_command,\n  .event = counter_event,\n  .wakeup = counter_wakeup,\n  .destroy = counter_destroy,\n}, counter_state);\n```\n\nOnly the module decides which commands and internal action names it accepts. The manager supplies access to `AgentUi`, semantic event emission back to the phone, wakeup dispatch, and active-screen ownership. Timer, stopwatch, and reminder are separate examples in `src/c/capabilities/`; weather is a phone example in `src/common/weather.js`.\n\n## Resource and platform choices\n\n- Target platforms are Emery and Gabbro, matching the touch-capable Core Devices supported by the sibling Bibble project.\n- The current linked footprint is about 30 KB of the 128 KB app RAM budget on both targets; screen data is fixed-capacity and does not grow without bound.\n- Symbolic images avoid accepting arbitrary agent-provided bitmap allocations.\n- Raw touch is used because hotspots and gesture bindings are agent-defined. Button navigation remains a complete fallback whenever touch is disabled.\n- Dictation is owned above the binding layer, which prevents a PAM response from replacing long Select.\n\n## Testing strategy\n\n`npm test` exercises chunk-boundary parsing, hierarchy validation, every layout name, patch merging, UTF-8 message splitting, queue ordering/retry, incremental HTTP and WebSocket consumption, settings, registry extension, weather cards, and writer output. It also compiles native protocol helpers with strict warnings plus AddressSanitizer and UndefinedBehaviorSanitizer, starts the demo HTTP server on a loopback port to verify line-by-line delivery, executes the configuration page against a simulated DOM, and runs the Go server's PAM/RPC/transport/API integration suite.\n\nSee [testing.md](testing.md) for the emulator matrix and the remaining hardware-only checks.\n\n`npm run build:watch` compiles and links every native module independently for both round and rectangular targets and reports the platform memory footprint.\n\n## Screen refresh and power use\n\nPassive UI changes share a 60-second refresh limit, including the app-owned\nclock, weather, countdowns, and server status/results. Changes accumulate in the\nmodel and complete screens are laid out once when painted. An interaction\nrefreshes elapsed values and flushes pending changes immediately; its short\nanimations remain responsive. Subsequent passive updates wait until at least\n60 seconds after the most recent paint. Checking uses a static indicator.\nThis controls Agent's layers; system-owned dictation and notification screens\nare controlled by Pebble OS.\n\nThe capability host runs once per minute and also refreshes on input. Stopwatch\nelapsed time uses wall-clock timestamps, so reduced repainting does not lose\nelapsed time. Timer/alarm deadlines still use OS wakeups; three-second alert\nvibrations and retries after wakeup failures have scoped timers. Job checks\nuse one-shot timeout timers rather than a per-second polling counter. Completed\njob responses can buzz immediately while their visual changes wait for a paint.\n\nNo-op element/status patches avoid layout work, and unchanged job records avoid\nflash writes. The phone reuses weather for 15 minutes and suppresses identical\nweather packets; unit/location-setting changes invalidate the cache. These reduce\nscheduled CPU work, storage writes, and radio/network traffic. Battery-life\nimprovements have not been measured on hardware.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -363,7 +377,7 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-11T19:22:18.632213499Z"
+      "modified_at": "2026-09-12T23:27:10.753622780Z"
     },
     {
       "id": "01a091eb-493e-7da2-a8aa-cf6e205ef385",
@@ -422,10 +436,10 @@
     {
       "id": "01a091eb-4965-7451-8490-4bb90faa9ae5",
       "slug": "reference/docs/testing",
-      "version": 11,
+      "version": 12,
       "doc_type": "reference",
       "title": "docs/testing.md",
-      "content": "Source: `docs/testing.md`\n\n# Testing before hardware\n\nThe project has a useful pre-hardware test boundary. Parser, model, transport, phone bridge, backend fixture, configuration, watch compilation, most interaction logic, persistence, and wakeup behavior can be checked locally. Microphone quality, physical touch behavior, Bluetooth/phone integration, and real power timing still need devices.\n\n## Repeatable automated checks\n\nRun:\n\n```sh\nnpm test\nnpm run build:watch\n```\n\n`npm test` currently includes:\n\n- 47 JavaScript tests covering PAM at every chunk boundary, byte and hierarchy limits, all layouts/elements, patches/removals, UTF-8 AppMessage splitting, queue retry/staleness, HTTP and WebSocket cancellation/timeouts, settings, weather, the capability registry, writer output, onboarding, native dashboard preservation, and dictation input through the full PebbleKit-to-agent-to-render bridge.\n- Native C tests built with `-Wall -Wextra -Werror`, AddressSanitizer, and UndefinedBehaviorSanitizer. These cover metadata parsing and escaping, strict signed 32-bit bounds, bounded copies, and duration parsing/formatting.\n- Four integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.\n- Go tests covering strict request/output PAM handling, output at arbitrary model-delta boundaries, invalid-model containment, persisted conversation threads, Codex RPC initialization and fallback order, real loopback HTTP and downstream WebSocket requests, and app-server stdio, WebSocket, and WebSocket-over-Unix-socket transports.\n\nThe watch build compiles and links the same sources for both target platforms. At the last run it used about 31 KiB of each platform's 128 KiB RAM budget, leaving about 100 KiB for heap.\n\n## Emulator checks completed\n\n### Emery (rectangular)\n\n- Streamed dynamic screens containing every visible element type, then patched, appended, selected, scrolled, and removed content.\n- Exercised list, grid, card, progress, form, choice, modal, action-bar, status-bar, and symbolic-image rendering.\n- Opened a native number field, changed it using the declared step, confirmed it, and observed the semantic input sent to PebbleKit JS.\n- Started, paused, resumed, reset, replaced, and persisted timers/stopwatches. A timer exited in the background and relaunched the app at expiry. Replacing a timer no longer lets the old wakeup finish the new timer.\n- Scheduled a reminder, relaunched through its wakeup, acknowledged it, and verified its completion state.\n- Held Select through the app-wide long-click recognizer and entered the system dictation UI. The SDK simulator exercised the failure callback; successful transcription-to-agent delivery is covered by the phone-bridge test but remains a device check.\n- Repeated malformed and boundary-value render traffic without an app fault. App shutdown reported no retained heap allocation.\n\n### Gabbro (round/touch target)\n\n- Streamed a two-column grid and custom action rail on the round display.\n- Verified round-safe title/content insets and fully visible Up, Select, and Down symbols.\n- Replayed the dynamic render stress sequence without a native fault.\n- Compiled the touch-service code under `PBL_TOUCH`. The installed SDK's emulator had touch disabled at runtime, so taps, drags, hotspots, and swipes are not claimed as emulator passes.\n\n## Still requires hardware (and a paired phone)\n\n### Timer crash regression\n\nA physical Emery crash after dictation returned `duration=5s` was captured with\n`pebble logs --phone` (the default phone connection needs no IP). In the affected\nbuild, PC `0x5778` is inside newlib `strtol`, loading `_impure_ptr` through an\nabsolute address. That implementation is not safe in the relocated watchapp.\nDuration and reminder timestamp parsing now use the bounded native integer\nparser. Native sanitizer tests cover suffixes, signed limits, and overflow;\ncheck both watch ELF symbol tables for absence of `strtol` and `_impure_ptr`.\nHardware verification: dictate “Set a timer for 5 seconds”, then verify the\ncountdown and completion without an app fault while watch logging is attached.\n\n### Remaining device checks\n\nThe native scheduler suite now runs the real capability host and scheduler with\nmocked clock, persistence, wakeup and UI APIs under ASan/UBSan. It covers\nconcurrent timer/alarm expiry, repeated alerts, individual acknowledgment,\nsnooze, pause/resume, close/reopen recovery, capacity, failed storage/wakeups,\ncorrupt records, and stopwatch dashboard updates. Watch builds reject newlib\nstate symbols (`_impure_ptr`, `_ctype_`, etc.) that are unsafe in relocated\nwatchapps. Host sanitizer success alone cannot detect that class of bug.\n\nEmulator checks on Emery and Gabbro show simultaneous timer/alarm notifications,\nindependent acknowledgment, and an ongoing timer in the dashboard. The fixture\nuses the production scheduler and UI with seeded local commands.\n\nHardware acceptance for the dashboard update: create two timers and an alarm;\nBack to the dashboard and verify the running rows; cancel one timer with X;\nverify completion navigates to Notifications, repeated buzzing, independent\nacknowledgment and snooze. Close/reopen with active work and compare remaining\ntime. Assign a Quick Launch button and verify automatic dictation, while menu\nand wakeup launches show the dashboard. These hardware checks remain pending\nuntil exercised on the updated app.\n\n- A successful real microphone/dictation session, including cancellation, noisy speech, Unicode transcription, and permission/connectivity failures.\n- Physical tap targeting, drag scrolling, every swipe direction, action-rail taps, touch-disabled fallback, and edge behavior on both touch displays.\n- Bluetooth disconnect/reconnect, Android and iOS background behavior, configuration through the real phone app, HTTP buffering differences, WebSocket reconnects, authorization, and geolocation permission flows.\n- Haptic feel, reminder audibility/visibility, real wakeup accuracy across sleep/reboot/time-zone changes, and timer/reminder coexistence with other apps.\n- Battery use, long-running stopwatch drift, memory behavior over many conversations, and sunlight/low-light readability.\n\nDo not treat emulator wakeup timing, simulated dictation, or mouse-based touch as a substitute for the corresponding hardware checks.\n\nConcurrent-alert regressions cover reused model IDs, delivery retries before and\nafter relaunch, migration of existing dashboard records, a 10-second timer\nexpiring while a 60-second timer is open, and alarm expiry over dashboard,\nremote response, stopwatch, and timer screens. Notification focus changes\npreserve outstanding capability commands while suppressing late render traffic.\n\n\n### Pixel dashboard regression\n\nThe generated resource bundle builds on Emery and Gabbro. The JS bridge suite\ncovers New Chat resetting/persisting a session before its dictation acknowledgment,\ncanceling old responses, keeping subsequent normal dictation in that session,\nand routing Weather locally without a model request. Native scheduler tests cover\nall five dashboard action bindings, the Calendar placeholder, persistent todo addition,\narchive/restore, counts, storage failure, capacity and text limits, opening and\nrefreshing the separate Notifications list, returning home, and concurrent expiry.\n\nBoth Emery and Gabbro dashboards were visually checked with the generated assets\nand fully visible cards. On Emery, Calendar,\nNotifications (with existing due timers/reminders), and Todos open via buttons.\nReal microphone transcription, physical touch, phone geolocation, and New Chat's\nend-to-end device handshake remain hardware checks.\n\nIf the phone simulator reports a successful installation but leaves the app menu\nempty, the SDK's packet installer works through `pebble repl --emulator emery`:\n\n```python\nfrom libpebble2.services.install import AppInstaller\nAppInstaller(pebble, 'build/pebble-agent.pbw').install()\n```\n\nNotification progress regression checks 0%, 25%, paused stability, resumed 50%,\n100% completion, removal after acknowledgment/cancellation, and seven-day duration\nbounds. The native scheduler sends explicit timer/alarm kind and elapsed percentage\nmetadata. The SDK radial primitive defines zero at 12 o’clock and clockwise growth;\nempty models draw no notification icons or labels.\n\n### Failure delivery regression\n\nRegression coverage replays the unquoted multiword screen title at every chunk\nsplit, verifies strict request parsing and rejection of ambiguous repairs, and\nchecks terminal error lines after a header or partial screen. Bridge tests ensure\nthat the original failure reason reaches the watch with the response-begin ID,\nis not replaced by “no screen,” does not emit success/idle notifications, and\nallows a subsequent request to succeed. Native response-state tests cover errors\nbefore any screen, stale IDs, terminal failure, pre-handshake timeout, and retry.\n\nTodo and failure regressions also cover local voice parsing with preserved case/Unicode and HTTP 0/401/503 explanations without HTML parser errors. Hardware checks: drag long todo text both ways, scroll a long checklist, hold Talk to open the menu, tap outside to dismiss, and dictate through both conversation options.\n\nThe revised dashboard and conversation overlay were visually checked on Emery and Gabbro. Emery button checks confirmed Back dismisses the overlay, Down opens Todos, and Up opens Notifications. Screenshots are in `docs/screenshots/`.\n\nTime-bar tests verify Todos and Calendar flags and absence of an Add item row. Weather tests cover summary values, day/night/precipitation icons, background refresh isolation, cache writes, timeouts, and retaining a new summary across dashboard navigation. `dashboard-weather-emery.png` uses an injected synthetic 58F moon forecast for layout verification, not live weather.\n\n### Interactive PAM controls\n\nRegression coverage includes local action construction and bounds, range snapping,\nclockwise/counterclockwise dial seam handling, generated dictation fallback,\ncustom answers bypassing regexes with screen context, server validation of skill\nexamples, and skill installation into a temporary state directory. Slider/dial\nscreens were rendered using an isolated emulator fixture; the slider confirmation\nopened a native five-minute timer without an agent request, then the synthetic\ntimer was canceled. See `pam-slider-emery.png` and `pam-dial-emery.png`. Physical\nslider/dial gestures and microphone answers still need hardware checks.\n\n## Background requests\n\n`internal/jobs` tests connection cancellation without worker cancellation,\nexplicit cancellation, duplicate submission, durable retrieval acknowledgements,\nrestart recovery, and retention. HTTP tests check authentication and job routes.\n`tests/jobs.js` covers the single bounded wait, no continued polling, manual\nrefresh/cancel, durable IDs, ambiguous-submission retries, and stale responses.\nThe bridge tests verify completion buzz messages without unsolicited rendering,\nmanual PAM retrieval, conversation context, stable capability invocation IDs,\nand acknowledgement only after watch presentation. Native tests cover job rows,\nstatus checks, cancel/dismiss actions, and watch persistence.\n\nOpening Notifications is covered by native tests for immediate Checking labels,\nfailed-check fallback, and no refresh loop during list rebuilds. JS tests cover\nall ongoing jobs, exclusion of terminal/retrieved jobs, overlapping pane opens,\ntransient checking state, and row-only bridge updates without unsolicited\nrendering or vibration.\n\n## Touchscreen arming\n\nThe native `touch_guard_test` exercises same-target double taps, one-use arming,\nexpiry, target changes, tap-then-hold and tap-then-drag, unarmed hold/drag rejection,\nmenu targets, screen/input resets, edge retargeting, and clock wrap. The watch\nhandler gates touchdown, movement and liftoff before any mutation or hold timer;\nphysical click handlers do not use the gate. Both Emery and Gabbro SDK builds\ncompile the touch integration. Physical touchscreen behavior still requires a\nhardware smoke test.\n",
+      "content": "# Testing before hardware\n\nThe project has a useful pre-hardware test boundary. Parser, model, transport, phone bridge, backend fixture, configuration, watch compilation, most interaction logic, persistence, and wakeup behavior can be checked locally. Microphone quality, physical touch behavior, Bluetooth/phone integration, and real power timing still need devices.\n\n## Repeatable automated checks\n\nRun:\n\n```sh\nnpm test\nnpm run build:watch\n```\n\n`npm test` currently includes:\n\n- 47 JavaScript tests covering PAM at every chunk boundary, byte and hierarchy limits, all layouts/elements, patches/removals, UTF-8 AppMessage splitting, queue retry/staleness, HTTP and WebSocket cancellation/timeouts, settings, weather, the capability registry, writer output, onboarding, native dashboard preservation, and dictation input through the full PebbleKit-to-agent-to-render bridge.\n- Native C tests built with `-Wall -Wextra -Werror`, AddressSanitizer, and UndefinedBehaviorSanitizer. These cover metadata parsing and escaping, strict signed 32-bit bounds, bounded copies, and duration parsing/formatting.\n- Four integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.\n- Go tests covering strict request/output PAM handling, output at arbitrary model-delta boundaries, invalid-model containment, persisted conversation threads, Codex RPC initialization and fallback order, real loopback HTTP and downstream WebSocket requests, and app-server stdio, WebSocket, and WebSocket-over-Unix-socket transports.\n\nThe watch build compiles and links the same sources for both target platforms. At the last run it used about 31 KiB of each platform's 128 KiB RAM budget, leaving about 100 KiB for heap.\n\n## Emulator checks completed\n\n### Emery (rectangular)\n\n- Streamed dynamic screens containing every visible element type, then patched, appended, selected, scrolled, and removed content.\n- Exercised list, grid, card, progress, form, choice, modal, action-bar, status-bar, and symbolic-image rendering.\n- Opened a native number field, changed it using the declared step, confirmed it, and observed the semantic input sent to PebbleKit JS.\n- Started, paused, resumed, reset, replaced, and persisted timers/stopwatches. A timer exited in the background and relaunched the app at expiry. Replacing a timer no longer lets the old wakeup finish the new timer.\n- Scheduled a reminder, relaunched through its wakeup, acknowledged it, and verified its completion state.\n- Held Select through the app-wide long-click recognizer and entered the system dictation UI. The SDK simulator exercised the failure callback; successful transcription-to-agent delivery is covered by the phone-bridge test but remains a device check.\n- Repeated malformed and boundary-value render traffic without an app fault. App shutdown reported no retained heap allocation.\n\n### Gabbro (round/touch target)\n\n- Streamed a two-column grid and custom action rail on the round display.\n- Verified round-safe title/content insets and fully visible Up, Select, and Down symbols.\n- Replayed the dynamic render stress sequence without a native fault.\n- Compiled the touch-service code under `PBL_TOUCH`. The installed SDK's emulator had touch disabled at runtime, so taps, drags, hotspots, and swipes are not claimed as emulator passes.\n\n## Still requires hardware (and a paired phone)\n\n### Timer crash regression\n\nA physical Emery crash after dictation returned `duration=5s` was captured with\n`pebble logs --phone` (the default phone connection needs no IP). In the affected\nbuild, PC `0x5778` is inside newlib `strtol`, loading `_impure_ptr` through an\nabsolute address. That implementation is not safe in the relocated watchapp.\nDuration and reminder timestamp parsing now use the bounded native integer\nparser. Native sanitizer tests cover suffixes, signed limits, and overflow;\ncheck both watch ELF symbol tables for absence of `strtol` and `_impure_ptr`.\nHardware verification: dictate “Set a timer for 5 seconds”, then verify the\ncountdown and completion without an app fault while watch logging is attached.\n\n### Remaining device checks\n\nThe native scheduler suite now runs the real capability host and scheduler with\nmocked clock, persistence, wakeup and UI APIs under ASan/UBSan. It covers\nconcurrent timer/alarm expiry, repeated alerts, individual acknowledgment,\nsnooze, pause/resume, close/reopen recovery, capacity, failed storage/wakeups,\ncorrupt records, and stopwatch dashboard updates. Watch builds reject newlib\nstate symbols (`_impure_ptr`, `_ctype_`, etc.) that are unsafe in relocated\nwatchapps. Host sanitizer success alone cannot detect that class of bug.\n\nEmulator checks on Emery and Gabbro show simultaneous timer/alarm notifications,\nindependent acknowledgment, and an ongoing timer in the dashboard. The fixture\nuses the production scheduler and UI with seeded local commands.\n\nHardware acceptance for the dashboard update: create two timers and an alarm;\nBack to the dashboard and verify the running rows; cancel one timer with X;\nverify completion navigates to Notifications, repeated buzzing, independent\nacknowledgment and snooze. Close/reopen with active work and compare remaining\ntime. Assign a Quick Launch button and verify automatic dictation, while menu\nand wakeup launches show the dashboard. These hardware checks remain pending\nuntil exercised on the updated app.\n\n- A successful real microphone/dictation session, including cancellation, noisy speech, Unicode transcription, and permission/connectivity failures.\n- Physical tap targeting, drag scrolling, every swipe direction, action-rail taps, touch-disabled fallback, and edge behavior on both touch displays.\n- Bluetooth disconnect/reconnect, Android and iOS background behavior, configuration through the real phone app, HTTP buffering differences, WebSocket reconnects, authorization, and geolocation permission flows.\n- Haptic feel, reminder audibility/visibility, real wakeup accuracy across sleep/reboot/time-zone changes, and timer/reminder coexistence with other apps.\n- Battery use, long-running stopwatch drift, memory behavior over many conversations, and sunlight/low-light readability.\n\nDo not treat emulator wakeup timing, simulated dictation, or mouse-based touch as a substitute for the corresponding hardware checks.\n\nConcurrent-alert regressions cover reused model IDs, delivery retries before and\nafter relaunch, migration of existing dashboard records, a 10-second timer\nexpiring while a 60-second timer is open, and alarm expiry over dashboard,\nremote response, stopwatch, and timer screens. Notification focus changes\npreserve outstanding capability commands while suppressing late render traffic.\n\n\n### Pixel dashboard regression\n\nThe generated resource bundle builds on Emery and Gabbro. The JS bridge suite\ncovers New Chat resetting/persisting a session before its dictation acknowledgment,\ncanceling old responses, keeping subsequent normal dictation in that session,\nand routing Weather locally without a model request. Native scheduler tests cover\nall five dashboard action bindings, the Calendar placeholder, persistent todo addition,\narchive/restore, counts, storage failure, capacity and text limits, opening and\nrefreshing the separate Notifications list, returning home, and concurrent expiry.\n\nBoth Emery and Gabbro dashboards were visually checked with the generated assets\nand fully visible cards. On Emery, Calendar,\nNotifications (with existing due timers/reminders), and Todos open via buttons.\nReal microphone transcription, physical touch, phone geolocation, and New Chat's\nend-to-end device handshake remain hardware checks.\n\nIf the phone simulator reports a successful installation but leaves the app menu\nempty, the SDK's packet installer works through `pebble repl --emulator emery`:\n\n```python\nfrom libpebble2.services.install import AppInstaller\nAppInstaller(pebble, 'build/pebble-agent.pbw').install()\n```\n\nNotification progress regression checks 0%, 25%, paused stability, resumed 50%,\n100% completion, removal after acknowledgment/cancellation, and seven-day duration\nbounds. The native scheduler sends explicit timer/alarm kind and elapsed percentage\nmetadata. The SDK radial primitive defines zero at 12 o’clock and clockwise growth;\nempty models draw no notification icons or labels.\n\n### Failure delivery regression\n\nRegression coverage replays the unquoted multiword screen title at every chunk\nsplit, verifies strict request parsing and rejection of ambiguous repairs, and\nchecks terminal error lines after a header or partial screen. Bridge tests ensure\nthat the original failure reason reaches the watch with the response-begin ID,\nis not replaced by “no screen,” does not emit success/idle notifications, and\nallows a subsequent request to succeed. Native response-state tests cover errors\nbefore any screen, stale IDs, terminal failure, pre-handshake timeout, and retry.\n\nTodo and failure regressions also cover local voice parsing with preserved case/Unicode and HTTP 0/401/503 explanations without HTML parser errors. Hardware checks: drag long todo text both ways, scroll a long checklist, hold Talk to open the menu, tap outside to dismiss, and dictate through both conversation options.\n\nThe revised dashboard and conversation overlay were visually checked on Emery and Gabbro. Emery button checks confirmed Back dismisses the overlay, Down opens Todos, and Up opens Notifications. Screenshots are in `docs/screenshots/`.\n\nTime-bar tests verify Todos and Calendar flags and absence of an Add item row. Weather tests cover summary values, day/night/precipitation icons, background refresh isolation, cache writes, timeouts, and retaining a new summary across dashboard navigation. `dashboard-weather-emery.png` uses an injected synthetic 58F moon forecast for layout verification, not live weather.\n\n### Interactive PAM controls\n\nRegression coverage includes local action construction and bounds, range snapping,\nclockwise/counterclockwise dial seam handling, generated dictation fallback,\ncustom answers bypassing regexes with screen context, server validation of skill\nexamples, and skill installation into a temporary state directory. Slider/dial\nscreens were rendered using an isolated emulator fixture; the slider confirmation\nopened a native five-minute timer without an agent request, then the synthetic\ntimer was canceled. See `pam-slider-emery.png` and `pam-dial-emery.png`. Physical\nslider/dial gestures and microphone answers still need hardware checks.\n\n## Background requests\n\n`internal/jobs` tests connection cancellation without worker cancellation,\nexplicit cancellation, duplicate submission, durable retrieval acknowledgements,\nrestart recovery, and retention. HTTP tests check authentication and job routes.\n`tests/jobs.js` covers the single bounded wait, no continued polling, manual\nrefresh/cancel, durable IDs, ambiguous-submission retries, and stale responses.\nThe bridge tests verify completion buzz messages without unsolicited rendering,\nmanual PAM retrieval, conversation context, stable capability invocation IDs,\nand acknowledgement only after watch presentation. Native tests cover job rows,\nstatus checks, cancel/dismiss actions, and watch persistence.\n\nOpening Notifications is covered by native tests for immediate Checking labels,\nfailed-check fallback, and no refresh loop during list rebuilds. JS tests cover\nall ongoing jobs, exclusion of terminal/retrieved jobs, overlapping pane opens,\ntransient checking state, and row-only bridge updates without unsolicited\nrendering or vibration.\n\n## Touchscreen arming\n\nThe native `touch_guard_test` exercises same-target double taps, one-use arming,\nexpiry, target changes, tap-then-hold and tap-then-drag, unarmed hold/drag rejection,\nmenu targets, screen/input resets, edge retargeting, and clock wrap. The watch\nhandler gates touchdown, movement and liftoff before any mutation or hold timer;\nphysical click handlers do not use the gate. Both Emery and Gabbro SDK builds\ncompile the touch integration. Physical touchscreen behavior still requires a\nhardware smoke test.\n\n## Minute refresh efficiency regression\n\nThe native suite checks the passive paint deadline (including clock wrap),\nimmediate user refresh, one idle host callback per minute, no separate stopwatch\ncallback, accurate elapsed values on interaction, unchanged-job write suppression,\nand one-shot job-check timeout behavior. Existing schedule tests retain exact\nshort deadlines, repeated alerts, wakeup failure fallback, and persistence.\nPhone tests cover fresh weather reuse, duplicate packet suppression, stale-cache\nfetching, and invalidation after unit changes. The full npm suite and both watch\nbuilds pass. Emery screenshots confirm dashboard and Todos clock rendering and\nphysical-button navigation; the emulator was shut down with `pebble kill`.\nPhysical display timing and battery savings still require hardware.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -435,7 +449,7 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-12T23:07:10.328365375Z"
+      "modified_at": "2026-09-12T23:27:10.753622780Z"
     },
     {
       "id": "01a091eb-4971-78b2-b568-152e2036ab39",
@@ -475,6 +489,298 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a097f2-401d-70d2-95cd-b054ad9330d1",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Document minute refresh policy and efficiency validation",
+      "created_at": "2026-09-12T23:27:10.753622780Z",
+      "changes": [
+        {
+          "document_id": "01a097ea-d805-7c22-9326-792e1e76bdb5",
+          "slug": "issues/minute-refresh-efficiency",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "8a5c02546dee29be25ace2deac762b2dda167375329c3b1d05196fff545817a9",
+          "doc_type": "task",
+          "title": "Limit passive screen updates and remove redundant background work"
+        },
+        {
+          "document_id": "01a091eb-4932-78f2-9ff6-e28ffc4f16fc",
+          "slug": "reference/docs/architecture",
+          "change_type": "modified",
+          "previous_commit_id": "01a091eb-b596-7611-8852-7f2449afc26c",
+          "previous_version": 1,
+          "new_version": 2,
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 5,
+              "new_start": 1,
+              "new_count": 3,
+              "lines": [
+                {
+                  "op": "delete",
+                  "content": "Source: `docs/architecture.md`"
+                },
+                {
+                  "op": "delete",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "# Architecture and extension points"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "## Data flow"
+                }
+              ]
+            },
+            {
+              "old_start": 122,
+              "old_count": 3,
+              "new_start": 120,
+              "new_count": 27,
+              "context": "## Testing strategy",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "See [testing.md](testing.md) for the emulator matrix and the remaining hardware-only checks."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "`npm run build:watch` compiles and links every native module independently for both round and rectangular targets and reports the platform memory footprint."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "## Screen refresh and power use"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Passive UI changes share a 60-second refresh limit, including the app-owned"
+                },
+                {
+                  "op": "add",
+                  "content": "clock, weather, countdowns, and server status/results. Changes accumulate in the"
+                },
+                {
+                  "op": "add",
+                  "content": "model and complete screens are laid out once when painted. An interaction"
+                },
+                {
+                  "op": "add",
+                  "content": "refreshes elapsed values and flushes pending changes immediately; its short"
+                },
+                {
+                  "op": "add",
+                  "content": "animations remain responsive. Subsequent passive updates wait until at least"
+                },
+                {
+                  "op": "add",
+                  "content": "60 seconds after the most recent paint. Checking uses a static indicator."
+                },
+                {
+                  "op": "add",
+                  "content": "This controls Agent's layers; system-owned dictation and notification screens"
+                },
+                {
+                  "op": "add",
+                  "content": "are controlled by Pebble OS."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "The capability host runs once per minute and also refreshes on input. Stopwatch"
+                },
+                {
+                  "op": "add",
+                  "content": "elapsed time uses wall-clock timestamps, so reduced repainting does not lose"
+                },
+                {
+                  "op": "add",
+                  "content": "elapsed time. Timer/alarm deadlines still use OS wakeups; three-second alert"
+                },
+                {
+                  "op": "add",
+                  "content": "vibrations and retries after wakeup failures have scoped timers. Job checks"
+                },
+                {
+                  "op": "add",
+                  "content": "use one-shot timeout timers rather than a per-second polling counter. Completed"
+                },
+                {
+                  "op": "add",
+                  "content": "job responses can buzz immediately while their visual changes wait for a paint."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "No-op element/status patches avoid layout work, and unchanged job records avoid"
+                },
+                {
+                  "op": "add",
+                  "content": "flash writes. The phone reuses weather for 15 minutes and suppresses identical"
+                },
+                {
+                  "op": "add",
+                  "content": "weather packets; unit/location-setting changes invalidate the cache. These reduce"
+                },
+                {
+                  "op": "add",
+                  "content": "scheduled CPU work, storage writes, and radio/network traffic. Battery-life"
+                },
+                {
+                  "op": "add",
+                  "content": "improvements have not been measured on hardware."
+                }
+              ]
+            }
+          ],
+          "content_hash": "5044ea522e8567ea34fe5c82fb91e1d30c2bae1e439b442c105468cb2c36b509",
+          "previous_hash": "99a57c7b7dca72d639dccf2dfdb164228eb78437a0ed5490916d0e6fb66c5da0",
+          "doc_type": "reference",
+          "title": "docs/architecture.md"
+        },
+        {
+          "document_id": "01a091eb-4965-7451-8490-4bb90faa9ae5",
+          "slug": "reference/docs/testing",
+          "change_type": "modified",
+          "previous_commit_id": "01a097df-ef2b-7971-9f73-0c21ee0538ae",
+          "previous_version": 11,
+          "new_version": 12,
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 5,
+              "new_start": 1,
+              "new_count": 3,
+              "lines": [
+                {
+                  "op": "delete",
+                  "content": "Source: `docs/testing.md`"
+                },
+                {
+                  "op": "delete",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "# Testing before hardware"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "The project has a useful pre-hardware test boundary. Parser, model, transport, phone bridge, backend fixture, configuration, watch compilation, most interaction logic, persistence, and wakeup behavior can be checked locally. Microphone quality, physical touch behavior, Bluetooth/phone integration, and real power timing still need devices."
+                }
+              ]
+            },
+            {
+              "old_start": 176,
+              "old_count": 3,
+              "new_start": 174,
+              "new_count": 16,
+              "context": "## Touchscreen arming",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "physical click handlers do not use the gate. Both Emery and Gabbro SDK builds"
+                },
+                {
+                  "op": "context",
+                  "content": "compile the touch integration. Physical touchscreen behavior still requires a"
+                },
+                {
+                  "op": "context",
+                  "content": "hardware smoke test."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "## Minute refresh efficiency regression"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "The native suite checks the passive paint deadline (including clock wrap),"
+                },
+                {
+                  "op": "add",
+                  "content": "immediate user refresh, one idle host callback per minute, no separate stopwatch"
+                },
+                {
+                  "op": "add",
+                  "content": "callback, accurate elapsed values on interaction, unchanged-job write suppression,"
+                },
+                {
+                  "op": "add",
+                  "content": "and one-shot job-check timeout behavior. Existing schedule tests retain exact"
+                },
+                {
+                  "op": "add",
+                  "content": "short deadlines, repeated alerts, wakeup failure fallback, and persistence."
+                },
+                {
+                  "op": "add",
+                  "content": "Phone tests cover fresh weather reuse, duplicate packet suppression, stale-cache"
+                },
+                {
+                  "op": "add",
+                  "content": "fetching, and invalidation after unit changes. The full npm suite and both watch"
+                },
+                {
+                  "op": "add",
+                  "content": "builds pass. Emery screenshots confirm dashboard and Todos clock rendering and"
+                },
+                {
+                  "op": "add",
+                  "content": "physical-button navigation; the emulator was shut down with `pebble kill`."
+                },
+                {
+                  "op": "add",
+                  "content": "Physical display timing and battery savings still require hardware."
+                }
+              ]
+            }
+          ],
+          "content_hash": "2f553bf4d4c87e63c860cca6c97a3cde51d1d7ac02fe1cecfac30ceeb953934d",
+          "previous_hash": "cbb0b640bfc0febdba597bf92223c37c9558523c6b2d7ccee17573b92697595c",
+          "doc_type": "reference",
+          "title": "docs/testing.md"
+        }
+      ]
+    },
     {
       "id": "01a097df-ef2b-7971-9f73-0c21ee0538ae",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

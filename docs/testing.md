@@ -174,3 +174,16 @@ handler gates touchdown, movement and liftoff before any mutation or hold timer;
 physical click handlers do not use the gate. Both Emery and Gabbro SDK builds
 compile the touch integration. Physical touchscreen behavior still requires a
 hardware smoke test.
+
+## Minute refresh efficiency regression
+
+The native suite checks the passive paint deadline (including clock wrap),
+immediate user refresh, one idle host callback per minute, no separate stopwatch
+callback, accurate elapsed values on interaction, unchanged-job write suppression,
+and one-shot job-check timeout behavior. Existing schedule tests retain exact
+short deadlines, repeated alerts, wakeup failure fallback, and persistence.
+Phone tests cover fresh weather reuse, duplicate packet suppression, stale-cache
+fetching, and invalidation after unit changes. The full npm suite and both watch
+builds pass. Emery screenshots confirm dashboard and Todos clock rendering and
+physical-button navigation; the emulator was shut down with `pebble kill`.
+Physical display timing and battery savings still require hardware.

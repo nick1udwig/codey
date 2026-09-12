@@ -87,3 +87,7 @@ typedef struct { const char *title; const char *action; } AgentUiMenuItem;
 void agent_ui_open_menu(AgentUi *ui, const AgentUiMenuItem *items, uint8_t count);
 
 void agent_ui_animate_request(AgentUi *ui);
+
+// Immediate user interaction; passive redraws are coalesced to one per minute.
+void agent_ui_note_input(AgentUi *ui);
+void agent_ui_refresh_clock(AgentUi *ui);

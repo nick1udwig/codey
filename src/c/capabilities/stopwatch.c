@@ -21,7 +21,6 @@ typedef struct {
 
 typedef struct {
   StopwatchPersisted state;
-  AppTimer *tick_timer;
   AgentCapabilities *capabilities;
 } StopwatchModule;
 
@@ -63,18 +62,11 @@ static void prv_render(StopwatchModule *stopwatch) {
 
 static void prv_tick(void *context);
 
-static void prv_schedule_tick(StopwatchModule *stopwatch) {
-  if (!stopwatch->tick_timer && stopwatch->state.running) {
-    stopwatch->tick_timer = app_timer_register(1000, prv_tick, stopwatch);
-  }
-}
-
 static void prv_tick(void *context) {
   StopwatchModule *stopwatch = context;
   char display[24];
   char seconds[16];
   int32_t elapsed;
-  stopwatch->tick_timer = NULL;
   if (!stopwatch->state.running) { return; }
   elapsed = prv_elapsed(stopwatch);
   agent_capability_format_duration(display, sizeof(display), elapsed, elapsed >= 3600);
@@ -83,7 +75,6 @@ static void prv_tick(void *context) {
     agent_capability_patch_value(agent_capabilities_ui(stopwatch->capabilities), "stopwatch-display", display);
     agent_capability_patch_value(agent_capabilities_ui(stopwatch->capabilities), "stopwatch-progress", seconds);
   }
-  prv_schedule_tick(stopwatch);
 }
 
 static void prv_start(StopwatchModule *stopwatch, const AgentCapabilityCommand *command, bool reset) {
@@ -102,7 +93,6 @@ static void prv_start(StopwatchModule *stopwatch, const AgentCapabilityCommand *
   }
   prv_save(stopwatch);
   prv_render(stopwatch);
-  prv_schedule_tick(stopwatch);
 }
 
 static bool prv_command(AgentCapabilities *capabilities, const AgentCapabilityCommand *command,
@@ -131,7 +121,6 @@ static bool prv_command(AgentCapabilities *capabilities, const AgentCapabilityCo
     }
     prv_save(stopwatch);
     prv_render(stopwatch);
-    prv_schedule_tick(stopwatch);
   } else if (strcmp(command->command, "lap") == 0 && stopwatch->state.active) {
     char value[24];
     agent_capability_format_duration(value, sizeof(value), prv_elapsed(stopwatch), false);
@@ -139,7 +128,6 @@ static bool prv_command(AgentCapabilities *capabilities, const AgentCapabilityCo
                             "stopwatch.lap", value);
   } else if (strcmp(command->command, "show") == 0 && stopwatch->state.active) {
     prv_render(stopwatch);
-    prv_schedule_tick(stopwatch);
   } else {
     return false;
   }
@@ -167,7 +155,6 @@ static bool prv_event(AgentCapabilities *capabilities, const AgentUiEvent *event
 
 static void prv_destroy(void *module_context) {
   StopwatchModule *stopwatch = module_context;
-  if (stopwatch->tick_timer) { app_timer_cancel(stopwatch->tick_timer); }
   free(stopwatch);
 }
 
@@ -207,12 +194,10 @@ bool agent_stopwatch_install(AgentCapabilities *capabilities) {
         .event = prv_event,
         .destroy = prv_destroy,
         .dashboard = prv_dashboard,
+        .tick = prv_tick,
       }, stopwatch)) {
     free(stopwatch);
     return false;
-  }
-  if (stopwatch->state.active) {
-    prv_schedule_tick(stopwatch);
   }
   return true;
 }

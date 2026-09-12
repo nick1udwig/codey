@@ -40,7 +40,11 @@ typedef struct {
   time_t last_buzz;
   time_t last_retry;
   bool schedule_failed;
+  AppTimer *alert_timer;
 } Schedules;
+
+static void prv_tick(void *context);
+static void prv_alert(void *context) { Schedules *s=context; s->alert_timer=NULL; prv_tick(s); }
 
 static bool prv_timer(int slot) { return slot < TIMER_COUNT; }
 static bool prv_pending(const Schedules *s) {
@@ -209,6 +213,17 @@ static void prv_tick(void *context) {
   }
   if (changed || (s->wakeup >= 0 && s->wake_at <= now) ||
       (s->schedule_failed && (int64_t)now - s->last_retry >= 30)) { prv_schedule(s); }
+  // Wakeups deliver exact deadlines; only active alerts or a failed wakeup
+  // need a short foreground timer. An idle scheduler has no polling timer.
+  if(s->alert_timer){app_timer_cancel(s->alert_timer);s->alert_timer=NULL;}
+  uint32_t delay=prv_pending(s)?3000:0;
+  if(s->schedule_failed){
+    time_t next=now+30;
+    for(int i=0;i<SLOT_COUNT;++i)if(s->records[i].state==Running && s->records[i].at<next)next=s->records[i].at;
+    uint32_t retry=(uint32_t)AGENT_CAP_MAX(1,next-now)*1000;
+    if(!delay||retry<delay)delay=retry;
+  }
+  if(delay)s->alert_timer=app_timer_register(delay,prv_alert,s);
   if (agent_capabilities_is_active(s->capabilities, "schedules") && s->visible >= 0) {
     char value[100];
     prv_detail_value(&s->records[s->visible], prv_timer(s->visible), value, sizeof(value));
@@ -382,6 +397,7 @@ static bool prv_wakeup(AgentCapabilities *capabilities, WakeupId id, int32_t coo
 }
 static void prv_destroy(void *context) {
   Schedules *s = context;
+  if(s->alert_timer)app_timer_cancel(s->alert_timer);
   // Leave the earliest scheduled wakeup registered while the process is closed.
   vibes_cancel();
   free(s);

@@ -1219,9 +1219,21 @@ test("background weather updates only the tile and caches the forecast", functio
     assert.strictEqual(last[10], "icon=moon");
     assert.strictEqual(last[7], "L 8 H 18");
     assert.strictEqual(JSON.parse(storage["pebble-agent.weather.v1"]).temperature, "12");
+    var sentBefore=h.sent.length;
+    h.handlers.appmessage({ payload: { 0: "capability_event", 2: "weather", 9: "refresh" } });
+    assert.strictEqual(requests.length, 1,"fresh cache avoids another network request");
+    assert.strictEqual(h.sent.length,sentBefore,"unchanged weather avoids another watch message");
+    var stale=JSON.parse(storage["pebble-agent.weather.v1"]);stale.updated=Date.now()-16*60*1000;
+    storage["pebble-agent.weather.v1"]=JSON.stringify(stale);
     h.handlers.appmessage({ payload: { 0: "capability_event", 2: "weather", 9: "refresh" } });
     assert.strictEqual(requests.length, 2);
     requests[1].ontimeout();
+    stale.updated=Date.now();
+    storage["pebble-agent.weather.v1"]=JSON.stringify(stale);
+    h.handlers.webviewclosed({response:JSON.stringify({units:"imperial"})});
+    assert.strictEqual(requests.length,3,"changing units invalidates even a fresh weather cache");
+    assert.strictEqual(JSON.parse(storage["pebble-agent.weather.v1"]),null);
+    requests[2].ontimeout();
     assert.ok(h.sent.every(function(m) { return m[0] === "bridge" || (m[0] === "job" && m[2] === "reset"); }));
   } finally { h.cleanup(); }
 });
