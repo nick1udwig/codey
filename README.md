@@ -60,6 +60,11 @@ separate conversation. See [backend settings](docs/server.md#codex-configuration
 
 The gear icon is supplied by the Pebble mobile app. The settings page requires internet access when it opens.
 
+To start fresh, check **Start new conversation when I save** in phone settings
+and save. The next query opens a new agent thread with no previous conversation
+context. Existing conversations are retained. This is a one-time action;
+ordinary settings saves continue the current conversation.
+
 ## Use the app
 
 Hold Select until dictation opens, then speak normally. The phone first matches

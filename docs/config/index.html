@@ -19,6 +19,10 @@
       </header>
 
       <form id="settings">
+        <label class="toggle"><input id="new-session" type="checkbox" /><span>Start new conversation when I save</span></label>
+        <p>Your next query starts a fresh conversation. Earlier conversations are kept.</p>
+        <label class="toggle"><input id="answer-vibrate" type="checkbox" checked /><span>Answer arrived vibration</span></label>
+        <p>Vibrate when an answer finishes arriving. Quiet Time always silences this vibration.</p>
         <label>
           <span>Agent endpoint</span>
           <input id="endpoint" name="endpoint" type="url" inputmode="url"
@@ -116,4 +120,3 @@
     <script src="./app.js"></script>
   </body>
 </html>
-

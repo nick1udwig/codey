@@ -255,6 +255,20 @@ Agent must stay open. The native watch sends `ready value=local-active`; the
 phone sends `MessageType=bridge` with connection/configuration status instead
 of streaming an onboarding screen over the local dashboard.
 
+## Answer arrival notification
+
+The phone sends `MessageType=answer Operation=begin` when a query starts.
+After a successful response has finished parsing and any phone capability has
+finished, it queues `MessageType=answer Operation=complete`, its `RequestId`,
+and `Flags=1` when the `answerVibrate`
+setting is enabled (`0` when disabled). This setting defaults to on and appears
+as "Answer arrived vibration" on the phone settings page. The watch tracks the
+request from its begin message and emits one short pulse on completion, even
+if the user has returned to the dashboard. It checks `quiet_time_is_active()`
+at delivery time and suppresses the pulse during Quiet Time. Duplicate or stale
+completion messages do not vibrate. Startup screens, local timer events,
+transport failures, and malformed responses do not send this notification.
+
 ## Limits and failure behavior
 
 - The watch stores up to 48 elements per screen.

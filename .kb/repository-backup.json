@@ -1,7 +1,58 @@
 {
   "version": 1,
-  "created_at": "2026-09-11T22:21:48.226260586+00:00",
+  "created_at": "2026-09-11T22:39:11.749680344+00:00",
   "documents": [
+    {
+      "id": "01a0929e-c548-7ad3-b4d6-1a002e0fa02c",
+      "slug": "issues/new-session-settings",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Start a new conversation from phone settings",
+      "content": "Add a one-shot settings-page option to start a fresh session on save. Acceptance: ordinary saves preserve the session; explicit reset persists a new session ID, clears conversation context, cancels stale response delivery, and is not saved as a recurring preference. The next query creates a new backend thread; existing thread history remains intact. No dashboard UI changes. Related: [[issues/resume-stale-prompt]].\n\nVerified 2026-09-11: 60 JavaScript tests and 7 integration tests passed, including explicit opt-in, ordinary-save preservation, cancellation, stale callbacks, context reset, and session persistence across phone runtime reloads. Settings site and Emery/Gabbro watch package build successfully. Not published or installed. Server routes unseen session keys through thread/start; no live model replay was performed.\n",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium",
+        "references": [
+          "issues/resume-stale-prompt"
+        ]
+      },
+      "created_at": "2026-09-11T22:39:11.573502580Z",
+      "modified_at": "2026-09-11T22:39:11.573502580Z"
+    },
+    {
+      "id": "01a09294-62e7-7e81-b622-243515b93aad",
+      "slug": "issues/answer-arrived-vibration",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Vibrate when a query answer arrives",
+      "content": "Add a default-on answerVibrate phone setting and settings-page toggle. Notify once after a successful user response completes, not for stream fragments, startup, stale requests, or transport/parser errors. Check Quiet Time on the watch before vibrating. Acceptance: settings round-trip and completion tests pass; native quiet-time and duplicate suppression checks pass; watch builds succeed. Related: [[reference/docs/protocol]].\n\nCompletion evidence (2026-09-11): Added begin/complete answer messages, current-setting flags, and a native Quiet Time gate with duplicate suppression. Includes local queries and waits for asynchronous phone weather. npm test passed; the added weather completion regression also passed in the final 59-test JavaScript run. Native sanitizer tests cover quiet time, disabled settings, stale IDs and duplicates. Emery and Gabbro builds and settings-site build passed. Artifacts built locally; watch installation, settings-site publication, and physical vibration verification have not been performed.\n",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium",
+        "references": [
+          "reference/docs/protocol"
+        ]
+      },
+      "created_at": "2026-09-11T22:32:15.713050378Z",
+      "modified_at": "2026-09-11T22:32:15.713050378Z"
+    },
+    {
+      "id": "01a09296-b915-7d30-a5a8-3daca64ba119",
+      "slug": "issues/resume-stale-prompt",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Ensure prompt changes reach already-loaded Codex threads",
+      "content": "After the prompt tool prohibition was removed, the 2026-09-11 BIBBLE thread still made no tool calls. At 15:23:23 the restarted Pebble server sent the corrected developerInstructions via thread/resume, but the rollout appended no developer instruction update and continued refusals. Local Codex thread_processor.rs resume_running_thread preserves loaded threads when observers remain; collect_resume_override_mismatches explicitly marks developerInstructions as ignored. This strongly indicates the shared daemon retained the old prompt; no matching daemon warning was available in the inspected logs. Restarting the Pebble server alone is not sufficient proof of prompt activation. Earlier guidance that thread resume necessarily updates instructions was too broad.\n\nAcceptance criteria:\n- [ ] Ensure a changed prompt takes effect even if the shared app-server retains a loaded thread, without disrupting unrelated threads.\n- [ ] Verify the effective instructions or a fresh-thread reproduction, not just outgoing resume parameters.\n- [ ] Replay a current-information query and verify tool use under permitted settings.\n\nRelated: [[issues/prompt-tool-prohibition]]. Investigation only; runtime and server behavior unchanged in this task.",
+      "frontmatter": {
+        "status": "active",
+        "priority": "medium",
+        "references": [
+          "issues/prompt-tool-prohibition"
+        ]
+      },
+      "created_at": "2026-09-11T22:32:15.713050378Z",
+      "modified_at": "2026-09-11T22:32:15.713050378Z"
+    },
     {
       "id": "01a0928f-d7d7-7db0-be54-980c656f084f",
       "slug": "issues/prompt-tool-prohibition",
@@ -150,10 +201,10 @@
     {
       "id": "01a091eb-494b-70e2-a1ae-cedae4248f70",
       "slug": "reference/docs/protocol",
-      "version": 1,
+      "version": 2,
       "doc_type": "reference",
       "title": "docs/protocol.md",
-      "content": "Source: `docs/protocol.md`\n\n# Pebble Agent Markup 1\n\nPAM is a UTF-8, newline-framed tree protocol for dynamic watch interfaces and capability calls. It is not JSON, TOML, YAML, or Markdown.\n\n## Why this format\n\nTOML tables are pleasant for static configuration but do not cleanly express ordered, repeated UI children while they are still arriving. YAML is broad and difficult to parse safely in the Pebble phone runtime. XML is streamable but verbose and requires a substantially larger parser.\n\nPAM has four properties that matter here:\n\n1. A newline commits exactly one node. No later token can change how that line parses.\n2. Two-space indentation supplies parent/child hierarchy, and a child can only follow an already-emitted parent.\n3. Attributes are bounded `name=value` tokens with one quoting/escaping rule.\n4. The parser has no aliases, executable tags, implicit typing, or ambiguous scalars.\n\nAs soon as this arrives:\n\n```pam\npam version=1\nscreen id=results layout=list title=Results\n  item id=first title=\"First result\"\n```\n\nthe watch can show the screen and first row. It does not wait for `done`.\n\n## Lexical grammar\n\n```text\ndocument  = header, newline, { node, newline } ;\nheader    = \"pam version=1\" ;\nnode      = indent, kind, { space, attribute } ;\nindent    = { \"  \" } ;\nkind      = lowercase-letter, { lowercase-letter | digit | \"_\" | \"-\" } ;\nattribute = name, \"=\", (bare-value | quoted-value) ;\n```\n\n- Indentation is exactly two spaces per level. Tabs and skipped levels are errors.\n- Blank lines and lines whose first non-space character is `#` are ignored.\n- Bare values contain no whitespace.\n- Single or double quotes may delimit values.\n- Quoted escapes are `\\\\`, `\\\"`, `\\'`, `\\n`, `\\r`, `\\t`, and `\\uXXXX`.\n- Duplicate attributes on one line are errors.\n- The current implementation accepts at most 2,048 bytes per agent line and eight hierarchy levels.\n\nAttributes remain strings at the protocol boundary. Schema consumers explicitly parse booleans and numbers.\n\n## Root nodes\n\n### `screen`\n\nBegins a new screen and replaces the previous agent screen immediately.\n\nRequired attributes:\n\n- `id` — stable identifier, at most 31 UTF-8 bytes on the watch.\n- `layout` — one of the layouts below.\n\nCommon optional attributes:\n\n- `title`, `subtitle`\n- `status=true` — show Pebble's time/status bar.\n- `actionbar=true` — reserve a right action rail for Up/Select/Down bindings.\n- `columns=1..4` — grid column count; defaults to two.\n\n### `patch`\n\nUpdates an existing element. The model merges the supplied attributes with the existing element before forwarding the patch, so omitted fields remain intact.\n\n```pam\npatch target=download value=63 subtitle=\"63 percent\"\n```\n\n### `remove`\n\n```pam\nremove target=stale-row\n```\n\n### `done`\n\nMarks the active screen complete and removes its streaming indicator. It does not close the screen.\n\n### `error`\n\n```pam\nerror message=\"I couldn't complete that request\"\n```\n\n### `capability`\n\nInvokes a registered phone-side or watch-side module. See [Capabilities](#capabilities).\n\n## Layouts\n\n- `text` — long prose, explanations, and logs; scrolls by default.\n- `list` / `menu` — Pebble-style rows and sections with row selection.\n- `grid` — compact choices, app launchers, and numeric tiles with grid selection.\n- `card` — a focused fact plus supporting metrics or items.\n- `progress` — ongoing work, countdowns, and progress bars.\n- `form` — fields, toggles, and submit actions.\n- `choice` — radio/check-style decisions.\n- `modal` — alerts, confirmations, and important decisions.\n\nThese cover Pebble's standard menu/list, scrolling text, card, status bar, action bar, choice dialog, progress, form, and number-input idioms. The renderer adapts geometry to rectangular and round displays.\n\n## Screen elements\n\nEvery addressable element should have a unique `id`. If it does not, the phone assigns a response-local ID, but explicit IDs are required for patching and are strongly recommended.\n\n### Content\n\n```pam\n  section id=nearby title=Nearby\n  item id=cafe title=\"Coffee shop\" subtitle=\"0.2 mi\" action=place.open\n  text id=summary value=\"A paragraph that wraps and scrolls.\"\n  metric id=heart-rate label=\"Heart rate\" value=\"72 bpm\"\n  image id=notice title=\"Heads up\" value=warning icon=warning\n  spacer id=gap height=16\n```\n\nSupported symbolic image icons are `info`, `check`, `warning`, `sun`/`weather`, `timer`, `close`, `up`, `down`, `left`, and `right`. The image element is deliberately symbolic: arbitrary remote bitmaps are not accepted into the watch heap.\n\n### Progress\n\n```pam\n  progress id=download title=Downloading value=35 min=0 max=100\n```\n\n`value`, `min`, and `max` are integers.\n\n### Forms and choices\n\n```pam\nscreen id=settings layout=form title=Settings\n  field id=servings title=Servings value=2 type=number min=1 max=12 step=1 action=settings.servings\n  choice id=metric title=Metric checked=true action=settings.units.metric\n  choice id=imperial title=Imperial action=settings.units.imperial\n  action id=save title=Save action=settings.save primary=true\ndone\n```\n\nA selected numeric field opens Pebble's native `NumberWindow`. Its confirmed value is returned as an input event.\n\n### Flags\n\nAll selectable elements accept:\n\n- `disabled=true`\n- `checked=true`\n- `selected=true`\n- `primary=true`\n- `destructive=true`\n\n## Input bindings\n\nAn element's `action` is emitted when the user selects or taps it. A `bind` maps a physical or gesture input without drawing another content row:\n\n```pam\n  bind id=older input=up action=page.previous title=Older icon=up\n  bind id=open input=select action=result.open title=Open icon=check\n  bind id=newer input=down action=page.next title=Newer icon=down\n  bind id=back-swipe input=swipe-right action=navigate.back\n```\n\nInputs are:\n\n- Buttons: `up`, `select`, `down`, `back`\n- Touch: `tap`, `swipe-left`, `swipe-right`, `swipe-up`, `swipe-down`\n\nIf Up or Down has no binding, it navigates/selects or scrolls. If Back has no binding, it closes the current window. A right swipe without a binding follows Pebble's Back convention.\n\nLong Select is not bindable. It always starts dictation, regardless of a short-Select binding.\n\n### Touch hotspots\n\nNormal visual elements are automatically tappable. Invisible percentage-based regions are available for custom layouts:\n\n```pam\n  hotspot id=map-west x=0 y=20 width=50 height=80 action=map.west\n```\n\nCoordinates are percentages of the full display. Prefer element taps unless a genuine free-form region is necessary.\n\n## Capabilities\n\nCapabilities are root nodes so they can execute as soon as their line arrives. The registry allows additional modules without a protocol change.\n\n### Timer\n\n```pam\ncapability type=timer command=start id=tea title=\"Tea\" duration=5m\ncapability type=timer command=pause id=tea\ncapability type=timer command=resume id=tea\ncapability type=timer command=cancel id=tea\ncapability type=timer command=show id=tea\n```\n\nDurations accept an integer number of seconds or `s`, `m`, `h`, and `d` suffixes. Timers persist and schedule a wakeup.\n\n### Stopwatch\n\n```pam\ncapability type=stopwatch command=start id=run title=\"Run\"\ncapability type=stopwatch command=pause id=run\ncapability type=stopwatch command=resume id=run\ncapability type=stopwatch command=lap id=run\ncapability type=stopwatch command=reset id=run\ncapability type=stopwatch command=show id=run\n```\n\n### Weather\n\nFetch at the phone's current location:\n\n```pam\ncapability type=weather command=current id=weather location=\"Current location\"\n```\n\nOr let the agent supply already-known data without a second network request:\n\n```pam\ncapability type=weather command=show id=weather location=\"London\" temperature=18 unit=\"°C\" condition=Rain high=20 low=14 wind=\"12 km/h\"\n```\n\nLatitude and longitude can be supplied as `latitude` and `longitude`. Weather networking runs in a phone registry module and emits a normal card screen.\n\n### Reminder\n\n```pam\ncapability type=reminder command=schedule id=medicine title=\"Take medicine\" subtitle=\"With food\" in=2h\ncapability type=reminder command=schedule id=meeting title=\"Meeting\" at=1788201000\ncapability type=reminder command=list\ncapability type=reminder command=cancel id=meeting\ncapability type=reminder command=cancel_all\n```\n\n`at` is a Unix timestamp in seconds; `in` is a duration from 1 second to 7 days.\n`alarm` is an alias of `reminder`. Four timers and four alarms/reminders are\npersisted independently, including unacknowledged notifications. Use a unique\nID shorter than 32 bytes for each new alert. Each new creation command allocates\na separate alert even if the model reuses an ID; collisions receive a unique\nsuffix. Use `show` to open an existing alert, or `replace=true` to replace it.\nThe phone supplies a persisted delivery sequence in `Index` for capability\nmessages. A retry retains that sequence and cannot restart or duplicate its\nalert. The watch persists this delivery identity separately from the model ID.\nTimer and reminder/alarm support `show`, `list`, `ack`, `cancel`, and\n`cancel_all` (the latter only affects its own category). Timer also supports\n`start`, `pause`, and `resume`; alarm/reminder use `schedule`.\n\nFinished alerts appear in the native dashboard and buzz repeatedly until\nacknowledged or snoozed ten minutes. Local completion does not trigger an agent\nturn. Back returns home without canceling. The native scheduler multiplexes all\ndeadlines onto one system wakeup; when wakeup scheduling fails, it warns that\nAgent must stay open. The native watch sends `ready value=local-active`; the\nphone sends `MessageType=bridge` with connection/configuration status instead\nof streaming an onboarding screen over the local dashboard.\n\n## Limits and failure behavior\n\n- The watch stores up to 48 elements per screen.\n- Text values are capped at 319 bytes on the watch. Larger values are streamed in UTF-8-safe append chunks and truncated at the final watch buffer boundary.\n- Titles, subtitles, IDs, actions, and metadata have smaller fixed limits declared in `agent_ui.h`.\n- Unknown kinds/layouts and invalid hierarchy produce a visible protocol error rather than partially executing an unrecognized node.\n- A new response supersedes queued operations from an older request. The watch also rejects stale request IDs.\n- Capability commands are allowlisted by registries; PAM cannot call arbitrary native functions.\n",
+      "content": "Source: `docs/protocol.md`\n\n# Pebble Agent Markup 1\n\nPAM is a UTF-8, newline-framed tree protocol for dynamic watch interfaces and capability calls. It is not JSON, TOML, YAML, or Markdown.\n\n## Why this format\n\nTOML tables are pleasant for static configuration but do not cleanly express ordered, repeated UI children while they are still arriving. YAML is broad and difficult to parse safely in the Pebble phone runtime. XML is streamable but verbose and requires a substantially larger parser.\n\nPAM has four properties that matter here:\n\n1. A newline commits exactly one node. No later token can change how that line parses.\n2. Two-space indentation supplies parent/child hierarchy, and a child can only follow an already-emitted parent.\n3. Attributes are bounded `name=value` tokens with one quoting/escaping rule.\n4. The parser has no aliases, executable tags, implicit typing, or ambiguous scalars.\n\nAs soon as this arrives:\n\n```pam\npam version=1\nscreen id=results layout=list title=Results\n  item id=first title=\"First result\"\n```\n\nthe watch can show the screen and first row. It does not wait for `done`.\n\n## Lexical grammar\n\n```text\ndocument  = header, newline, { node, newline } ;\nheader    = \"pam version=1\" ;\nnode      = indent, kind, { space, attribute } ;\nindent    = { \"  \" } ;\nkind      = lowercase-letter, { lowercase-letter | digit | \"_\" | \"-\" } ;\nattribute = name, \"=\", (bare-value | quoted-value) ;\n```\n\n- Indentation is exactly two spaces per level. Tabs and skipped levels are errors.\n- Blank lines and lines whose first non-space character is `#` are ignored.\n- Bare values contain no whitespace.\n- Single or double quotes may delimit values.\n- Quoted escapes are `\\\\`, `\\\"`, `\\'`, `\\n`, `\\r`, `\\t`, and `\\uXXXX`.\n- Duplicate attributes on one line are errors.\n- The current implementation accepts at most 2,048 bytes per agent line and eight hierarchy levels.\n\nAttributes remain strings at the protocol boundary. Schema consumers explicitly parse booleans and numbers.\n\n## Root nodes\n\n### `screen`\n\nBegins a new screen and replaces the previous agent screen immediately.\n\nRequired attributes:\n\n- `id` — stable identifier, at most 31 UTF-8 bytes on the watch.\n- `layout` — one of the layouts below.\n\nCommon optional attributes:\n\n- `title`, `subtitle`\n- `status=true` — show Pebble's time/status bar.\n- `actionbar=true` — reserve a right action rail for Up/Select/Down bindings.\n- `columns=1..4` — grid column count; defaults to two.\n\n### `patch`\n\nUpdates an existing element. The model merges the supplied attributes with the existing element before forwarding the patch, so omitted fields remain intact.\n\n```pam\npatch target=download value=63 subtitle=\"63 percent\"\n```\n\n### `remove`\n\n```pam\nremove target=stale-row\n```\n\n### `done`\n\nMarks the active screen complete and removes its streaming indicator. It does not close the screen.\n\n### `error`\n\n```pam\nerror message=\"I couldn't complete that request\"\n```\n\n### `capability`\n\nInvokes a registered phone-side or watch-side module. See [Capabilities](#capabilities).\n\n## Layouts\n\n- `text` — long prose, explanations, and logs; scrolls by default.\n- `list` / `menu` — Pebble-style rows and sections with row selection.\n- `grid` — compact choices, app launchers, and numeric tiles with grid selection.\n- `card` — a focused fact plus supporting metrics or items.\n- `progress` — ongoing work, countdowns, and progress bars.\n- `form` — fields, toggles, and submit actions.\n- `choice` — radio/check-style decisions.\n- `modal` — alerts, confirmations, and important decisions.\n\nThese cover Pebble's standard menu/list, scrolling text, card, status bar, action bar, choice dialog, progress, form, and number-input idioms. The renderer adapts geometry to rectangular and round displays.\n\n## Screen elements\n\nEvery addressable element should have a unique `id`. If it does not, the phone assigns a response-local ID, but explicit IDs are required for patching and are strongly recommended.\n\n### Content\n\n```pam\n  section id=nearby title=Nearby\n  item id=cafe title=\"Coffee shop\" subtitle=\"0.2 mi\" action=place.open\n  text id=summary value=\"A paragraph that wraps and scrolls.\"\n  metric id=heart-rate label=\"Heart rate\" value=\"72 bpm\"\n  image id=notice title=\"Heads up\" value=warning icon=warning\n  spacer id=gap height=16\n```\n\nSupported symbolic image icons are `info`, `check`, `warning`, `sun`/`weather`, `timer`, `close`, `up`, `down`, `left`, and `right`. The image element is deliberately symbolic: arbitrary remote bitmaps are not accepted into the watch heap.\n\n### Progress\n\n```pam\n  progress id=download title=Downloading value=35 min=0 max=100\n```\n\n`value`, `min`, and `max` are integers.\n\n### Forms and choices\n\n```pam\nscreen id=settings layout=form title=Settings\n  field id=servings title=Servings value=2 type=number min=1 max=12 step=1 action=settings.servings\n  choice id=metric title=Metric checked=true action=settings.units.metric\n  choice id=imperial title=Imperial action=settings.units.imperial\n  action id=save title=Save action=settings.save primary=true\ndone\n```\n\nA selected numeric field opens Pebble's native `NumberWindow`. Its confirmed value is returned as an input event.\n\n### Flags\n\nAll selectable elements accept:\n\n- `disabled=true`\n- `checked=true`\n- `selected=true`\n- `primary=true`\n- `destructive=true`\n\n## Input bindings\n\nAn element's `action` is emitted when the user selects or taps it. A `bind` maps a physical or gesture input without drawing another content row:\n\n```pam\n  bind id=older input=up action=page.previous title=Older icon=up\n  bind id=open input=select action=result.open title=Open icon=check\n  bind id=newer input=down action=page.next title=Newer icon=down\n  bind id=back-swipe input=swipe-right action=navigate.back\n```\n\nInputs are:\n\n- Buttons: `up`, `select`, `down`, `back`\n- Touch: `tap`, `swipe-left`, `swipe-right`, `swipe-up`, `swipe-down`\n\nIf Up or Down has no binding, it navigates/selects or scrolls. If Back has no binding, it closes the current window. A right swipe without a binding follows Pebble's Back convention.\n\nLong Select is not bindable. It always starts dictation, regardless of a short-Select binding.\n\n### Touch hotspots\n\nNormal visual elements are automatically tappable. Invisible percentage-based regions are available for custom layouts:\n\n```pam\n  hotspot id=map-west x=0 y=20 width=50 height=80 action=map.west\n```\n\nCoordinates are percentages of the full display. Prefer element taps unless a genuine free-form region is necessary.\n\n## Capabilities\n\nCapabilities are root nodes so they can execute as soon as their line arrives. The registry allows additional modules without a protocol change.\n\n### Timer\n\n```pam\ncapability type=timer command=start id=tea title=\"Tea\" duration=5m\ncapability type=timer command=pause id=tea\ncapability type=timer command=resume id=tea\ncapability type=timer command=cancel id=tea\ncapability type=timer command=show id=tea\n```\n\nDurations accept an integer number of seconds or `s`, `m`, `h`, and `d` suffixes. Timers persist and schedule a wakeup.\n\n### Stopwatch\n\n```pam\ncapability type=stopwatch command=start id=run title=\"Run\"\ncapability type=stopwatch command=pause id=run\ncapability type=stopwatch command=resume id=run\ncapability type=stopwatch command=lap id=run\ncapability type=stopwatch command=reset id=run\ncapability type=stopwatch command=show id=run\n```\n\n### Weather\n\nFetch at the phone's current location:\n\n```pam\ncapability type=weather command=current id=weather location=\"Current location\"\n```\n\nOr let the agent supply already-known data without a second network request:\n\n```pam\ncapability type=weather command=show id=weather location=\"London\" temperature=18 unit=\"°C\" condition=Rain high=20 low=14 wind=\"12 km/h\"\n```\n\nLatitude and longitude can be supplied as `latitude` and `longitude`. Weather networking runs in a phone registry module and emits a normal card screen.\n\n### Reminder\n\n```pam\ncapability type=reminder command=schedule id=medicine title=\"Take medicine\" subtitle=\"With food\" in=2h\ncapability type=reminder command=schedule id=meeting title=\"Meeting\" at=1788201000\ncapability type=reminder command=list\ncapability type=reminder command=cancel id=meeting\ncapability type=reminder command=cancel_all\n```\n\n`at` is a Unix timestamp in seconds; `in` is a duration from 1 second to 7 days.\n`alarm` is an alias of `reminder`. Four timers and four alarms/reminders are\npersisted independently, including unacknowledged notifications. Use a unique\nID shorter than 32 bytes for each new alert. Each new creation command allocates\na separate alert even if the model reuses an ID; collisions receive a unique\nsuffix. Use `show` to open an existing alert, or `replace=true` to replace it.\nThe phone supplies a persisted delivery sequence in `Index` for capability\nmessages. A retry retains that sequence and cannot restart or duplicate its\nalert. The watch persists this delivery identity separately from the model ID.\nTimer and reminder/alarm support `show`, `list`, `ack`, `cancel`, and\n`cancel_all` (the latter only affects its own category). Timer also supports\n`start`, `pause`, and `resume`; alarm/reminder use `schedule`.\n\nFinished alerts appear in the native dashboard and buzz repeatedly until\nacknowledged or snoozed ten minutes. Local completion does not trigger an agent\nturn. Back returns home without canceling. The native scheduler multiplexes all\ndeadlines onto one system wakeup; when wakeup scheduling fails, it warns that\nAgent must stay open. The native watch sends `ready value=local-active`; the\nphone sends `MessageType=bridge` with connection/configuration status instead\nof streaming an onboarding screen over the local dashboard.\n\n## Answer arrival notification\n\nThe phone sends `MessageType=answer Operation=begin` when a query starts.\nAfter a successful response has finished parsing and any phone capability has\nfinished, it queues `MessageType=answer Operation=complete`, its `RequestId`,\nand `Flags=1` when the `answerVibrate`\nsetting is enabled (`0` when disabled). This setting defaults to on and appears\nas \"Answer arrived vibration\" on the phone settings page. The watch tracks the\nrequest from its begin message and emits one short pulse on completion, even\nif the user has returned to the dashboard. It checks `quiet_time_is_active()`\nat delivery time and suppresses the pulse during Quiet Time. Duplicate or stale\ncompletion messages do not vibrate. Startup screens, local timer events,\ntransport failures, and malformed responses do not send this notification.\n\n## Limits and failure behavior\n\n- The watch stores up to 48 elements per screen.\n- Text values are capped at 319 bytes on the watch. Larger values are streamed in UTF-8-safe append chunks and truncated at the final watch buffer boundary.\n- Titles, subtitles, IDs, actions, and metadata have smaller fixed limits declared in `agent_ui.h`.\n- Unknown kinds/layouts and invalid hierarchy produce a visible protocol error rather than partially executing an unrecognized node.\n- A new response supersedes queued operations from an older request. The watch also rejects stale request IDs.\n- Capability commands are allowlisted by registries; PAM cannot call arbitrary native functions.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -163,7 +214,7 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-11T19:22:18.632213499Z"
+      "modified_at": "2026-09-11T22:32:15.713050378Z"
     },
     {
       "id": "01a091eb-4958-7731-a829-5a501e760d31",
@@ -222,10 +273,10 @@
     {
       "id": "01a091eb-4925-72e2-a4c7-6c4fc5b284e8",
       "slug": "reference/readme",
-      "version": 3,
+      "version": 4,
       "doc_type": "reference",
       "title": "README.md",
-      "content": "Source: `README.md`\n\n# Pebble Agent\n\nPebble Agent puts a voice-driven agent on your Pebble. Hold Select, say what you need, and the agent chooses a watch-friendly screen for its answer: a list, grid, card, form, progress view, or another supported layout.\n\nThe app is built for Repebble and currently supports:\n\n- Pebble Time 2 (`emery`)\n- Pebble Round 2 (`gabbro`)\n\nOther Pebble models are not included in this build.\n\n## What you need\n\n- A supported watch paired with the Pebble mobile app.\n- The Pebble Agent `.pbw` watchapp.\n- An internet connection on the paired phone.\n- A computer or server that can run the bundled Go agent service and the authenticated Codex CLI.\n- A URL the paired phone can use to reach that service, plus its bearer token.\n\nPebble Agent includes the watch client and a self-hosted agent service. The service uses your local Codex login; it is not a hosted account or public relay.\n\n## Run the agent service\n\nInstall and sign in to the Codex CLI, install Go 1.24 or newer, then build the service from this repository:\n\n```sh\ngo build -o build/pebble-agent-server ./cmd/pebble-agent-server\nexport PEBBLE_AGENT_TOKEN=\"replace-with-a-long-random-secret\"\n./build/pebble-agent-server --listen 0.0.0.0:8787\n```\n\nThe server uses `gpt-5.6-luna` with `xhigh` reasoning by default. Configure either at startup with `--model` and `--effort`, or the `PEBBLE_AGENT_MODEL` and `PEBBLE_AGENT_EFFORT` environment variables.\n\nIt first looks for the running Codex app-server daemon over its Unix socket. If none is available, it starts `codex app-server --stdio`; a configured app-server WebSocket is the final fallback. The service exits at startup if no transport can initialize.\n\nThe phone endpoint is:\n\n```text\nhttp://YOUR-SERVER:8787/v1/agent\n```\n\nUse the same `PEBBLE_AGENT_TOKEN` value in the app settings. Plain HTTP is suitable only on a trusted private network for development. For internet access, put the service behind an HTTPS/WSS reverse proxy and keep the Go listener on loopback. See [Server setup](docs/server.md) for connection, security, persistence, and deployment options.\n\n## Install and connect\n\n1. Install the Pebble Agent `.pbw` with your paired Pebble mobile app.\n2. Find **Agent** in the phone app's watchapp list and open its settings using the gear icon.\n3. Enter your server's `/v1/agent` endpoint. `https://` and `wss://` are recommended; a trusted local network may also use `http://` or `ws://`.\n4. Enter the server's bearer token, choose weather units and a timeout, then tap **Save & close**.\n5. Launch **Agent** on the watch. The home screen should say **Agent connected**.\n\nSettings default to GPT-5.6 Luna, extra-high reasoning effort, fast mode, and live\nweb search. The Fast mode toggle requests priority processing and can be turned\noff for standard speed. Explicitly saved preferences are preserved. Use **Load available\nmodels** to fetch the server's supported choices. Permissions control web search,\nuser-file access, command execution, command networking, and auto-review. Filesystem, command, network, and auto-review\npermissions start off. Auto-review can approve exceptions to the selected baseline;\nwhen off, additional-permission requests are denied. Changing permissions uses a\nseparate conversation. See [backend settings](docs/server.md#codex-configuration).\n\nThe gear icon is supplied by the Pebble mobile app. The settings page requires internet access when it opens.\n\n## Use the app\n\nHold Select until dictation opens, then speak normally. The phone first matches\ncommon commands locally, using normalized speech and regular expressions inspired\nby Bibble. Only unmatched dictation is sent to the configured Codex agent.\n**Thinking** can appear briefly while the phone processes the transcription.\n\nLocal examples: “start a five-minute timer,” “set a timer for one hour and thirty\nminutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up\ntomorrow at seven am,” “remind me in an hour to check the oven,” “pause the\nstopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”\nThese commands need no agent endpoint; weather still uses the phone's location\nand weather service. Each new timer gets its own delivery identity.\n\nClock alarms use the phone's local timezone. AM/PM, noon/midnight, or 24-hour\nHH:MM notation is required; without a date they mean the next occurrence.\nAmbiguous times (“set an alarm for seven”), recurring alarms, commands targeting\nan individual timer, and requests with additional instructions fall back to\nCodex unchanged. Matching is for complete phrases, never just a command buried\ninside a longer sentence. Relative durations support 1 second through 7 days.\n\nAgent opens to a local dashboard with the time, unacknowledged notifications,\nrunning or paused timers, alarms/reminders, and the stopwatch. It works without\nthe phone. Select an entry to open its controls. Back returns to the dashboard\nwithout stopping anything; Back from the dashboard exits the app. On a timer,\nthe X (Down) cancels only that timer, Select pauses/resumes it, and the arrow\n(Up) returns home.\n\nYou can have four timers and four alarms/reminders at once. Finished alerts\nreturn you to Notifications and buzz every three seconds until acknowledged or\nsnoozed. Open a finished entry and press Select to acknowledge, or Down to\nsnooze ten minutes. Acknowledging one leaves other notifications active.\nIf you close Agent with an unacknowledged alert, it requests a wakeup to remind\nyou again in a minute. Pebble only lets the app vibrate while running; if the\nsystem refuses a wakeup, Agent displays “keep Agent open” instead of silently\npromising a background alert.\n\nAssign Agent to a button in the watch's Quick Launch settings. Launching with\nthat shortcut opens dictation automatically; opening Agent from the app menu\nshows the dashboard, and a scheduled wakeup shows notifications.\n\nThe agent can choose the controls and presentation that fit each response:\n\n- Up and Down usually move through or scroll the current screen.\n- Short Select activates the selected item.\n- Back returns to the dashboard; from the dashboard it exits the app.\n- Taps, hotspots, and swipes may be available when the screen defines them.\n- Long Select is always reserved for new dictation and cannot be replaced by the agent.\n\nDepending on the configured agent, you can ask for things such as “start a ten-minute timer,” “show my stopwatch,” “what is the weather?”, or “remind me in two hours.” Timers, stopwatches, and reminders run on the watch; current-location weather is fetched by the phone.\n\n## Troubleshooting\n\n**The watch stays on Thinking.** The transcription reached Pebble Agent, but the endpoint has not returned a usable response. Check the phone's connection, endpoint URL, token, timeout, server log, Codex login, and app-server availability. The endpoint must return Pebble Agent Markup (PAM), not ordinary chat text or JSON.\n\n**Where are the server logs?** Start debugging with `~/.pebble-agent/server.log`. The server also writes the same records to stderr. It rotates the file at 10 MiB and retains five backups, from `server.log.1` (newest) through `server.log.5` (oldest). Set `PEBBLE_AGENT_LOG_FILE` or pass `--log-file /absolute/path` to move it; pass `--log-file -` for stderr only.\n\n**The home screen says Configure endpoint.** Open Agent's gear icon in the paired phone app, save a valid endpoint, then reopen the watchapp if needed.\n\n**Dictation reports Voice unavailable, Voice disabled, or Voice connection failed.** Check microphone/voice permissions and the phone/watch connection, then retry. Voice recognition depends on the system dictation service.\n\n**Weather cannot get a location.** Allow location access for the Pebble mobile app and make sure the phone has network access.\n\n**The settings page will not open.** Confirm the phone is online. The hosted page is [nick1udwig.github.io/pebble-agent/config/](https://nick1udwig.github.io/pebble-agent/config/).\n\n## Privacy and security\n\nDictated text and watch interactions are sent to the endpoint you configure, then to Codex through the self-hosted service. The server logs every JSON message to and from Codex app-server, including prompts and model responses, in `~/.pebble-agent/server.log`, so that file and its rotated backups must be treated as sensitive conversation data. The bearer token is kept in the Pebble phone runtime's local storage and sent only to the endpoint authentication boundary. When current-location weather is requested, the phone sends coordinates to Open-Meteo. Use an endpoint you trust and prefer HTTPS or WSS.\n\nFor source builds, backend integration, PAM, library APIs, extension points, and testing, see [DEVS.md](DEVS.md).\n",
+      "content": "Source: `README.md`\n\n# Pebble Agent\n\nPebble Agent puts a voice-driven agent on your Pebble. Hold Select, say what you need, and the agent chooses a watch-friendly screen for its answer: a list, grid, card, form, progress view, or another supported layout.\n\nThe app is built for Repebble and currently supports:\n\n- Pebble Time 2 (`emery`)\n- Pebble Round 2 (`gabbro`)\n\nOther Pebble models are not included in this build.\n\n## What you need\n\n- A supported watch paired with the Pebble mobile app.\n- The Pebble Agent `.pbw` watchapp.\n- An internet connection on the paired phone.\n- A computer or server that can run the bundled Go agent service and the authenticated Codex CLI.\n- A URL the paired phone can use to reach that service, plus its bearer token.\n\nPebble Agent includes the watch client and a self-hosted agent service. The service uses your local Codex login; it is not a hosted account or public relay.\n\n## Run the agent service\n\nInstall and sign in to the Codex CLI, install Go 1.24 or newer, then build the service from this repository:\n\n```sh\ngo build -o build/pebble-agent-server ./cmd/pebble-agent-server\nexport PEBBLE_AGENT_TOKEN=\"replace-with-a-long-random-secret\"\n./build/pebble-agent-server --listen 0.0.0.0:8787\n```\n\nThe server uses `gpt-5.6-luna` with `xhigh` reasoning by default. Configure either at startup with `--model` and `--effort`, or the `PEBBLE_AGENT_MODEL` and `PEBBLE_AGENT_EFFORT` environment variables.\n\nIt first looks for the running Codex app-server daemon over its Unix socket. If none is available, it starts `codex app-server --stdio`; a configured app-server WebSocket is the final fallback. The service exits at startup if no transport can initialize.\n\nThe phone endpoint is:\n\n```text\nhttp://YOUR-SERVER:8787/v1/agent\n```\n\nUse the same `PEBBLE_AGENT_TOKEN` value in the app settings. Plain HTTP is suitable only on a trusted private network for development. For internet access, put the service behind an HTTPS/WSS reverse proxy and keep the Go listener on loopback. See [Server setup](docs/server.md) for connection, security, persistence, and deployment options.\n\n## Install and connect\n\n1. Install the Pebble Agent `.pbw` with your paired Pebble mobile app.\n2. Find **Agent** in the phone app's watchapp list and open its settings using the gear icon.\n3. Enter your server's `/v1/agent` endpoint. `https://` and `wss://` are recommended; a trusted local network may also use `http://` or `ws://`.\n4. Enter the server's bearer token, choose weather units and a timeout, then tap **Save & close**.\n5. Launch **Agent** on the watch. The home screen should say **Agent connected**.\n\nSettings default to GPT-5.6 Luna, extra-high reasoning effort, fast mode, and live\nweb search. The Fast mode toggle requests priority processing and can be turned\noff for standard speed. Explicitly saved preferences are preserved. Use **Load available\nmodels** to fetch the server's supported choices. Permissions control web search,\nuser-file access, command execution, command networking, and auto-review. Filesystem, command, network, and auto-review\npermissions start off. Auto-review can approve exceptions to the selected baseline;\nwhen off, additional-permission requests are denied. Changing permissions uses a\nseparate conversation. See [backend settings](docs/server.md#codex-configuration).\n\nThe gear icon is supplied by the Pebble mobile app. The settings page requires internet access when it opens.\n\nTo start fresh, check **Start new conversation when I save** in phone settings\nand save. The next query opens a new agent thread with no previous conversation\ncontext. Existing conversations are retained. This is a one-time action;\nordinary settings saves continue the current conversation.\n\n## Use the app\n\nHold Select until dictation opens, then speak normally. The phone first matches\ncommon commands locally, using normalized speech and regular expressions inspired\nby Bibble. Only unmatched dictation is sent to the configured Codex agent.\n**Thinking** can appear briefly while the phone processes the transcription.\n\nLocal examples: “start a five-minute timer,” “set a timer for one hour and thirty\nminutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up\ntomorrow at seven am,” “remind me in an hour to check the oven,” “pause the\nstopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”\nThese commands need no agent endpoint; weather still uses the phone's location\nand weather service. Each new timer gets its own delivery identity.\n\nClock alarms use the phone's local timezone. AM/PM, noon/midnight, or 24-hour\nHH:MM notation is required; without a date they mean the next occurrence.\nAmbiguous times (“set an alarm for seven”), recurring alarms, commands targeting\nan individual timer, and requests with additional instructions fall back to\nCodex unchanged. Matching is for complete phrases, never just a command buried\ninside a longer sentence. Relative durations support 1 second through 7 days.\n\nAgent opens to a local dashboard with the time, unacknowledged notifications,\nrunning or paused timers, alarms/reminders, and the stopwatch. It works without\nthe phone. Select an entry to open its controls. Back returns to the dashboard\nwithout stopping anything; Back from the dashboard exits the app. On a timer,\nthe X (Down) cancels only that timer, Select pauses/resumes it, and the arrow\n(Up) returns home.\n\nYou can have four timers and four alarms/reminders at once. Finished alerts\nreturn you to Notifications and buzz every three seconds until acknowledged or\nsnoozed. Open a finished entry and press Select to acknowledge, or Down to\nsnooze ten minutes. Acknowledging one leaves other notifications active.\nIf you close Agent with an unacknowledged alert, it requests a wakeup to remind\nyou again in a minute. Pebble only lets the app vibrate while running; if the\nsystem refuses a wakeup, Agent displays “keep Agent open” instead of silently\npromising a background alert.\n\nAssign Agent to a button in the watch's Quick Launch settings. Launching with\nthat shortcut opens dictation automatically; opening Agent from the app menu\nshows the dashboard, and a scheduled wakeup shows notifications.\n\nThe agent can choose the controls and presentation that fit each response:\n\n- Up and Down usually move through or scroll the current screen.\n- Short Select activates the selected item.\n- Back returns to the dashboard; from the dashboard it exits the app.\n- Taps, hotspots, and swipes may be available when the screen defines them.\n- Long Select is always reserved for new dictation and cannot be replaced by the agent.\n\nDepending on the configured agent, you can ask for things such as “start a ten-minute timer,” “show my stopwatch,” “what is the weather?”, or “remind me in two hours.” Timers, stopwatches, and reminders run on the watch; current-location weather is fetched by the phone.\n\n## Troubleshooting\n\n**The watch stays on Thinking.** The transcription reached Pebble Agent, but the endpoint has not returned a usable response. Check the phone's connection, endpoint URL, token, timeout, server log, Codex login, and app-server availability. The endpoint must return Pebble Agent Markup (PAM), not ordinary chat text or JSON.\n\n**Where are the server logs?** Start debugging with `~/.pebble-agent/server.log`. The server also writes the same records to stderr. It rotates the file at 10 MiB and retains five backups, from `server.log.1` (newest) through `server.log.5` (oldest). Set `PEBBLE_AGENT_LOG_FILE` or pass `--log-file /absolute/path` to move it; pass `--log-file -` for stderr only.\n\n**The home screen says Configure endpoint.** Open Agent's gear icon in the paired phone app, save a valid endpoint, then reopen the watchapp if needed.\n\n**Dictation reports Voice unavailable, Voice disabled, or Voice connection failed.** Check microphone/voice permissions and the phone/watch connection, then retry. Voice recognition depends on the system dictation service.\n\n**Weather cannot get a location.** Allow location access for the Pebble mobile app and make sure the phone has network access.\n\n**The settings page will not open.** Confirm the phone is online. The hosted page is [nick1udwig.github.io/pebble-agent/config/](https://nick1udwig.github.io/pebble-agent/config/).\n\n## Privacy and security\n\nDictated text and watch interactions are sent to the endpoint you configure, then to Codex through the self-hosted service. The server logs every JSON message to and from Codex app-server, including prompts and model responses, in `~/.pebble-agent/server.log`, so that file and its rotated backups must be treated as sensitive conversation data. The bearer token is kept in the Pebble phone runtime's local storage and sent only to the endpoint authentication boundary. When current-location weather is requested, the phone sends coordinates to Open-Meteo. Use an endpoint you trust and prefer HTTPS or WSS.\n\nFor source builds, backend integration, PAM, library APIs, extension points, and testing, see [DEVS.md](DEVS.md).\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -235,10 +286,226 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-11T20:59:03.035123072Z"
+      "modified_at": "2026-09-11T22:39:11.573502580Z"
     }
   ],
   "commits": [
+    {
+      "id": "01a0929f-f526-7d22-b44d-c2621a551beb",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Add one-time new conversation action to settings",
+      "created_at": "2026-09-11T22:39:11.573502580Z",
+      "changes": [
+        {
+          "document_id": "01a0929e-c548-7ad3-b4d6-1a002e0fa02c",
+          "slug": "issues/new-session-settings",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "901f18bdfe268b7f66dc721533cda7d85af9f6d56c860207cad1ab1ece92958c",
+          "doc_type": "task",
+          "title": "Start a new conversation from phone settings"
+        },
+        {
+          "document_id": "01a091eb-4925-72e2-a4c7-6c4fc5b284e8",
+          "slug": "reference/readme",
+          "change_type": "modified",
+          "previous_commit_id": "01a09244-46b2-7733-894f-4d21571bf957",
+          "previous_version": 3,
+          "new_version": 4,
+          "hunks": [
+            {
+              "old_start": 62,
+              "old_count": 6,
+              "new_start": 62,
+              "new_count": 11,
+              "context": "## Install and connect",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "The gear icon is supplied by the Pebble mobile app. The settings page requires internet access when it opens."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "To start fresh, check **Start new conversation when I save** in phone settings"
+                },
+                {
+                  "op": "add",
+                  "content": "and save. The next query opens a new agent thread with no previous conversation"
+                },
+                {
+                  "op": "add",
+                  "content": "context. Existing conversations are retained. This is a one-time action;"
+                },
+                {
+                  "op": "add",
+                  "content": "ordinary settings saves continue the current conversation."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "## Use the app"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Hold Select until dictation opens, then speak normally. The phone first matches"
+                }
+              ]
+            }
+          ],
+          "content_hash": "13d9f5d032b84eafa22ca56f83079c39990d1980b6ed6a5d5092e4d4ab827bc2",
+          "previous_hash": "45938975a29907744e47e6a918a24ab4aee77c6fae7413fb02d5234d1027d423",
+          "doc_type": "reference",
+          "title": "README.md"
+        }
+      ]
+    },
+    {
+      "id": "01a09299-9cb4-7e41-be5e-d5a3fc5b1173",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Add answer arrival haptics and document stale resumed prompt",
+      "created_at": "2026-09-11T22:32:15.713050378Z",
+      "changes": [
+        {
+          "document_id": "01a09294-62e7-7e81-b622-243515b93aad",
+          "slug": "issues/answer-arrived-vibration",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "0f4aae80a7498933a6ac977daeb007d16226b1e340d846420839229f306c9223",
+          "doc_type": "task",
+          "title": "Vibrate when a query answer arrives"
+        },
+        {
+          "document_id": "01a09296-b915-7d30-a5a8-3daca64ba119",
+          "slug": "issues/resume-stale-prompt",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "74507c03b451430da261a5e6dc7184e7dd5ed7f265e38ac328a1610522a74a15",
+          "doc_type": "task",
+          "title": "Ensure prompt changes reach already-loaded Codex threads"
+        },
+        {
+          "document_id": "01a091eb-494b-70e2-a1ae-cedae4248f70",
+          "slug": "reference/docs/protocol",
+          "change_type": "modified",
+          "previous_commit_id": "01a091eb-b596-7611-8852-7f2449afc26c",
+          "previous_version": 1,
+          "new_version": 2,
+          "hunks": [
+            {
+              "old_start": 257,
+              "old_count": 6,
+              "new_start": 257,
+              "new_count": 20,
+              "context": "### Reminder",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "phone sends `MessageType=bridge` with connection/configuration status instead"
+                },
+                {
+                  "op": "context",
+                  "content": "of streaming an onboarding screen over the local dashboard."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "## Answer arrival notification"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "The phone sends `MessageType=answer Operation=begin` when a query starts."
+                },
+                {
+                  "op": "add",
+                  "content": "After a successful response has finished parsing and any phone capability has"
+                },
+                {
+                  "op": "add",
+                  "content": "finished, it queues `MessageType=answer Operation=complete`, its `RequestId`,"
+                },
+                {
+                  "op": "add",
+                  "content": "and `Flags=1` when the `answerVibrate`"
+                },
+                {
+                  "op": "add",
+                  "content": "setting is enabled (`0` when disabled). This setting defaults to on and appears"
+                },
+                {
+                  "op": "add",
+                  "content": "as \"Answer arrived vibration\" on the phone settings page. The watch tracks the"
+                },
+                {
+                  "op": "add",
+                  "content": "request from its begin message and emits one short pulse on completion, even"
+                },
+                {
+                  "op": "add",
+                  "content": "if the user has returned to the dashboard. It checks `quiet_time_is_active()`"
+                },
+                {
+                  "op": "add",
+                  "content": "at delivery time and suppresses the pulse during Quiet Time. Duplicate or stale"
+                },
+                {
+                  "op": "add",
+                  "content": "completion messages do not vibrate. Startup screens, local timer events,"
+                },
+                {
+                  "op": "add",
+                  "content": "transport failures, and malformed responses do not send this notification."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "## Limits and failure behavior"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "- The watch stores up to 48 elements per screen."
+                }
+              ]
+            }
+          ],
+          "content_hash": "0ba9ce0c04e287993fb7b6e7f836cd9f04be677889a6af609bd7b005058215d6",
+          "previous_hash": "bd5c7e7a92444859a951c2cc7efc0e5926f47c0ec623a9800755b5083c40fe27",
+          "doc_type": "reference",
+          "title": "docs/protocol.md"
+        }
+      ]
+    },
     {
       "id": "01a09290-091a-77f2-867c-7db9391d323f",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

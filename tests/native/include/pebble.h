@@ -24,4 +24,6 @@ WakeupId wakeup_schedule(time_t at, int32_t cookie, bool notify_if_missed);
 void wakeup_cancel(WakeupId id);
 bool clock_is_24h_style(void);
 void vibes_double_pulse(void);
+void vibes_short_pulse(void);
+bool quiet_time_is_active(void);
 void vibes_cancel(void);

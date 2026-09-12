@@ -63,8 +63,9 @@ function request(port, { method = "POST", body = "" } = {}) {
 }
 
 function runConfig(hash, bridge, XHR) {
-  const ids = ["settings", "endpoint", "token", "units", "timeout", "location-label", "status", "codex-model", "codex-effort", "fast-mode", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review"];
+  const ids = ["settings", "endpoint", "token", "units", "timeout", "location-label", "status", "codex-model", "codex-effort", "fast-mode", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review", "answer-vibrate"];
   const elements = {};
+  ids.push("new-session");
   let submit;
   ids.forEach(id => {
     elements[id] = {
@@ -210,7 +211,7 @@ test("configuration page hydrates state and closes with normalized form values",
     locationLabel: "Current location",
     timeoutSeconds: 90,
     codexModel: "gpt-5.6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
-    networkAccess: false, shellAccess: false, autoReview: false
+    networkAccess: false, shellAccess: false, autoReview: false, answerVibrate: true
   });
 });
 
@@ -223,6 +224,8 @@ test("configuration page recovers from a bad hash and supports the native bridge
   assert.equal(harness.elements["codex-model"].value, "gpt-5.6-luna");
   assert.equal(harness.elements["codex-effort"].value, "xhigh");
   assert.equal(harness.elements["fast-mode"].checked, true);
+  assert.equal(harness.elements["answer-vibrate"].checked, true);
+  harness.elements["answer-vibrate"].checked = false;
   assert.equal(harness.elements["web-search"].value, "live");
   assert.equal(harness.elements["location-label"].value, "Current location");
   harness.elements.endpoint.value = "wss://agent.test/socket";
@@ -231,7 +234,19 @@ test("configuration page recovers from a bad hash and supports the native bridge
   harness.submit({ preventDefault() {} });
   assert.equal(submitted.endpoint, "wss://agent.test/socket");
   assert.equal(submitted.timeoutSeconds, 30);
+  assert.equal(submitted.answerVibrate, false);
   assert.equal(harness.location.href, "https://config.test/#%not-json");
+});
+
+test("new conversation is an explicit one-time settings action", () => {
+  let saved;
+  const h = runConfig("#" + encodeURIComponent(JSON.stringify({ newSession: true })), { submit(s) { saved = s; } });
+  assert.equal(h.elements["new-session"].checked, false);
+  h.submit({ preventDefault() {} });
+  assert.equal(saved.newSession, undefined);
+  h.elements["new-session"].checked = true;
+  h.submit({ preventDefault() {} });
+  assert.equal(saved.newSession, true);
 });
 
 test("configuration round-trips Codex permissions and model choices", () => {

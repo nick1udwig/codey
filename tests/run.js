@@ -614,6 +614,9 @@ test("settings normalize and round-trip", function() {
   assert.strictEqual(loaded.endpoint, "https://agent.test");
   assert.strictEqual(loaded.units, "auto");
   assert.strictEqual(loaded.timeoutSeconds, 120);
+  assert.strictEqual(loaded.answerVibrate, true);
+  assert.strictEqual(Settings.save({ answerVibrate: false }, storage).answerVibrate, false);
+  assert.strictEqual(Settings.load(storage).answerVibrate, false);
   assert.deepStrictEqual(Settings.parseConfigResponse(encodeURIComponent(JSON.stringify(loaded))), loaded);
 });
 
@@ -890,6 +893,50 @@ test("PebbleKit bridge renders onboarding and round-trips configuration", functi
   }
 });
 
+test("new-session settings cancel the old response and persist a fresh conversation", function() {
+  var requests = [], aborted = 0;
+  function FakeXHR() { this.responseText = ""; requests.push(this); }
+  FakeXHR.prototype.open = function() {};
+  FakeXHR.prototype.setRequestHeader = function() {};
+  FakeXHR.prototype.send = function(body) { this.body = body; };
+  FakeXHR.prototype.abort = function() { aborted += 1; };
+  var storage = { "pebble-agent.session.v1": "old-session" };
+  var config = { endpoint: "https://agent.test", answerVibrate: false };
+  storage[Settings.STORAGE_KEY] = JSON.stringify(config);
+  var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
+  var fresh;
+  function query() { h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "look up this app" } }); }
+  try {
+    h.handlers.appmessage({ payload: { 0: "ready", 8: "local-active" } });
+    h.handlers.webviewclosed({ response: encodeURIComponent(JSON.stringify(config)) });
+    assert.strictEqual(storage["pebble-agent.session.v1"], "old-session");
+    query();
+    assert.strictEqual(parse(requests[0].body)[1].attrs.session, "old-session");
+    requests[0].responseText = "pam version=1\nscreen id=old layout=card\n";
+    requests[0].readyState = 3; requests[0].onreadystatechange();
+    h.handlers.webviewclosed({ response: encodeURIComponent(JSON.stringify(Object.assign({}, config, { newSession: true }))) });
+    fresh = storage["pebble-agent.session.v1"];
+    assert.notStrictEqual(fresh, "old-session");
+    assert.strictEqual(aborted, 1);
+    assert.strictEqual(JSON.parse(storage[Settings.STORAGE_KEY]).newSession, undefined);
+    assert.strictEqual(JSON.parse(storage[Settings.STORAGE_KEY]).answerVibrate, false);
+    var sent = h.sent.length;
+    requests[0].status = 200; requests[0].readyState = 4; requests[0].responseText += "done\n"; requests[0].onreadystatechange();
+    assert.strictEqual(h.sent.length, sent);
+    query();
+    var nodes = parse(requests[1].body);
+    assert.strictEqual(nodes[1].attrs.session, fresh);
+    assert.strictEqual(nodes[3].attrs.screen, "");
+    h.handlers.webviewclosed({ response: "CANCELLED" });
+    assert.strictEqual(storage["pebble-agent.session.v1"], fresh);
+  } finally { h.cleanup(); }
+  h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
+  try {
+    query();
+    assert.strictEqual(parse(requests[2].body)[1].attrs.session, fresh);
+  } finally { h.cleanup(); }
+});
+
 test("PebbleKit bridge carries watch input through HTTP streaming to render operations", function() {
   var xhr;
   function FakeXHR() { this.headers = {}; this.responseText = ""; xhr = this; }
@@ -923,6 +970,7 @@ test("PebbleKit bridge carries watch input through HTTP streaming to render oper
       return message[Watch.Key.operation] === "add" && message[Watch.Key.elementId] === "a";
     }));
     xhr.responseText += "done\n";
+    assert.ok(!harness.sent.some(function(message) { return message[Watch.Key.messageType] === "answer" && message[Watch.Key.operation] === "complete"; }));
     xhr.status = 200;
     xhr.readyState = 4;
     xhr.onreadystatechange();
@@ -931,9 +979,70 @@ test("PebbleKit bridge carries watch input through HTTP streaming to render oper
     assert.ok(operations.indexOf("begin") >= 0);
     assert.ok(operations.indexOf("end") >= 0);
     assert.ok(operations.indexOf("idle") >= 0);
+    var arrived = harness.sent.filter(function(message) { return message[Watch.Key.messageType] === "answer" && message[Watch.Key.operation] === "complete"; });
+    assert.strictEqual(arrived.length, 1);
+    assert.strictEqual(arrived[0][Watch.Key.flags], 1);
   } finally {
     harness.cleanup();
   }
+});
+
+test("answer completion respects settings and excludes invalid, failed, and superseded responses", function() {
+  ["disabled", "invalid", "error", "network", "stale"].forEach(function(scenario) {
+    var requests = [];
+    function FakeXHR() { this.responseText = ""; requests.push(this); }
+    FakeXHR.prototype.open = function() {};
+    FakeXHR.prototype.setRequestHeader = function() {};
+    FakeXHR.prototype.send = function() {};
+    FakeXHR.prototype.abort = function() {};
+    var storage = {};
+    storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test", answerVibrate: scenario !== "disabled" });
+    var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
+    try {
+      h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "look up the app version" } });
+      var xhr = requests[0];
+      if (scenario === "stale") {
+        h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "look up another app" } });
+      }
+      xhr.responseText = scenario === "invalid" ? "pam version=1\nscreen id=a layout=card\ninvalid\n" :
+        scenario === "error" ? "pam version=1\nscreen id=a layout=card\nerror message=failed\n" :
+        "pam version=1\nscreen id=a layout=card\ndone\n";
+      xhr.status = scenario === "network" ? 500 : 200;
+      xhr.readyState = 4;
+      xhr.onreadystatechange();
+      var arrived = h.sent.filter(function(m) { return m[Watch.Key.messageType] === "answer" && m[Watch.Key.operation] === "complete"; });
+      assert.strictEqual(arrived.length, scenario === "disabled" ? 1 : 0, scenario);
+      if (arrived.length) { assert.strictEqual(arrived[0][Watch.Key.flags], 0); }
+    } finally { h.cleanup(); }
+  });
+});
+
+test("answer arrival waits for phone weather and suppresses failed weather", function() {
+  [true, false].forEach(function(success) {
+    var requests = [];
+    function FakeXHR() { this.responseText = ""; requests.push(this); }
+    FakeXHR.prototype.open = function() {};
+    FakeXHR.prototype.setRequestHeader = function() {};
+    FakeXHR.prototype.send = function() {};
+    FakeXHR.prototype.abort = function() {};
+    var storage = {};
+    storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test" });
+    var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
+    function completions() { return h.sent.filter(function(m) { return m[Watch.Key.messageType] === "answer" && m[Watch.Key.operation] === "complete"; }); }
+    try {
+      h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "look up Portland conditions" } });
+      requests[0].responseText = 'pam version=1\ncapability type=weather command=current latitude=45.5 longitude=-122.6\ndone\n';
+      requests[0].status = 200; requests[0].readyState = 4; requests[0].onreadystatechange();
+      assert.strictEqual(requests.length, 2);
+      assert.strictEqual(completions().length, 0);
+      if (success) {
+        requests[1].status = 200;
+        requests[1].responseText = JSON.stringify({ current: { temperature_2m: 12, apparent_temperature: 11, weather_code: 2, wind_speed_10m: 9 }, current_units: { temperature_2m: "C" }, daily: { time: [], temperature_2m_max: [], temperature_2m_min: [], weather_code: [] } });
+        requests[1].onload();
+      } else { requests[1].onerror(); }
+      assert.strictEqual(completions().length, success ? 1 : 0);
+    } finally { h.cleanup(); }
+  });
 });
 
 test("Capability delivery IDs distinguish identical model commands and survive bridge reload", function() {
@@ -996,6 +1105,7 @@ test("Local dictation bypasses Codex and gives concurrent timers distinct delive
     assert.strictEqual(requests, 0);
     var messages = harness.sent.filter(function(m) { return m[Watch.Key.messageType] === "capability"; });
     assert.strictEqual(messages.length, 3);
+    assert.strictEqual(harness.sent.filter(function(m) { return m[Watch.Key.messageType] === "answer" && m[Watch.Key.operation] === "complete"; }).length, 3);
     assert.strictEqual(messages[0][Watch.Key.meta], "duration=10s");
     assert.strictEqual(messages[1][Watch.Key.meta], "duration=60s");
     assert.strictEqual(messages[2][Watch.Key.meta], "in=120s");
@@ -1038,9 +1148,10 @@ test("Local commands work with no configured endpoint", function() {
   var harness = loadPkjsHarness();
   try {
     harness.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "start a five minute timer" } });
-    assert.strictEqual(harness.sent.length, 1);
-    assert.strictEqual(harness.sent[0][Watch.Key.messageType], "capability");
-    assert.strictEqual(harness.sent[0][Watch.Key.meta], "duration=300s");
+    var commands = harness.sent.filter(function(m) { return m[Watch.Key.messageType] === "capability"; });
+    assert.strictEqual(commands.length, 1);
+    assert.strictEqual(commands[0][Watch.Key.meta], "duration=300s");
+    assert.strictEqual(harness.sent[harness.sent.length - 1][Watch.Key.operation], "complete");
   } finally { harness.cleanup(); }
 });
 

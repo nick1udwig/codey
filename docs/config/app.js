@@ -8,7 +8,7 @@
     locationLabel: "Current location",
     timeoutSeconds: 45,
     codexModel: "gpt-5.6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
-    networkAccess: false, shellAccess: false, autoReview: false
+    networkAccess: false, shellAccess: false, autoReview: false, answerVibrate: true
   };
   var form = document.getElementById("settings");
   var endpoint = document.getElementById("endpoint");
@@ -19,6 +19,7 @@
   var status = document.getElementById("status");
 
   var extraFields = {
+    answerVibrate: document.getElementById("answer-vibrate"),
     codexModel: document.getElementById("codex-model"),
     codexEffort: document.getElementById("codex-effort"),
     fastMode: document.getElementById("fast-mode"),
@@ -55,6 +56,9 @@
   }
 
   var current = stateFromHash();
+  // A one-time action: never restore it from saved settings or URL state.
+  var newSession = document.getElementById("new-session");
+  newSession.checked = false;
   endpoint.value = current.endpoint || "";
   token.value = current.token || "";
   units.value = current.units || "auto";
@@ -158,7 +162,7 @@
       status.textContent = "Choose a model available from this server."; return;
     }
     status.textContent = "Saved. Returning to Pebble…";
+    if (newSession.checked) { settings.newSession = true; }
     closeWith(settings);
   });
 }());
-

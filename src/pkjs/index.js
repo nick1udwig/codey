@@ -74,6 +74,19 @@ var watchQueue = new WatchProtocol.MessageQueue(function(message, success, failu
   }
 });
 
+function startNewSession() {
+  var next = String(Date.now()) + "-" + String(Math.floor(Math.random() * 1000000));
+  if (next === sessionId) { next += "-new"; }
+  localStorage.setItem("pebble-agent.session.v1", next);
+  var previous = activeRequestId;
+  activeRequestId = 0;
+  activePipeline = null;
+  client.abort();
+  if (previous) { watchQueue.clearRequest(previous); }
+  sessionId = next;
+  currentScreen = { id: "", layout: "", selected: "" };
+}
+
 function sendStatus(text, operation, requestId) {
   var message = {};
   message[Key.messageType] = "status";
@@ -90,6 +103,15 @@ function sendConnection() {
   watchQueue.enqueue(message);
 }
 
+function sendAnswerNotification(requestId, operation) {
+  var message = {};
+  message[Key.messageType] = "answer";
+  message[Key.requestId] = requestId;
+  message[Key.operation] = operation || "complete";
+  message[Key.flags] = settings.answerVibrate ? 1 : 0;
+  watchQueue.enqueue(message);
+}
+
 function nextRequestId() {
   requestSequence += 1;
   if (requestSequence > 65535) {
@@ -98,7 +120,7 @@ function nextRequestId() {
   return requestSequence;
 }
 
-function capabilityContext(requestId) {
+function capabilityContext(requestId, complete) {
   return {
     settings: settings,
     sendWatchCapability: function(operation) {
@@ -107,12 +129,14 @@ function capabilityContext(requestId) {
       // model commands (even in the same response) receive different IDs.
       operation.invocationId = nextCommandId();
       watchQueue.enqueueOperation(operation, requestId);
+      if (complete) { complete(true); }
     },
     renderPam: function(source) {
       if (requestId !== activeRequestId) { return; }
       var pipeline = createPipeline(requestId);
       pipeline.parser.push(source);
       pipeline.parser.finish();
+      if (complete) { complete(!pipeline.failed()); }
     },
     status: function(text) {
       if (requestId !== activeRequestId) { return; }
@@ -121,6 +145,7 @@ function capabilityContext(requestId) {
     error: function(text) {
       if (requestId !== activeRequestId) { return; }
       sendStatus(text, "error", requestId);
+      if (complete) { complete(false); }
     }
   };
 }
@@ -133,8 +158,20 @@ var capabilityRegistry = Capabilities.installBuiltins(
 function createPipeline(requestId) {
   var pipeline = {};
   var sawRenderable = false;
+  var failed = false;
+  var finished = false;
+  var pendingCapabilities = 0;
+  var notified = false;
+  function notifyIfFinished() {
+    if (finished && !pendingCapabilities && !failed && sawRenderable && !notified && requestId === activeRequestId) {
+      notified = true;
+      sendStatus("", "idle", requestId);
+      sendAnswerNotification(requestId);
+    }
+  }
   var model = new Model.ScreenModel({
     onOperation: function(operation) {
+      if (operation.type === "agent_error") { failed = true; }
       if (operation.type === "begin") {
         sawRenderable = true;
         currentScreen.id = operation.node.attrs.id;
@@ -143,7 +180,17 @@ function createPipeline(requestId) {
       }
       if (operation.type === "capability") {
         sawRenderable = true;
-        if (!capabilityRegistry.handle(operation, capabilityContext(requestId))) {
+        pendingCapabilities += 1;
+        var completed = false;
+        if (!capabilityRegistry.handle(operation, capabilityContext(requestId, function(success) {
+          if (completed) { return; }
+          completed = true;
+          pendingCapabilities -= 1;
+          if (!success) { failed = true; }
+          notifyIfFinished();
+        }))) {
+          pendingCapabilities -= 1;
+          failed = true;
           sendStatus("Unsupported capability: " + operation.node.attrs.type, "error", requestId);
         }
         return;
@@ -151,6 +198,7 @@ function createPipeline(requestId) {
       watchQueue.enqueueOperation(operation, requestId);
     },
     onError: function(error) {
+      failed = true;
       sendStatus("Bad agent UI at line " + error.line + ": " + error.message, "error", requestId);
     }
   });
@@ -162,12 +210,15 @@ function createPipeline(requestId) {
       model.accept(node);
     },
     onError: function(error) {
+      failed = true;
       sendStatus("Bad PAM at line " + error.line + ": " + error.message, "error", requestId);
     }
   });
   pipeline.parser = parser;
   pipeline.model = model;
   pipeline.sawRenderable = function() { return sawRenderable; };
+  pipeline.failed = function() { return failed; };
+  pipeline.finishAnswer = function() { finished = true; notifyIfFinished(); };
   return pipeline;
 }
 
@@ -187,12 +238,14 @@ function requestAgent(input) {
   activeRequestId = requestId;
   activePipeline = pipeline;
   var local = input.kind === "dictation" ? LocalDictation.parse(input.text, now) : null;
+  sendAnswerNotification(requestId, "begin");
   if (local) {
     // Invalidate callbacks before aborting: a canceled server response must not
     // replace a local result or start a second timer. Use the normal capability
     // queue so delivery retries keep the same invocation ID.
     client.abort();
-    capabilityRegistry.handle(local, capabilityContext(requestId));
+    pipeline.model.accept({ kind: local.node.kind, attrs: local.node.attrs, depth: 0 });
+    pipeline.finishAnswer();
     return;
   }
   sendStatus(input.kind === "dictation" ? "Thinking" : "Loading", "loading", requestId);
@@ -228,8 +281,8 @@ function requestAgent(input) {
       pipeline.parser.finish();
       if (!pipeline.sawRenderable()) {
         sendStatus("Agent returned no screen", "error", requestId);
-      } else {
-        sendStatus("", "idle", requestId);
+      } else if (!pipeline.failed()) {
+        pipeline.finishAnswer();
       }
     },
     onError: function(error) {
@@ -358,6 +411,7 @@ Pebble.addEventListener("webviewclosed", function(event) {
     return;
   }
   settings = Settings.save(updated);
+  if (updated.newSession) { startNewSession(); }
   if (nativeDashboard) { sendConnection(); }
   else { renderOnboarding(); }
 });

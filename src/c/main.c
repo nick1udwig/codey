@@ -3,6 +3,7 @@
 #include "agent_capabilities.h"
 #include "agent_protocol.h"
 #include "agent_ui.h"
+#include "answer_notification.h"
 #include "message_keys.auto.h"
 
 #include <stdlib.h>
@@ -35,12 +36,14 @@ static AppTimer *s_outbox_retry_timer;
 static AppTimer *s_ready_timer;
 static AppTimer *s_quick_launch_timer;
 static bool s_accept_remote;
+static AnswerNotification s_answer_notification;
 static bool s_dictation_active;
 static uint32_t s_navigation_revision;
 static uint32_t s_notification_revision;
 static void prv_start_dictation(void *context);
 
 static void prv_begin_request(void) {
+  s_answer_notification.pending = false;
   s_accept_remote = true;
   s_navigation_revision = agent_capabilities_navigation_revision(s_capabilities);
   s_notification_revision = agent_capabilities_notification_revision(s_capabilities);
@@ -329,6 +332,15 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   (void)context;
   if (strcmp(type, "bridge") == 0) {
     agent_capabilities_set_connection(s_capabilities, prv_tuple_string(iter, MESSAGE_KEY_Value));
+    return;
+  }
+  if (strcmp(type, "answer") == 0) {
+    if (strcmp(operation, "begin") == 0 && request_id) {
+      s_answer_notification = (AnswerNotification) { .request_id = request_id, .pending = true };
+    } else if (strcmp(operation, "complete") == 0) {
+      answer_notification_complete(&s_answer_notification, request_id,
+                                   prv_tuple_int(iter, MESSAGE_KEY_Flags, 0) == 1);
+    }
     return;
   }
   if (!s_accept_remote || s_navigation_revision != agent_capabilities_navigation_revision(s_capabilities)) { return; }

@@ -16,7 +16,8 @@ var DEFAULTS = Object.freeze({
   fileAccess: "none",
   networkAccess: false,
   shellAccess: false,
-  autoReview: false
+  autoReview: false,
+  answerVibrate: true
 });
 
 function copyDefaults(value) {
@@ -36,7 +37,7 @@ function copyDefaults(value) {
   });
   settings.webSearch = ["cached", "live"].indexOf(settings.webSearch) >= 0 ? settings.webSearch : "disabled";
   settings.fileAccess = ["read-only", "workspace-write"].indexOf(settings.fileAccess) >= 0 ? settings.fileAccess : "none";
-  ["networkAccess", "shellAccess", "autoReview", "fastMode"].forEach(function(key) {
+  ["networkAccess", "shellAccess", "autoReview", "fastMode", "answerVibrate"].forEach(function(key) {
     settings[key] = settings[key] === true;
   });
   return settings;
@@ -79,7 +80,12 @@ function parseConfigResponse(response) {
   }
   try {
     decoded = decodeURIComponent(response);
-    return copyDefaults(JSON.parse(decoded));
+    var source = JSON.parse(decoded);
+    var normalized = copyDefaults(source);
+    // Preserve the action only while handling this submission. save() and
+    // buildConfigUrl() strip it because it is not a persistent preference.
+    if (source && source.newSession === true) { normalized.newSession = true; }
+    return normalized;
   } catch (error) {
     return null;
   }
@@ -95,4 +101,3 @@ module.exports = {
   buildConfigUrl: buildConfigUrl,
   parseConfigResponse: parseConfigResponse
 };
-
