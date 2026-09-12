@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define COLLECTION_PREFERENCE_KEY 4399
 #define AGENT_WAKEUP_SCHEMA_KEY 4099
 #define AGENT_WAKEUP_SCHEMA_VERSION 1
 
@@ -25,6 +26,7 @@ struct AgentCapabilities {
   char connection[72];
   char weather_temperature[12], weather_range[32], weather_meta[40];
   uint16_t weather_ticks;
+  bool collection_notes;
   AppTimer *tick_timer;
   uint32_t navigation_revision;
   uint32_t notification_revision;
@@ -86,6 +88,7 @@ AgentCapabilities *agent_capabilities_create(AgentUi *ui, AgentCapabilityEventHa
   }
   s_wakeup_capabilities = capabilities;
   wakeup_service_subscribe(prv_wakeup_handler);
+  capabilities->collection_notes = persist_read_int(COLLECTION_PREFERENCE_KEY) == 1;
   if (!agent_capabilities_install_builtins(capabilities)) {
     agent_capabilities_destroy(capabilities);
     return NULL;
@@ -170,7 +173,7 @@ bool agent_capabilities_handle_ui_event(AgentCapabilities *capabilities, const A
     agent_ui_end(capabilities->ui);
     return true;
   }
-  if (strcmp(event->action, "local.todos") == 0 || strncmp(event->action, "local.todo.", 11) == 0) { capabilities->navigation_revision += 1; }
+  if (strcmp(event->action, "local.notes") == 0 || strncmp(event->action, "local.note.", 11) == 0 || strcmp(event->action, "local.todos") == 0 || strncmp(event->action, "local.todo.", 11) == 0) { capabilities->navigation_revision += 1; }
   for (index = 0; index < capabilities->module_count; index += 1) {
     RegisteredModule *registered = &capabilities->modules[index];
     if (registered->module.event &&
@@ -200,7 +203,7 @@ void agent_capabilities_show_dashboard(AgentCapabilities *capabilities) {
   agent_capability_add_element(capabilities->ui, "item", "dictate", "Talk to Agent",
                                "Hold Select", "", "local.dictate", "", 0);
   agent_capability_add_element(capabilities->ui, "item", "weather", "Weather", capabilities->weather_range, capabilities->weather_temperature, "local.weather", capabilities->weather_meta, 0);
-  agent_capability_add_element(capabilities->ui, "item", "todos", "Todos", "", "", "local.todos", "", 0);
+  agent_capability_add_element(capabilities->ui, "item", "todos", capabilities->collection_notes ? "Notes" : "Todos", "", "", capabilities->collection_notes ? "local.notes" : "local.todos", "", 0);
   for (uint8_t i = 0; i < capabilities->module_count; ++i) {
     RegisteredModule *module = &capabilities->modules[i];
     if (module->module.dashboard) {
@@ -286,7 +289,7 @@ void agent_capabilities_set_active(AgentCapabilities *capabilities, const char *
 }
 
 bool agent_capabilities_install_builtins(AgentCapabilities *capabilities) {
-  return agent_jobs_install(capabilities) && agent_schedules_install(capabilities) && agent_stopwatch_install(capabilities) && agent_todos_install(capabilities);
+  return agent_jobs_install(capabilities) && agent_schedules_install(capabilities) && agent_stopwatch_install(capabilities) && agent_todos_install(capabilities) && agent_notes_install(capabilities);
 }
 
 int32_t agent_capability_parse_duration(const char *value, int32_t fallback) {
@@ -354,4 +357,16 @@ void agent_capabilities_set_weather(AgentCapabilities *c, const char *temperatur
       .present = AgentUiPresentValue | AgentUiPresentSubtitle | AgentUiPresentMeta };
     agent_ui_patch(c->ui, &spec);
   }
+}
+
+void agent_capabilities_set_collection(AgentCapabilities *capabilities, bool notes) {
+  if (capabilities->collection_notes == notes) return;
+  if (persist_write_int(COLLECTION_PREFERENCE_KEY, notes ? 1 : 0) != sizeof(int32_t)) {
+    agent_ui_set_status(capabilities->ui, "Could not save dashboard preference.", false, false);
+    return;
+  }
+  capabilities->collection_notes = notes;
+}
+bool agent_capabilities_collection_is_notes(const AgentCapabilities *capabilities) {
+  return capabilities->collection_notes;
 }

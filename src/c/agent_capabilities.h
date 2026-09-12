@@ -73,3 +73,6 @@ bool agent_capabilities_install_builtins(AgentCapabilities *capabilities);
 void agent_capabilities_set_weather(AgentCapabilities *capabilities, const char *temperature, const char *range, const char *meta);
 
 void agent_capabilities_refresh_now(AgentCapabilities *capabilities);
+
+void agent_capabilities_set_collection(AgentCapabilities *capabilities, bool notes);
+bool agent_capabilities_collection_is_notes(const AgentCapabilities *capabilities);

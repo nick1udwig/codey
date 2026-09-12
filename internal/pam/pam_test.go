@@ -154,6 +154,9 @@ func TestAlarmAndDashboardCommands(t *testing.T) {
 		"capability type=reminder command=show id=medicine",
 		"capability type=timer command=list",
 		"capability type=timer command=cancel_all",
+		`capability type=note command=add value="Call Jane"`,
+		`capability type=note command=edit id=note-1 value="Call John"`,
+		"capability type=note command=list",
 	} {
 		stream := NewOutputStream(func([]byte) error { return nil })
 		if err := stream.Push("pam version=1\n" + line + "\n"); err != nil {

@@ -1,5 +1,6 @@
 #include "agent_capabilities.h"
 #include "agent_protocol.h"
+#include "touch_guard.h"
 #include <assert.h>
 #include <limits.h>
 #include <stdlib.h>
@@ -157,6 +158,7 @@ static void test_todos(void) {
   char long_text[181]; memset(long_text, 'x', 180); long_text[180] = 0;
   cmd.value = long_text; cmd.invocation_id = 457;
   assert(agent_capabilities_handle_command(caps, &cmd)); assert(strstr(ui.status, "179"));
+  cmd.id = "";
   for (int i = 1; i < 32; ++i) {
     cmd.value = "Another item"; cmd.invocation_id = 500 + i;
     assert(agent_capabilities_handle_command(caps, &cmd));
@@ -427,6 +429,71 @@ static void test_jobs(void) {
   cmd.command="remove";assert(agent_capabilities_handle_command(caps,&cmd));assert(element(cmd.id)<0);
   agent_capabilities_destroy(caps);
 }
+
+static void test_todo_identity_migration(void) {
+  reset();
+  struct LegacyTodo { uint32_t magic, invocation; uint8_t state; char id[32], text[180]; } old = {.magic=0x544f4431,.invocation=88,.state=2,.text="Archived legacy task"};
+  persist_write_data(4300,&old,sizeof(old));
+  AgentCapabilities *caps=agent_capabilities_create(&ui,NULL,NULL);
+  struct LegacyTodo migrated;persist_read_data(4300,&migrated,sizeof(migrated));
+  assert(migrated.id[0] && migrated.state==2 && migrated.invocation==88 && !strcmp(migrated.text,old.text));
+  event(caps,"local.todo.archive"); assert(element("todo-0")>=0);
+  event(caps,"local.todo.toggle.0");
+  agent_capabilities_destroy(caps);caps=agent_capabilities_create(&ui,NULL,NULL);
+  struct LegacyTodo restored;persist_read_data(4300,&restored,sizeof(restored));
+  assert(!strcmp(restored.id,migrated.id) && restored.state==1);
+  agent_capabilities_destroy(caps);
+}
+static void test_checkbox_double_tap(void) {
+  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  command(caps,"todo","add","checkbox","ignored");
+  TouchGuard guard = {0};
+  assert(!touch_guard_down(&guard,1,12,50,100));
+  assert(!touch_guard_up(&guard,1,12,50,150));
+  assert(element("todo-0") >= 0); // Arming does not archive.
+  assert(touch_guard_down(&guard,1,12,50,250));
+  if (touch_guard_up(&guard,1,12,50,300)) event(caps,"local.todo.toggle.0");
+  assert(element("todo-0") < 0);
+  event(caps,"local.todo.archive"); assert(element("todo-0") >= 0);
+  agent_capabilities_destroy(caps);
+}
+static void test_notes(void) {
+  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  assert(!agent_capabilities_collection_is_notes(caps));
+  AgentCapabilityCommand c = {.type="note",.command="add",.value="Call John",.invocation_id=123};
+  assert(agent_capabilities_handle_command(caps,&c));
+  assert(!strcmp(ui.screen,"note-detail") && (ui.flags & 16));
+  assert(!strcmp(ui.elements[element("note-body")].value,"Call John"));
+  assert(agent_capabilities_collection_is_notes(caps));
+  assert(agent_capabilities_handle_command(caps,&c)); // Replay is idempotent.
+  event(caps,"local.notes"); assert(ui.count==1);
+  char id[32]; agent_protocol_copy(id,sizeof(id),ui.elements[0].id); assert(id[0]);
+  event(caps,"local.home");
+  assert(!strcmp(ui.elements[element("todos")].action,"local.notes"));
+  assert(!strcmp(ui.elements[element("todos")].value,"1"));
+  agent_capabilities_destroy(caps); caps=agent_capabilities_create(&ui,NULL,NULL);
+  assert(agent_capabilities_collection_is_notes(caps));
+  c.command="edit"; c.invocation_id=124; c.meta="match=\"Call John\""; c.value="Call Jane";
+  assert(agent_capabilities_handle_command(caps,&c));
+  assert(!strcmp(ui.elements[element("note-body")].value,"Call Jane"));
+  event(caps,"local.notes"); assert(!strcmp(ui.elements[0].id,id));
+  writes_fail=1;c.id=id;c.value="Must not save";c.invocation_id=125;
+  assert(agent_capabilities_handle_command(caps,&c));assert(strstr(ui.status,"Could not save"));
+  writes_fail=0; event(caps,"local.notes"); assert(!strcmp(ui.elements[0].title,"Call Jane"));
+  c=(AgentCapabilityCommand){.type="note",.command="add",.value="Call Jane",.invocation_id=126};
+  assert(agent_capabilities_handle_command(caps,&c));
+  c.command="edit";c.meta="match=\"Call Jane\"";c.value="Ambiguous";c.invocation_id=127;
+  assert(agent_capabilities_handle_command(caps,&c));assert(strstr(ui.status,"Several notes"));
+  c.id=id; assert(agent_capabilities_handle_command(caps,&c)); // Explicit ID disambiguates.
+  assert(!strcmp(ui.elements[element("note-body")].value,"Ambiguous"));
+  event(caps,"local.todos"); assert(!agent_capabilities_collection_is_notes(caps));
+  agent_capabilities_destroy(caps);caps=agent_capabilities_create(&ui,NULL,NULL);
+  assert(!strcmp(ui.elements[element("todos")].action,"local.todos"));
+  event(caps,"local.notes");assert(ui.count==2);
+  for(int i=2;i<24;i++) {c=(AgentCapabilityCommand){.type="note",.command="add",.value="Another note",.invocation_id=200+i};assert(agent_capabilities_handle_command(caps,&c));}
+  c.invocation_id=300;assert(agent_capabilities_handle_command(caps,&c));assert(strstr(ui.status,"full"));
+  agent_capabilities_destroy(caps);
+}
 static void test_idle_cadence(void) {
   reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
   advance(59); assert(timer_callbacks == 0);
@@ -436,7 +503,7 @@ static void test_idle_cadence(void) {
   advance(120); assert(timer_callbacks == 3);
 }
 int main(void) {
-  test_idle_cadence();
+  test_todo_identity_migration(); test_checkbox_double_tap(); test_notes(); test_idle_cadence();
   test_weather_summary(); test_todos(); test_dashboard_progress(); test_dashboard_destinations(); test_multiple_and_ack(); test_pause_cancel_restore(); test_failures_and_capacity(); test_stopwatch_dashboard(); test_migration(); test_explicit_replacement();
   test_reused_ids_and_screen_independent_expiry(); test_delivery_replay_after_relaunch();
   test_previous_dashboard_upgrade(); test_jobs();

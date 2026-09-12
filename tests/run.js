@@ -1086,6 +1086,24 @@ test("Job submission timeout preserves an unconfirmed ID and a useful error", fu
   }finally{h.cleanup();}
 });
 
+test("note dictation preserves content and edits an explicit match locally", function() {
+  ["make a note ", "create a note: ", "please add a note ", "note: ", "note:"].forEach(function(prefix) {
+    var attrs=LocalDictation.parse(prefix+"Call José tomorrow at 7").node.attrs;
+    assert.strictEqual(attrs.type,"note");assert.strictEqual(attrs.command,"add");
+    assert.strictEqual(attrs.value,"Call José tomorrow at 7");
+  });
+  var edit=LocalDictation.parse("edit a note Call José to Call Jane").node.attrs;
+  assert.strictEqual(edit.command,"edit");assert.strictEqual(edit.match,"Call José");assert.strictEqual(edit.value,"Call Jane");
+  assert.strictEqual(LocalDictation.parse("edit a note").node.attrs.command,"list");
+  assert.strictEqual(LocalDictation.parse("show my notes").node.attrs.command,"list");
+  ["make a note", "note:", "do not make a note Coffee", "explain how to create a note"].forEach(function(text){assert.strictEqual(LocalDictation.parse(text),null);});
+  var h=loadPkjsHarness({XMLHttpRequest:function(){throw new Error("Note must stay local");}});
+  try {
+    h.handlers.appmessage({payload:{0:"input",2:"dictation",8:"note: set an alarm for 7 am"}});
+    assert.ok(h.sent.some(function(m){return m[0]==="capability" && m[3]==="note" && m[2]==="add" && m[8]==="set an alarm for 7 am";}));
+  } finally {h.cleanup();}
+});
+
 test("todo phrases accept creation verbs and preserve the complete task", function() {
   ["make a to-do to ", "set a task to ", "create a task to ", "please add a todo to ", "put down a task to "].forEach(function(prefix) {
     assert.strictEqual(LocalDictation.parse(prefix + "Call José about the New York trip").node.attrs.value, "Call José about the New York trip");

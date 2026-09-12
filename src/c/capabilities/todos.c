@@ -1,4 +1,5 @@
 #include "internal.h"
+#include "record_identity.h"
 #include "../agent_protocol.h"
 #include <stdlib.h>
 #include <string.h>
@@ -24,6 +25,7 @@ static int prv_count(Todos *t, int state) {
   return count;
 }
 static void prv_show(Todos *t, bool archive) {
+  agent_capabilities_set_collection(t->host, false);
   AgentUi *ui = agent_capabilities_ui(t->host);
   agent_capabilities_set_active(t->host, archive ? "todo-archive" : "todos", true);
   agent_ui_begin(ui, archive ? "todo-archive" : "todos", "list", archive ? "Archive" : "Todos", "", "", 16);
@@ -65,6 +67,10 @@ static bool prv_command(AgentCapabilities *host, const AgentCapabilityCommand *c
   int free_slot = -1;
   for (int i = 0; i < TODO_COUNT; ++i) {
     if (!t->items[i].state && free_slot < 0) { free_slot = i; }
+    if (t->items[i].state && cmd->id && cmd->id[0] && !strcmp(t->items[i].id, cmd->id)) {
+      if (strcmp(t->items[i].text, text)) agent_ui_set_status(agent_capabilities_ui(t->host), "Todo ID already exists.", true, false);
+      return true;
+    }
     if (t->items[i].state && cmd->invocation_id && t->items[i].invocation == cmd->invocation_id) { return true; }
   }
   if (free_slot < 0) {
@@ -73,6 +79,9 @@ static bool prv_command(AgentCapabilities *host, const AgentCapabilityCommand *c
   Todo item = { .magic = TODO_MAGIC, .invocation = cmd->invocation_id, .state = 1 };
   agent_protocol_copy(item.text, sizeof(item.text), text);
   agent_protocol_copy(item.id, sizeof(item.id), cmd->id);
+  if (!item.id[0] && !record_identity(item.id, sizeof(item.id))) {
+    agent_ui_set_status(agent_capabilities_ui(t->host), "Could not allocate todo ID. Try again.", true, false); return true;
+  }
   if (prv_save(t, free_slot, item)) { prv_show(t, false); }
   return true;
 }
@@ -93,6 +102,7 @@ static bool prv_event(AgentCapabilities *host, const AgentUiEvent *event, void *
 }
 static void prv_dashboard(AgentCapabilities *host, void *context, bool refresh) {
   (void)refresh;
+  if (agent_capabilities_collection_is_notes(host)) return;
   char count[12]; snprintf(count, sizeof(count), "%d", prv_count(context, 1));
   agent_capability_patch_value(agent_capabilities_ui(host), "todos", count);
 }
@@ -104,7 +114,14 @@ bool agent_todos_install(AgentCapabilities *host) {
   for (int i = 0; i < TODO_COUNT; ++i) {
     Todo item;
     if (persist_read_data(TODO_STORE + i, &item, sizeof(item)) == sizeof(item) && item.magic == TODO_MAGIC &&
-        item.state <= 2 && memchr(item.text, 0, sizeof(item.text)) && memchr(item.id, 0, sizeof(item.id))) { t->items[i] = item; }
+        item.state <= 2 && memchr(item.text, 0, sizeof(item.text)) && memchr(item.id, 0, sizeof(item.id))) {
+      if (item.state && !item.id[0]) {
+        Todo migrated = item;
+        if (record_identity(migrated.id, sizeof(migrated.id)) &&
+            persist_write_data(TODO_STORE + i, &migrated, sizeof(migrated)) == sizeof(migrated)) item = migrated;
+      }
+      t->items[i] = item;
+    }
   }
   if (!agent_capabilities_register(host, "todo", (AgentCapabilityModule) {
     .command = prv_command, .event = prv_event, .dashboard = prv_dashboard, .destroy = prv_destroy }, t)) { free(t); return false; }

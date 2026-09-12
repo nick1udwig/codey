@@ -108,6 +108,12 @@ function operation(type, command, attrs) {
 
 function parse(input, now) {
   if (typeof input !== "string" || input.length > 512) { return null; }
+  var raw = input.trim();
+  var noteEdit = /^(?:please )?edit (?:a |the )?note\s+(.+?)\s+to\s+(.+)$/i.exec(raw);
+  if (noteEdit) { return operation("note", "edit", { match: noteEdit[1].trim(), value: noteEdit[2].trim() }); }
+  if (/^(?:please )?(?:edit (?:a |the )?note|(?:show|open|list)(?: me)? (?:my |the )?notes)[.!]?$/i.test(raw)) { return operation("note", "list"); }
+  var note = /^(?:please )?(?:make|create|add) (?:me )?(?:a |new |another )?note(?:\s+that|\s+saying)?\s*[:,]?\s+(.+)$/i.exec(raw) || /^note\s*:\s*(.+)$/i.exec(raw);
+  if (note && note[1].trim()) { return operation("note", "add", { value: note[1].trim() }); }
   var todo = /^(?:please )?(?:add|create|make|set|put down) (?:me )?(?:(?:a|new|another) )?(?:todo|to-do|to do|task)(?: (?:to|for))? (.+)$/i.exec(input.trim());
   if (!todo) { todo = /^(?:please )?(?:to-do|todo|to do):?\s+(.+)$/i.exec(input.trim()); }
   if (todo && todo[1].trim()) { return operation("todo", "add", { value: todo[1].trim() }); }

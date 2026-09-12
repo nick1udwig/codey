@@ -42,6 +42,7 @@ static AppTimer *s_quick_launch_timer;
 static AppTimer *s_new_chat_timer;
 static AppTimer *s_response_timer;
 static bool s_accept_remote;
+static char s_note_edit_id[32];
 static AnswerNotification s_answer_notification;
 static WatchResponse s_response;
 static bool s_dictation_active;
@@ -232,6 +233,10 @@ static void prv_ui_event(const AgentUiEvent *event, void *context) {
   // Any newer interaction supersedes an unacknowledged new-chat request. Its
   // delayed phone acknowledgment must never open dictation on another screen.
   prv_cancel_new_chat();
+  if (strcmp(event->action, "local.note.edit") == 0) {
+    agent_protocol_copy(s_note_edit_id, sizeof(s_note_edit_id), event->element_id);
+    prv_start_dictation((void *)2); return;
+  }
   if (strcmp(event->action, "local.dictate") == 0) { prv_start_dictation(NULL); return; }
   if (strcmp(event->action, "local.answer") == 0) {
     agent_protocol_copy(s_answer_element, sizeof(s_answer_element), event->element_id);
@@ -301,7 +306,14 @@ static void prv_dictation_callback(DictationSession *session, DictationSessionSt
   s_dictation_active = false;
   agent_ui_note_input(s_ui);
   if (status != DictationSessionStatusSuccess || !transcription || !transcription[0]) {
+    s_note_edit_id[0] = 0;
     agent_ui_set_status(s_ui, prv_dictation_error(status), true, false);
+    return;
+  }
+  if (s_note_edit_id[0]) {
+    AgentCapabilityCommand command = {.type="note", .command="edit", .id=s_note_edit_id, .value=transcription};
+    agent_capabilities_handle_command(s_capabilities, &command);
+    s_note_edit_id[0] = 0;
     return;
   }
   prv_background_request(transcription);
@@ -318,7 +330,8 @@ static void prv_start_dictation(void *context) {
   prv_cancel_new_chat();
 #if defined(PBL_MICROPHONE)
   if (s_dictation_active) { return; }
-  s_answer_dictation = context != NULL;
+  if (context != (void *)2) s_note_edit_id[0] = 0;
+  s_answer_dictation = context == (void *)1;
   if (!s_dictation) {
     agent_ui_set_status(s_ui, "Voice unavailable", true, false);
     return;

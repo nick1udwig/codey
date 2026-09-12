@@ -144,3 +144,12 @@ flash writes. The phone reuses weather for 15 minutes and suppresses identical
 weather packets; unit/location-setting changes invalidate the cache. These reduce
 scheduled CPU work, storage writes, and radio/network traffic. Battery-life
 improvements have not been measured on hardware.
+
+## Collection integration boundary
+
+Notes and To Do share a remembered dashboard tile, while their capability
+modules retain independent records and commands. Both allocate stable local
+identities; note edits and task completion preserve them. See
+[collections](collections.md) for the planned provider adapter, canonical store,
+outbox, revision, and conflict boundaries. Remote synchronization is not yet
+implemented.

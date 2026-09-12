@@ -1,6 +1,7 @@
 #include "agent_ui.h"
 #include "range_control.h"
 #include "touch_guard.h"
+#include "ripple.h"
 #include "refresh_policy.h"
 
 #include "agent_protocol.h"
@@ -110,6 +111,10 @@ struct AgentUi {
   bool error;
 #if defined(PBL_TOUCH)
   TouchGuard touch_guard;
+  Layer *ripple_layer;
+  AppTimer *ripple_timer;
+  GPoint ripple_origin;
+  uint8_t ripple_frame;
   AppTimer *hold_timer;
   bool touch_consumed;
   int16_t touch_last_x;
@@ -129,8 +134,16 @@ struct AgentUi {
 #endif
 };
 
+#if defined(PBL_TOUCH)
+static void prv_stop_ripple(AgentUi *ui) {
+  if (ui->ripple_timer) { app_timer_cancel(ui->ripple_timer); ui->ripple_timer = NULL; }
+  ui->ripple_frame = 0;
+  if (ui->ripple_layer) layer_set_hidden(ui->ripple_layer, true);
+}
+#endif
 static void prv_reset_touch_guard(AgentUi *ui) {
 #if defined(PBL_TOUCH)
+  prv_stop_ripple(ui);
   touch_guard_reset(&ui->touch_guard);
   ui->touch_down = false;
   if (ui->hold_timer) { app_timer_cancel(ui->hold_timer); ui->hold_timer = NULL; }
@@ -927,9 +940,16 @@ static void prv_draw_dashboard(AgentUi *ui, GContext *ctx) {
       prv_pixel_text(ctx, temperature, x + 35, y + 12, scale, 2, GColorBlack);
       prv_pixel_text(ctx, e->subtitle[0] ? e->subtitle : "L -- H --", x + 6, y + h - 14, 1, 1, GColorBlack);
     } else if (strcmp(e->id, "todos") == 0) {
-      prv_dashboard_icon(ui, ctx, 4, x + 5, y + (h - 24) / 2);
+      bool notes = strcmp(e->action, "local.notes") == 0;
+      if (notes) {
+        graphics_context_set_stroke_color(ctx, GColorBlack);
+        graphics_context_set_stroke_width(ctx, 2);
+        graphics_draw_rect(ctx, GRect(x+9,y+(h-22)/2,17,22));
+        for (int line=0;line<3;line++) graphics_draw_line(ctx,GPoint(x+12,y+(h-22)/2+6+line*5),GPoint(x+23,y+(h-22)/2+6+line*5));
+        graphics_context_set_stroke_width(ctx, 1);
+      } else prv_dashboard_icon(ui, ctx, 4, x + 5, y + (h - 24) / 2);
       char label[16];
-      snprintf(label, sizeof(label), "%s TODO", e->value[0] ? e->value : "0");
+      snprintf(label, sizeof(label), "%s %s", e->value[0] ? e->value : "0", notes ? "NOTE" : "TODO");
       prv_pixel_text(ctx, label, x + 32, y + (h - 7) / 2, 1, 1, GColorBlack);
     }
   }
@@ -1505,7 +1525,11 @@ static void prv_touch_hold(void *context) {
   AgentUi *ui = context; ui->hold_timer = NULL;
   if (ui->touch_down && !ui->touch_dragged && strcmp(ui->screen_id, "dashboard") == 0) {
     ui->touch_consumed = true;
-    prv_agent_menu(ui);
+    AgentUiElement *hit = prv_hit_test(ui, ui->touch_down_x, ui->touch_down_y);
+    if (hit && !strcmp(hit->id, "todos")) {
+      const AgentUiMenuItem items[] = {{"Notes", "local.notes"}, {"To Do", "local.todos"}};
+      agent_ui_open_menu(ui, items, 2);
+    } else prv_agent_menu(ui);
   }
 }
 
@@ -1572,6 +1596,51 @@ static int prv_touch_target(AgentUi *ui, int x, int y) {
   return (int32_t)(0x80000000u | ((key ^ (uint32_t)region) & 0x7fffffffu));
 }
 
+static GPoint prv_ripple_point(AgentUi *ui, int radius, int angle, GSize size) {
+  int dx = (int64_t)sin_lookup(angle)*radius/TRIG_MAX_RATIO;
+  int dy = (int64_t)cos_lookup(angle)*radius/TRIG_MAX_RATIO;
+#if defined(PBL_ROUND)
+  RipplePoint p = ripple_round(ui->ripple_origin.x, ui->ripple_origin.y, dx, dy, size.w);
+  return GPoint(p.x, p.y);
+#else
+  return GPoint(ripple_reflect(ui->ripple_origin.x+dx,size.w), ripple_reflect(ui->ripple_origin.y+dy,size.h));
+#endif
+}
+static void prv_ripple_draw(Layer *layer, GContext *ctx) {
+  AgentUi *ui = *(AgentUi **)layer_get_data(layer);
+  if (!ui->ripple_frame) return;
+  GRect bounds = layer_get_bounds(layer);
+  int radius = ripple_radius(bounds.size.w, ui->ripple_frame);
+  // Pebble has no alpha-composited layers. Spatially dither the thin wave
+  // so its coverage fades to zero over its fixed travel budget.
+  graphics_context_set_stroke_color(ctx, PBL_IF_COLOR_ELSE(GColorVividCerulean, GColorBlack));
+  graphics_context_set_stroke_width(ctx, 2);
+  for (int angle=0;angle<180;angle++) {
+    if ((angle * 7) % RIPPLE_FRAMES >= RIPPLE_FRAMES - ui->ripple_frame) continue;
+    int a = angle * TRIG_MAX_ANGLE / 180, b = (angle+1) * TRIG_MAX_ANGLE / 180;
+    GPoint p = prv_ripple_point(ui, radius, a, bounds.size);
+    GPoint q = prv_ripple_point(ui, radius, b, bounds.size);
+    graphics_draw_line(ctx,p,q);
+  }
+  refresh_policy_painted(&ui->refresh_policy, prv_now_ms());
+}
+static void prv_ripple_tick(void *context) {
+  AgentUi *ui = context; ui->ripple_timer = NULL;
+  if (++ui->ripple_frame >= RIPPLE_FRAMES) { prv_stop_ripple(ui); return; }
+  layer_mark_dirty(ui->ripple_layer);
+  ui->ripple_timer = app_timer_register(RIPPLE_INTERVAL_MS, prv_ripple_tick, ui);
+  if (!ui->ripple_timer) prv_stop_ripple(ui);
+}
+static void prv_start_ripple(AgentUi *ui, int x, int y) {
+  prv_stop_ripple(ui);
+  if (!ui->ripple_layer) return;
+  ui->ripple_origin = GPoint(x,y); ui->ripple_frame = 1;
+  layer_set_hidden(ui->ripple_layer, false);
+  layer_mark_dirty(ui->ripple_layer);
+  ui->ripple_timer = app_timer_register(RIPPLE_INTERVAL_MS, prv_ripple_tick, ui);
+  if (!ui->ripple_timer) prv_stop_ripple(ui);
+}
+
 static void prv_touch_handler(const TouchEvent *event, void *context) {
   AgentUi *ui = context;
   int dx;
@@ -1579,7 +1648,7 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
   if (!ui || !event) { return; }
   // Gate the complete gesture before any scrolling, field changes, selection,
   // activation, or long-press timer can run.
-  if(event->type==TouchEvent_Touchdown)prv_input(ui);
+  if (event->type == TouchEvent_Touchdown) { prv_stop_ripple(ui); prv_input(ui); }
   bool allowed = false;
   switch (event->type) {
     case TouchEvent_Touchdown:
@@ -1597,7 +1666,10 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
     default: prv_reset_touch_guard(ui); return;
   }
   if (!allowed) {
-    if (event->type == TouchEvent_Liftoff) { ui->touch_down = false; prv_cancel_hold(ui); }
+    if (event->type == TouchEvent_Liftoff) {
+      ui->touch_down = false; prv_cancel_hold(ui);
+      if (ui->touch_guard.armed) prv_start_ripple(ui, ui->touch_guard.x, ui->touch_guard.y);
+    }
     return;
   }
   switch (event->type) {
@@ -1621,7 +1693,7 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
         }
         ui->touch_row = prv_todo_row(hit);
         if (ui->touch_row) { ui->selected_element = prv_index_of(ui, hit); }
-        if (hit && strcmp(hit->id, "dictate") == 0 && strcmp(ui->screen_id, "dashboard") == 0) {
+        if (hit && (!strcmp(hit->id, "dictate") || !strcmp(hit->id, "todos")) && strcmp(ui->screen_id, "dashboard") == 0) {
           ui->hold_timer = app_timer_register(AGENT_UI_SELECT_HOLD_MS, prv_touch_hold, ui);
         }
       }
@@ -1747,6 +1819,15 @@ static void prv_window_load(Window *window) {
   layer_add_child(root, ui->action_bar_layer);
   if (ui->menu_layer) { layer_add_child(root, ui->menu_layer); }
 
+#if defined(PBL_TOUCH)
+  ui->ripple_layer = layer_create_with_data(bounds, sizeof(AgentUi *));
+  if (ui->ripple_layer) {
+    *(AgentUi **)layer_get_data(ui->ripple_layer) = ui;
+    layer_set_update_proc(ui->ripple_layer, prv_ripple_draw);
+    layer_set_hidden(ui->ripple_layer, true);
+    layer_add_child(root, ui->ripple_layer);
+  }
+#endif
   ui->loaded = true;
   prv_relayout_root(ui);
   agent_ui_note_input(ui);
@@ -1755,6 +1836,10 @@ static void prv_window_load(Window *window) {
 
 static void prv_window_unload(Window *window) {
   AgentUi *ui = window_get_user_data(window);
+#if defined(PBL_TOUCH)
+  prv_stop_ripple(ui);
+  if (ui->ripple_layer) { layer_destroy(ui->ripple_layer); ui->ripple_layer = NULL; }
+#endif
 #if defined(PBL_TOUCH)
   prv_cancel_hold(ui);
 #endif

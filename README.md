@@ -130,6 +130,16 @@ The generated PNGs and font are in `resources/images/`; regenerate them with
 `python3 scripts/generate_dashboard_icons.py`. The generator includes concrete
 pixel patterns supplied by a Luna subagent.
 
+Notes shares the To Do tile: tap, then hold the tile to choose **Notes** or
+**To Do**. The last collection opened stays on the dashboard. Say “make a note
+Call Jane,” “note: Call Jane,” or “edit a note Call Jane to Call John.” Open a
+note and select **Edit note** to dictate its replacement directly. Notes are
+stored locally (24 notes, up to 179 UTF-8 bytes each). See
+[collections and future sync design](docs/collections.md).
+
+The arming tap now shows a brief expanding ripple with edge reflection. The
+next touch stops it immediately. Checkbox completion still requires two taps.
+
 Back returns to the dashboard
 without stopping anything; Back from the dashboard exits the app. On a timer,
 the X (Down) cancels only that timer, Select pauses/resumes it, and the arrow

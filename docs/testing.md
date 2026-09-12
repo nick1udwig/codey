@@ -187,3 +187,22 @@ fetching, and invalidation after unit changes. The full npm suite and both watch
 builds pass. Emery screenshots confirm dashboard and Todos clock rendering and
 physical-button navigation; the emulator was shut down with `pebble kill`.
 Physical display timing and battery savings still require hardware.
+
+## Notes, collection preference, and unlock ripple
+
+The native sanitizer suite covers two-tap checkbox completion, note add/edit,
+exact-match ambiguity, stable IDs across edits/relaunches, capacity, write failure,
+operation replay, persisted tile preference, and archived todo identity migration.
+Ripple tests cover half-width travel and reflected points at rectangular edges
+and the circular bezel, including grazing contacts. Phone tests cover note voice
+regexes, preserved text, and bypassing both agent and timer interpretation. Go PAM
+tests accept the note add/edit/list commands. The full suite passes (80 phone
+tests, seven integration tests, native cases, and all Go packages), and both watch
+builds pass. The PAM skill validator also passes.
+
+An Emery fixture rendered the full note, Edit note action, and remembered Notes
+dashboard tile; screenshots were inspected and the emulator shut down. The SDK
+emulator does not provide validated touchscreen/dictation coverage: confirm on
+hardware that the first checkbox tap only ripples, the second archives, the next
+contact stops the ripple immediately, guarded holds open the collection menu,
+and Edit note dictation replaces only the selected note.
