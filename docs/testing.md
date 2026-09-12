@@ -164,3 +164,13 @@ failed-check fallback, and no refresh loop during list rebuilds. JS tests cover
 all ongoing jobs, exclusion of terminal/retrieved jobs, overlapping pane opens,
 transient checking state, and row-only bridge updates without unsolicited
 rendering or vibration.
+
+## Touchscreen arming
+
+The native `touch_guard_test` exercises same-target double taps, one-use arming,
+expiry, target changes, tap-then-hold and tap-then-drag, unarmed hold/drag rejection,
+menu targets, screen/input resets, edge retargeting, and clock wrap. The watch
+handler gates touchdown, movement and liftoff before any mutation or hold timer;
+physical click handlers do not use the gate. Both Emery and Gabbro SDK builds
+compile the touch integration. Physical touchscreen behavior still requires a
+hardware smoke test.

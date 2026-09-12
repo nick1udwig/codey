@@ -1,5 +1,6 @@
 #include "agent_ui.h"
 #include "range_control.h"
+#include "touch_guard.h"
 
 #include "agent_protocol.h"
 #include "../../resources/images/pixel-font-5x7.h"
@@ -103,6 +104,7 @@ struct AgentUi {
   bool loading;
   bool error;
 #if defined(PBL_TOUCH)
+  TouchGuard touch_guard;
   AppTimer *hold_timer;
   bool touch_consumed;
   int16_t touch_last_x;
@@ -121,6 +123,17 @@ struct AgentUi {
   int16_t touch_last_y;
 #endif
 };
+
+static void prv_reset_touch_guard(AgentUi *ui) {
+#if defined(PBL_TOUCH)
+  touch_guard_reset(&ui->touch_guard);
+  ui->touch_down = false;
+  if (ui->hold_timer) { app_timer_cancel(ui->hold_timer); ui->hold_timer = NULL; }
+#else
+  (void)ui;
+#endif
+}
+
 
 static void prv_number_click_config_provider(void *context);
 static void prv_dismiss_menu(AgentUi *ui);
@@ -971,6 +984,7 @@ static void prv_menu_animate(void *context) {
   }
 }
 static void prv_dismiss_menu(AgentUi *ui) {
+  prv_reset_touch_guard(ui);
   if (ui->menu_timer) { app_timer_cancel(ui->menu_timer); ui->menu_timer = NULL; }
   ui->menu_count = 0;
   if (ui->menu_layer) { layer_set_hidden(ui->menu_layer, true); }
@@ -1218,6 +1232,7 @@ static void prv_activate_element(AgentUi *ui, AgentUiElement *element, const cha
 }
 
 static void prv_handle_input(AgentUi *ui, const char *input) {
+  prv_reset_touch_guard(ui);
   if (ui->menu_count) {
     if (strcmp(input, "up") == 0 && ui->menu_selected) { --ui->menu_selected; }
     else if (strcmp(input, "down") == 0 && ui->menu_selected + 1 < ui->menu_count) { ++ui->menu_selected; }
@@ -1268,6 +1283,7 @@ static void prv_back_click(ClickRecognizerRef recognizer, void *context) {
   AgentUi *ui = context;
   AgentUiElement *binding;
   (void)recognizer;
+  prv_reset_touch_guard(ui);
   if (ui->menu_count) { prv_dismiss_menu(ui); return; }
   binding = prv_find_binding(ui, "back");
   if (binding) {
@@ -1282,6 +1298,7 @@ static void prv_back_click(ClickRecognizerRef recognizer, void *context) {
 static void prv_select_long_click(ClickRecognizerRef recognizer, void *context) {
   AgentUi *ui = context;
   (void)recognizer;
+  prv_reset_touch_guard(ui);
   if (ui->menu_count) { return; }
   if (strcmp(ui->screen_id, "dashboard") == 0) { prv_agent_menu(ui); return; }
   if (ui->dictation_handler) {
@@ -1459,11 +1476,70 @@ static int prv_content_y(AgentUi *ui, int y) {
   return y - layer_get_frame(scroll_layer_get_layer(ui->scroll_layer)).origin.y - scroll_layer_get_content_offset(ui->scroll_layer).y;
 }
 
+static uint32_t prv_touch_now(void) {
+  time_t seconds; uint16_t milliseconds;
+  time_ms(&seconds, &milliseconds);
+  return (uint32_t)seconds * 1000u + milliseconds;
+}
+static int prv_touch_target(AgentUi *ui, int x, int y) {
+  if (ui->menu_count) {
+    GPoint point = GPoint(x,y);
+    for (uint8_t i = 0; i < ui->menu_count; ++i) {
+      GRect row = prv_menu_row(ui,i);
+      if (grect_contains_point(&row,&point)) { return 1000 + i; }
+    }
+    return 1100; // Outside-menu dismissal is guarded too.
+  }
+  if (prv_has_action_bar(ui)) {
+    GRect frame = layer_get_frame(ui->action_bar_layer);
+    if (x >= frame.origin.x) {
+      int section = (y-frame.origin.y)*3 / AGENT_MAX(1,frame.size.h);
+      return 2000 + AGENT_MAX(0,AGENT_MIN(2,section));
+    }
+  }
+  AgentUiElement *hit = prv_hotspot(ui,x,y);
+  if (!hit) { hit = prv_hit_test(ui,x,y); }
+  if (!hit) { return 3000; }
+  // Reading/panning todo text must not arm its adjacent checkbox.
+  int region = prv_todo_row(hit) && x >= hit->frame.origin.x + 28 ? 100 : 0;
+  // IDs/actions keep the arm attached to the same semantic control even if
+  // an asynchronous patch replaces a slot between contacts.
+  uint32_t key = 2166136261u;
+  const char *parts[] = { hit->id, hit->action };
+  for (unsigned i=0;i<2;++i) {
+    for (const char *p=parts[i];*p;++p) { key = (key ^ (uint8_t)*p) * 16777619u; }
+    key = (key ^ 0xffu) * 16777619u;
+  }
+  return (int32_t)(0x80000000u | ((key ^ (uint32_t)region) & 0x7fffffffu));
+}
+
 static void prv_touch_handler(const TouchEvent *event, void *context) {
   AgentUi *ui = context;
   int dx;
   int dy;
   if (!ui || !event) { return; }
+  // Gate the complete gesture before any scrolling, field changes, selection,
+  // activation, or long-press timer can run.
+  bool allowed = false;
+  switch (event->type) {
+    case TouchEvent_Touchdown:
+      prv_cancel_hold(ui);
+      allowed = touch_guard_down(&ui->touch_guard, prv_touch_target(ui,event->x,event->y),
+                                 event->x,event->y,prv_touch_now());
+      break;
+    case TouchEvent_PositionUpdate:
+      allowed = touch_guard_move(&ui->touch_guard,event->x,event->y);
+      break;
+    case TouchEvent_Liftoff:
+      allowed = touch_guard_up(&ui->touch_guard,prv_touch_target(ui,event->x,event->y),
+                               event->x,event->y,prv_touch_now());
+      break;
+    default: prv_reset_touch_guard(ui); return;
+  }
+  if (!allowed) {
+    if (event->type == TouchEvent_Liftoff) { ui->touch_down = false; prv_cancel_hold(ui); }
+    return;
+  }
   switch (event->type) {
     case TouchEvent_Touchdown:
       prv_cancel_hold(ui);
@@ -1520,6 +1596,7 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
       if (ui->touch_control >= 0) { ui->touch_control = -1; break; }
       if (ui->touch_consumed) { ui->touch_consumed = false; break; }
       if (ui->touch_was_menu) {
+        if (ui->touch_guard.moved || prv_touch_target(ui,event->x,event->y) != ui->touch_guard.target) { break; }
         GPoint tap = GPoint(event->x, event->y);
         int selected = -1;
         for (uint8_t i = 0; i < ui->menu_count; ++i) {
@@ -1635,6 +1712,7 @@ static void prv_window_appear(Window *window) {
 }
 
 static void prv_window_disappear(Window *window) {
+  prv_reset_touch_guard(window_get_user_data(window));
   AgentUi *ui = window_get_user_data(window);
 #if defined(PBL_TOUCH)
   prv_cancel_hold(ui);

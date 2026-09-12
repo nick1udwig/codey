@@ -97,9 +97,15 @@ open each section:
 - **Talk to Agent:** dictates into the current conversation.
 - **Todos:** shows the undone count and opens a persistent checklist with the current time at the top. Tap a checkbox or press Select to archive an item; archived items can be restored. Swipe vertically or use Up/Down to navigate. Drag item text horizontally, or hold Up/Down to pan the selected item left/right. Add items by talking to Agent: “make a to-do to buy milk,” “set a task to call José,” or “create a todo to book tickets.” The bare prefix also works: “to-do send a birthday card to John.” Complete phrases are matched locally with regexes.
 
-Hold Talk to Agent (or hold Select on the dashboard) to open an animated menu
+Touchscreen controls require an arming tap before each gesture: tap twice to
+activate a control, or tap then hold/drag/swipe on the same target. The arming
+tap expires after 1.5 seconds and is consumed by one gesture. An unarmed hold
+or drag does nothing. Menus and screen changes clear the arm; physical buttons
+keep their existing behavior.
+
+Tap then hold Talk to Agent (or hold Select on the dashboard) to open an animated menu
 with **Talk to Agent** and **New Chat**. The dashboard stays visible behind it;
-tap outside or press Back to dismiss. New Chat resets the conversation before
+tap twice outside or press Back to dismiss. New Chat resets the conversation before
 starting dictation and reports an unavailable phone after eight seconds. On
 other screens, hold Select to dictate into the current conversation.
 
