@@ -108,7 +108,11 @@ function operation(type, command, attrs) {
 
 function parse(input, now) {
   if (typeof input !== "string" || input.length > 512) { return null; }
+  var todo = /^(?:please )?(?:add|create|make|set|put down) (?:me )?(?:(?:a|new|another) )?(?:todo|to-do|to do|task)(?: (?:to|for))? (.+)$/i.exec(input.trim());
+  if (!todo) { todo = /^(?:please )?(?:to-do|todo|to do):?\s+(.+)$/i.exec(input.trim()); }
+  if (todo && todo[1].trim()) { return operation("todo", "add", { value: todo[1].trim() }); }
   var text = normalize(input), match, seconds, at;
+  if (/^(?:show|open|list)(?: me)? (?:my |the )?(?:todos|to-dos|to dos|tasks)$/.test(text)) { return operation("todo", "list"); }
   now = now || new Date();
   match = /^(?:set|start|create) (?:me )?(?:a |another |new )?timer (?:for )?(.+)$/.exec(text) ||
     /^(?:(?:set|start|create) (?:me )?(?:a |another |new )?)?(.+?) timer$/.exec(text);

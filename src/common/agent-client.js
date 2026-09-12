@@ -113,6 +113,7 @@ AgentClient.prototype._sendHttp = function(endpoint, request, callbacks) {
     } catch (ignore) {
       return;
     }
+    if (xhr.status >= 400 && !/^\s*pam version=1/.test(response)) { return; }
     if (response.length <= consumed) {
       return;
     }
@@ -129,7 +130,9 @@ AgentClient.prototype._sendHttp = function(endpoint, request, callbacks) {
     if (xhr.status >= 200 && xhr.status < 300) {
       (callbacks.onDone || function() {})();
     } else {
-      (callbacks.onError || function() {})(new Error("Agent HTTP " + String(xhr.status || 0)));
+      (callbacks.onError || function() {})(new Error(!xhr.status ? "No response from server (HTTP 0). Check the phone connection and server address." :
+        xhr.status === 401 || xhr.status === 403 ? "Server rejected access (HTTP " + xhr.status + "). Check the token in phone settings." :
+        "Server returned HTTP " + xhr.status + ". Try again shortly."));
     }
   }
 

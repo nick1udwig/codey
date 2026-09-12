@@ -69,3 +69,5 @@ void agent_capabilities_set_active(AgentCapabilities *capabilities, const char *
 
 // Installs timer, stopwatch, and reminder. Weather is phone-side because it needs networking.
 bool agent_capabilities_install_builtins(AgentCapabilities *capabilities);
+
+void agent_capabilities_set_weather(AgentCapabilities *capabilities, const char *temperature, const char *range, const char *meta);

@@ -79,3 +79,8 @@ void agent_ui_set_status(AgentUi *ui, const char *status, bool is_error, bool lo
 
 const char *agent_ui_screen_id(const AgentUi *ui);
 const char *agent_ui_layout_name(const AgentUi *ui);
+
+// Reusable overlay menu: preserves the underlying screen and dismisses on an
+// outside tap or Back. Item strings are copied; callers may use stack arrays.
+typedef struct { const char *title; const char *action; } AgentUiMenuItem;
+void agent_ui_open_menu(AgentUi *ui, const AgentUiMenuItem *items, uint8_t count);

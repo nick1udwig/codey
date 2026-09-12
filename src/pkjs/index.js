@@ -96,6 +96,14 @@ function sendStatus(text, operation, requestId) {
   watchQueue.enqueue(message);
 }
 
+function sendControl(operation, requestId) {
+  var message = {};
+  message[Key.messageType] = "control";
+  message[Key.requestId] = requestId || 0;
+  message[Key.operation] = operation || "";
+  watchQueue.enqueue(message);
+}
+
 function sendConnection() {
   var message = {};
   message[Key.messageType] = "bridge";
@@ -120,11 +128,44 @@ function nextRequestId() {
   return requestSequence;
 }
 
-function capabilityContext(requestId, complete) {
+var weatherBusy = false;
+var weatherHandler = Weather.createWeatherHandler();
+var weatherCacheKey = "pebble-agent.weather.v1";
+function sendWeather(summary) {
+  var message = {};
+  message[Key.messageType] = "bridge";
+  message[Key.operation] = "weather";
+  message[Key.value] = summary ? summary.temperature + summary.unit : "";
+  message[Key.subtitle] = summary ? "L " + summary.low + " H " + summary.high : "";
+  message[Key.meta] = summary ? "icon=" + summary.icon : "";
+  watchQueue.enqueue(message);
+}
+function saveWeather(summary) {
+  try { localStorage.setItem(weatherCacheKey, JSON.stringify(summary)); } catch (_) {}
+  sendWeather(summary);
+}
+function refreshWeather() {
+  if (!nativeDashboard || weatherBusy) { return; }
+  try {
+    var cached = JSON.parse(localStorage.getItem(weatherCacheKey) || "null");
+    sendWeather(cached && Date.now() - cached.updated < 60 * 60 * 1000 ? cached : null);
+  } catch (_) { sendWeather(null); }
+  weatherBusy = true;
+  weatherHandler({ command: "current" }, {
+    settings: settings,
+    summary: saveWeather,
+    status: function() {},
+    renderPam: function() { weatherBusy = false; },
+    error: function(reason) { weatherBusy = false; log("Dashboard weather unavailable", reason); }
+  });
+}
+
+function capabilityContext(requestId, complete, isFailed) {
   return {
     settings: settings,
+    summary: saveWeather,
     sendWatchCapability: function(operation) {
-      if (requestId !== activeRequestId) { return; }
+      if (requestId !== activeRequestId || (isFailed && isFailed())) { return; }
       // Assign once before queueing; retries retain the same ID, while new
       // model commands (even in the same response) receive different IDs.
       operation.invocationId = nextCommandId();
@@ -132,18 +173,18 @@ function capabilityContext(requestId, complete) {
       if (complete) { complete(true); }
     },
     renderPam: function(source) {
-      if (requestId !== activeRequestId) { return; }
+      if (requestId !== activeRequestId || (isFailed && isFailed())) { return; }
       var pipeline = createPipeline(requestId);
       pipeline.parser.push(source);
       pipeline.parser.finish();
       if (complete) { complete(!pipeline.failed()); }
     },
     status: function(text) {
-      if (requestId !== activeRequestId) { return; }
+      if (requestId !== activeRequestId || (isFailed && isFailed())) { return; }
       sendStatus(text, "show", requestId);
     },
     error: function(text) {
-      if (requestId !== activeRequestId) { return; }
+      if (requestId !== activeRequestId || (isFailed && isFailed())) { return; }
       sendStatus(text, "error", requestId);
       if (complete) { complete(false); }
     }
@@ -152,7 +193,7 @@ function capabilityContext(requestId, complete) {
 
 var capabilityRegistry = Capabilities.installBuiltins(
   new Capabilities.CapabilityRegistry(),
-  Weather.createWeatherHandler()
+  weatherHandler
 );
 
 function createPipeline(requestId) {
@@ -171,7 +212,11 @@ function createPipeline(requestId) {
   }
   var model = new Model.ScreenModel({
     onOperation: function(operation) {
-      if (operation.type === "agent_error") { failed = true; }
+      if (failed) { return; }
+      if (operation.type === "agent_error") {
+        pipeline.fail(operation.node.attrs.message || operation.node.attrs.value || "Agent request failed");
+        return;
+      }
       if (operation.type === "begin") {
         sawRenderable = true;
         currentScreen.id = operation.node.attrs.id;
@@ -188,7 +233,7 @@ function createPipeline(requestId) {
           pendingCapabilities -= 1;
           if (!success) { failed = true; }
           notifyIfFinished();
-        }))) {
+        }, function() { return failed; }))) {
           pendingCapabilities -= 1;
           failed = true;
           sendStatus("Unsupported capability: " + operation.node.attrs.type, "error", requestId);
@@ -218,6 +263,11 @@ function createPipeline(requestId) {
   pipeline.model = model;
   pipeline.sawRenderable = function() { return sawRenderable; };
   pipeline.failed = function() { return failed; };
+  pipeline.fail = function(message) {
+    if (failed) { return; }
+    failed = true;
+    sendStatus(message || "Agent request failed", "error", requestId);
+  };
   pipeline.finishAnswer = function() { finished = true; notifyIfFinished(); };
   return pipeline;
 }
@@ -279,7 +329,7 @@ function requestAgent(input) {
     onDone: function() {
       if (requestId !== activeRequestId) { return; }
       pipeline.parser.finish();
-      if (!pipeline.sawRenderable()) {
+      if (!pipeline.sawRenderable() && !pipeline.failed()) {
         sendStatus("Agent returned no screen", "error", requestId);
       } else if (!pipeline.failed()) {
         pipeline.finishAnswer();
@@ -288,7 +338,7 @@ function requestAgent(input) {
     onError: function(error) {
       if (requestId !== activeRequestId) { return; }
       log("agent request failed", error);
-      sendStatus(error.message || "Agent request failed", "error", requestId);
+      pipeline.fail(error.message || "Agent request failed");
     },
     onStatus: function(status) {
       log(status);
@@ -324,18 +374,29 @@ function handleWatchMessage(event) {
   var value = String(read(payload, Key.value, "Value") || "");
   var action = String(read(payload, Key.action, "Action") || "");
   var element = String(read(payload, Key.elementId, "ElementId") || "");
+  var requestId = Number(read(payload, Key.requestId, "RequestId") || 0);
 
   if (type === "ready") {
     nativeDashboard = value === "local-active";
-    if (nativeDashboard) { sendConnection(); }
+    if (nativeDashboard) { sendConnection(); refreshWeather(); }
     if (value !== "local-active") {
       renderOnboarding();
     }
     return;
   }
+  if (type === "capability_event" && operation === "weather" && action === "refresh") { refreshWeather(); return; }
   if (type === "input") {
+    if (operation === "new-chat" && action === "local.new-chat") {
+      startNewSession();
+      sendControl("dictate", requestId);
+      return;
+    }
     if (operation === "selection") {
       currentScreen.selected = element;
+    }
+    if (action === "local.weather") {
+      requestAgent({ kind: "dictation", text: "weather", action: action, element: "", value: "" });
+      return;
     }
     requestAgent({
       kind: operation || "event",
@@ -412,6 +473,6 @@ Pebble.addEventListener("webviewclosed", function(event) {
   }
   settings = Settings.save(updated);
   if (updated.newSession) { startNewSession(); }
-  if (nativeDashboard) { sendConnection(); }
+  if (nativeDashboard) { sendConnection(); refreshWeather(); }
   else { renderOnboarding(); }
 });

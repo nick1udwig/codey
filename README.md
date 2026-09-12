@@ -1,6 +1,6 @@
 # Pebble Agent
 
-Pebble Agent puts a voice-driven agent on your Pebble. Hold Select, say what you need, and the agent chooses a watch-friendly screen for its answer: a list, grid, card, form, progress view, or another supported layout.
+Pebble Agent puts a voice-driven agent on your Pebble. Tap Talk to Agent (or press Select on the dashboard), say what you need, and the agent chooses a watch-friendly screen for its answer: a list, grid, card, form, progress view, or another supported layout.
 
 The app is built for Repebble and currently supports:
 
@@ -67,7 +67,7 @@ ordinary settings saves continue the current conversation.
 
 ## Use the app
 
-Hold Select until dictation opens, then speak normally. The phone first matches
+Tap Talk to Agent, then speak normally. The phone first matches
 common commands locally, using normalized speech and regular expressions inspired
 by Bibble. Only unmatched dictation is sent to the configured Codex agent.
 **Thinking** can appear briefly while the phone processes the transcription.
@@ -86,9 +86,34 @@ an individual timer, and requests with additional instructions fall back to
 Codex unchanged. Matching is for complete phrases, never just a command buried
 inside a longer sentence. Relative durations support 1 second through 7 days.
 
-Agent opens to a local dashboard with the time, unacknowledged notifications,
-running or paused timers, alarms/reminders, and the stopwatch. It works without
-the phone. Select an entry to open its controls. Back returns to the dashboard
+The dashboard uses generated pixel icons, a bitmap font, stepped white panels,
+and a blue agent button inspired by the reference design. On the dashboard, Up
+opens Notifications, Down opens Todos, and Select starts dictation. Touch taps
+open each section:
+
+- **Clock / Calendar:** opens a calendar placeholder with the current time. The public SDK cannot directly open the system Timeline; it is accessible from the watchface.
+- **Weather:** shows current temperature, daily low/high, and a condition icon (including sun/moon and cloudy day/night variants). It refreshes through the phone on startup and every 15 minutes; cached readings older than an hour are discarded on refresh. Tapping opens the full forecast without an agent request. Location permission and connectivity are required; missing readings show dashes.
+- **Notifications:** stays empty until items exist, then shows their labels. Timer rings fill clockwise from 12 o’clock as elapsed time increases, freezing when paused and filling completely at completion. Up to four entries fit; additional entries are indicated by a “MORE” count. Select opens the complete live list of timers, alarms, reminders, and stopwatch controls.
+- **Talk to Agent:** dictates into the current conversation.
+- **Todos:** shows the undone count and opens a persistent checklist with the current time at the top. Tap a checkbox or press Select to archive an item; archived items can be restored. Swipe vertically or use Up/Down to navigate. Drag item text horizontally, or hold Up/Down to pan the selected item left/right. Add items by talking to Agent: “make a to-do to buy milk,” “set a task to call José,” or “create a todo to book tickets.” The bare prefix also works: “to-do send a birthday card to John.” Complete phrases are matched locally with regexes.
+
+Hold Talk to Agent (or hold Select on the dashboard) to open an animated menu
+with **Talk to Agent** and **New Chat**. The dashboard stays visible behind it;
+tap outside or press Back to dismiss. New Chat resets the conversation before
+starting dictation and reports an unavailable phone after eight seconds. On
+other screens, hold Select to dictate into the current conversation.
+
+Todos and their archive persist on the watch (32 items total, up to 179 UTF-8
+bytes each). Local lists work offline; weather and voice require the phone.
+Request failures open a scrollable **Request failed** screen with the received
+reason, **Try again**, and **Dashboard** actions. HTTP 0 explains that no server
+response arrived instead of displaying only the code.
+
+The generated PNGs and font are in `resources/images/`; regenerate them with
+`python3 scripts/generate_dashboard_icons.py`. The generator includes concrete
+pixel patterns supplied by a Luna subagent.
+
+Back returns to the dashboard
 without stopping anything; Back from the dashboard exits the app. On a timer,
 the X (Down) cancels only that timer, Select pauses/resumes it, and the arrow
 (Up) returns home.

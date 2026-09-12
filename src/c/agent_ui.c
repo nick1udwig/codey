@@ -1,6 +1,7 @@
 #include "agent_ui.h"
 
 #include "agent_protocol.h"
+#include "../../resources/images/pixel-font-5x7.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -57,6 +58,7 @@ typedef struct {
   int32_t flags;
   int32_t index;
   GRect frame;
+  uint16_t text_offset;
 } AgentUiElement;
 
 struct AgentUi {
@@ -64,8 +66,13 @@ struct AgentUi {
   ScrollLayer *scroll_layer;
   Layer *content_layer;
   Layer *action_bar_layer;
+  Layer *menu_layer;
+  AppTimer *menu_timer;
+  uint8_t menu_count, menu_selected, menu_step;
+  struct { char title[48]; char action[AGENT_UI_ACTION_LENGTH]; } menu_items[4];
   StatusBarLayer *status_bar_layer;
   NumberWindow *number_window;
+  GBitmap *dashboard_icons[12];
   AgentUiEventHandler event_handler;
   AgentUiDictationHandler dictation_handler;
   void *context;
@@ -93,6 +100,13 @@ struct AgentUi {
   bool loading;
   bool error;
 #if defined(PBL_TOUCH)
+  AppTimer *hold_timer;
+  bool touch_consumed;
+  int16_t touch_last_x;
+  bool touch_horizontal;
+  bool touch_was_menu;
+  bool touch_row;
+  bool touch_vertical;
   bool touch_subscribed;
   bool touch_down;
   bool touch_dragged;
@@ -103,6 +117,7 @@ struct AgentUi {
 };
 
 static void prv_number_click_config_provider(void *context);
+static void prv_dismiss_menu(AgentUi *ui);
 
 static AgentUiElementKind prv_element_kind(const char *kind) {
   if (!kind) { return AgentUiElementUnknown; }
@@ -237,7 +252,31 @@ static void prv_emit_binding(AgentUi *ui, const char *input, AgentUiElement *bin
   }
 }
 
+static bool prv_todo_row(const AgentUiElement *element) {
+  return element && element->kind == AgentUiElementChoice &&
+         agent_protocol_meta_get_bool(element->meta, "todo", false);
+}
+static bool prv_todo_screen(AgentUi *ui) {
+  return strcmp(ui->screen_id, "todos") == 0 || strcmp(ui->screen_id, "todo-archive") == 0;
+}
+static void prv_pan_todo(AgentUi *ui, AgentUiElement *e, int direction) {
+  if (!prv_todo_row(e)) { return; }
+  size_t length = strlen(e->value);
+  for (int step = 0; step < 4; ++step) {
+    if (direction > 0 && (size_t)e->text_offset + 1 < length) {
+      ++e->text_offset;
+      while (e->text_offset < length && ((unsigned char)e->value[e->text_offset] & 0xc0) == 0x80) { ++e->text_offset; }
+      if (e->text_offset == length) { --e->text_offset; while (e->text_offset && ((unsigned char)e->value[e->text_offset] & 0xc0) == 0x80) { --e->text_offset; } }
+    } else if (direction < 0 && e->text_offset) {
+      --e->text_offset;
+      while (e->text_offset && ((unsigned char)e->value[e->text_offset] & 0xc0) == 0x80) { --e->text_offset; }
+    }
+  }
+  layer_mark_dirty(ui->content_layer);
+}
+
 static int16_t prv_row_height(AgentUi *ui, AgentUiElement *element, int16_t width) {
+  if (prv_todo_row(element)) { return 42; }
   GFont body_font = fonts_get_system_font(FONT_KEY_GOTHIC_18);
   int16_t content_width = AGENT_MAX(30, width - 12);
   switch (element->kind) {
@@ -266,6 +305,34 @@ static int16_t prv_row_height(AgentUi *ui, AgentUiElement *element, int16_t widt
   }
 }
 
+static GRect prv_dashboard_bounds(AgentUi *ui) {
+#if defined(PBL_ROUND)
+  // A centered inscribed square keeps every corner within the circular glass.
+  int16_t side = AGENT_MIN(ui->viewport_width, ui->viewport_height) * 69 / 100;
+  return GRect((ui->viewport_width - side) / 2, (ui->viewport_height - side) / 2, side, side);
+#else
+  return GRect(4, 4, ui->viewport_width - 8, ui->viewport_height - 8);
+#endif
+}
+
+static GRect prv_dashboard_frame(AgentUi *ui, const char *id) {
+  GRect board = prv_dashboard_bounds(ui);
+  int16_t gap = 3, left = (board.size.w - gap) * 53 / 100;
+  int16_t right = board.size.w - left - gap, x = board.origin.x, y = board.origin.y;
+  int16_t calendar = (board.size.h - gap) * 66 / 100;
+  int16_t notifications = board.size.h * 44 / 100;
+  int16_t talk = board.size.h * 36 / 100 + gap;
+  if (strcmp(id, "calendar") == 0) { return GRect(x, y, left, calendar); }
+  if (strcmp(id, "weather") == 0) { return GRect(x, y + calendar + gap, left, board.size.h - calendar - gap); }
+  x += left + gap;
+  if (strcmp(id, "dashboard-summary") == 0) { return GRect(x, y, right, notifications); }
+  y += notifications + gap;
+  if (strcmp(id, "dictate") == 0) { return GRect(x, y, right, talk); }
+  y += talk + gap;
+  if (strcmp(id, "todos") == 0) { return GRect(x, y, right, board.origin.y + board.size.h - y); }
+  return GRectZero;
+}
+
 static void prv_calculate_layout(AgentUi *ui) {
   int16_t inset;
   int16_t width;
@@ -278,6 +345,17 @@ static void prv_calculate_layout(AgentUi *ui) {
   uint8_t index;
 
   if (!ui || !ui->loaded || !ui->scroll_layer || !ui->content_layer) {
+    return;
+  }
+  if (strcmp(ui->screen_id, "dashboard") == 0) {
+    for (index = 0; index < ui->element_count; ++index) {
+      AgentUiElement *e = &ui->elements[index];
+      e->frame = prv_dashboard_frame(ui, e->id);
+      if (!e->frame.size.h) { e->flags |= AGENT_UI_FLAG_DISABLED; }
+    }
+    ui->content_height = ui->viewport_height;
+    layer_set_frame(ui->content_layer, GRect(0, 0, ui->viewport_width, ui->content_height));
+    scroll_layer_set_content_size(ui->scroll_layer, GSize(ui->viewport_width, ui->content_height));
     return;
   }
   inset = prv_horizontal_inset();
@@ -437,6 +515,21 @@ static void prv_draw_element(AgentUi *ui, GContext *ctx, AgentUiElement *element
     graphics_fill_rect(ctx, frame, 4, GCornersAll);
   }
 
+  if (prv_todo_row(element)) {
+    int16_t cx = frame.origin.x + 13, cy = frame.origin.y + frame.size.h / 2;
+    graphics_context_set_stroke_color(ctx, foreground);
+    graphics_context_set_stroke_width(ctx, 2);
+    graphics_draw_rect(ctx, GRect(cx - 7, cy - 7, 14, 14));
+    if (element->flags & AGENT_UI_FLAG_CHECKED) {
+      graphics_draw_line(ctx, GPoint(cx - 4, cy), GPoint(cx - 1, cy + 3));
+      graphics_draw_line(ctx, GPoint(cx - 1, cy + 3), GPoint(cx + 5, cy - 4));
+    }
+    prv_draw_text(ctx, element->value + element->text_offset, body_font,
+                  GRect(frame.origin.x + 28, frame.origin.y + 8, frame.size.w - 33, 25),
+                  GTextAlignmentLeft, foreground, GTextOverflowModeTrailingEllipsis);
+    return;
+  }
+
   switch (element->kind) {
     case AgentUiElementSection:
       prv_draw_text(ctx, element->title[0] ? element->title : element->value,
@@ -531,6 +624,201 @@ static void prv_draw_element(AgentUi *ui, GContext *ctx, AgentUiElement *element
   }
 }
 
+// Stepped corners and a two-tone bevel match the reference's pixel panels.
+static void prv_pixel_panel(GContext *ctx, GRect f, GColor color) {
+  graphics_context_set_fill_color(ctx, color);
+  graphics_fill_rect(ctx, GRect(f.origin.x + 4, f.origin.y, f.size.w - 8, f.size.h), 0, GCornerNone);
+  graphics_fill_rect(ctx, GRect(f.origin.x + 2, f.origin.y + 2, f.size.w - 4, f.size.h - 4), 0, GCornerNone);
+  graphics_fill_rect(ctx, GRect(f.origin.x, f.origin.y + 4, f.size.w, f.size.h - 8), 0, GCornerNone);
+}
+
+static void prv_dashboard_card(GContext *ctx, GRect frame, bool blue, bool selected) {
+  GColor accent = PBL_IF_COLOR_ELSE(GColorVividCerulean, GColorWhite);
+  prv_pixel_panel(ctx, frame, selected ? accent : GColorLightGray);
+  prv_pixel_panel(ctx, grect_inset(frame, GEdgeInsets(2)), blue ? PBL_IF_COLOR_ELSE(GColorBlue, GColorBlack) : GColorWhite);
+  if (selected) {
+    graphics_context_set_stroke_color(ctx, blue ? GColorWhite : GColorBlack);
+    graphics_context_set_stroke_width(ctx, 1);
+    graphics_draw_rect(ctx, grect_inset(frame, GEdgeInsets(3)));
+  }
+}
+
+static void prv_pixel_text(GContext *ctx, const char *text, int16_t x, int16_t y,
+                           int sx, int sy, GColor color) {
+  graphics_context_set_fill_color(ctx, color);
+  for (; *text; ++text, x += 6 * sx) {
+    char letter = *text >= 'a' && *text <= 'z' ? *text - 'a' + 'A' : *text;
+    const char *glyph = strchr(DASH_PIXEL_FONT_CHARS, letter);
+    if (!glyph) { continue; }
+    const uint8_t *rows = DASH_PIXEL_FONT_5X7[glyph - DASH_PIXEL_FONT_CHARS];
+    for (int row = 0; row < 7; ++row) {
+      for (int column = 0; column < 5; ++column) {
+        if (rows[row] & (1 << (4 - column))) {
+          graphics_fill_rect(ctx, GRect(x + column * sx, y + row * sy, sx, sy), 0, GCornerNone);
+        }
+      }
+    }
+  }
+}
+
+static void prv_dashboard_icon(AgentUi *ui, GContext *ctx, int icon, int16_t x, int16_t y) {
+  if (!ui->dashboard_icons[icon]) { return; }
+  graphics_context_set_compositing_mode(ctx, GCompOpSet);
+  int size = icon >= 8 ? 20 : 24;
+  graphics_draw_bitmap_in_rect(ctx, ui->dashboard_icons[icon], GRect(x, y, size, size));
+}
+
+static void prv_weather_icon(AgentUi *ui, GContext *ctx, const char *icon, int16_t x, int16_t y) {
+  bool moon = strcmp(icon, "moon") == 0 || strcmp(icon, "night-cloud") == 0;
+  bool sun = strcmp(icon, "sun") == 0 || strcmp(icon, "partly-cloudy") == 0;
+  bool cloud = strcmp(icon, "sun") != 0 && strcmp(icon, "moon") != 0;
+  graphics_context_set_fill_color(ctx, GColorBlack);
+  graphics_context_set_stroke_color(ctx, GColorBlack);
+  if (strcmp(icon, "unknown") == 0 || !icon[0]) { prv_dashboard_icon(ui, ctx, 1, x, y); return; }
+  if (moon) {
+    graphics_fill_circle(ctx, GPoint(x + 10, y + 9), 8);
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    graphics_fill_circle(ctx, GPoint(x + 14, y + 5), 7);
+    graphics_context_set_fill_color(ctx, GColorBlack);
+  } else if (sun) {
+    graphics_fill_circle(ctx, GPoint(x + 11, y + 10), 5);
+    for (int i = 0; i < 8; ++i) {
+      int angle = i * TRIG_MAX_ANGLE / 8;
+      int dx = sin_lookup(angle), dy = cos_lookup(angle);
+      graphics_draw_line(ctx, GPoint(x + 11 + dx * 8 / TRIG_MAX_RATIO, y + 10 + dy * 8 / TRIG_MAX_RATIO),
+                         GPoint(x + 11 + dx * 11 / TRIG_MAX_RATIO, y + 10 + dy * 11 / TRIG_MAX_RATIO));
+    }
+  }
+  if (cloud) {
+    graphics_fill_circle(ctx, GPoint(x + 7, y + 15), 5);
+    graphics_fill_circle(ctx, GPoint(x + 14, y + 12), 7);
+    graphics_fill_circle(ctx, GPoint(x + 20, y + 16), 4);
+    graphics_fill_rect(ctx, GRect(x + 5, y + 15, 17, 5), 0, GCornerNone);
+    if (strcmp(icon, "rain") == 0 || strcmp(icon, "snow") == 0) {
+      for (int i = 0; i < 3; ++i) {
+        int px = x + 6 + i * 7;
+        graphics_draw_line(ctx, GPoint(px, y + 23), GPoint(px - 2, y + 27));
+        if (strcmp(icon, "snow") == 0) { graphics_draw_line(ctx, GPoint(px - 2, y + 23), GPoint(px, y + 27)); }
+      }
+    } else if (strcmp(icon, "storm") == 0) {
+      graphics_draw_line(ctx, GPoint(x + 14, y + 21), GPoint(x + 10, y + 25));
+      graphics_draw_line(ctx, GPoint(x + 10, y + 25), GPoint(x + 15, y + 25));
+      graphics_draw_line(ctx, GPoint(x + 15, y + 25), GPoint(x + 11, y + 29));
+    }
+  }
+}
+
+static void prv_draw_dashboard(AgentUi *ui, GContext *ctx) {
+  time_t now = time(NULL);
+  struct tm *local = localtime(&now);
+  char clock_text[12] = "--:--", day[12] = "", date[16] = "", period[8] = "";
+  if (local) {
+    strftime(clock_text, sizeof(clock_text), clock_is_24h_style() ? "%H:%M" : "%I:%M", local);
+    if (!clock_is_24h_style() && clock_text[0] == '0') {
+      memmove(clock_text, clock_text + 1, strlen(clock_text));
+    }
+    strftime(day, sizeof(day), "%a", local);
+    strftime(date, sizeof(date), "%b %d", local);
+    if (!clock_is_24h_style()) { strftime(period, sizeof(period), "%p", local); }
+  }
+  for (uint8_t i = 0; i < ui->element_count; ++i) {
+    AgentUiElement *e = &ui->elements[i];
+    if (!e->used || !e->frame.size.h) { continue; }
+    GRect f = e->frame;
+    int16_t x = f.origin.x, y = f.origin.y, w = f.size.w, h = f.size.h;
+    bool blue = strcmp(e->id, "dictate") == 0 || strcmp(e->id, "new-chat") == 0;
+    prv_dashboard_card(ctx, f, blue, ui->selected_element == i);
+    if (strcmp(e->id, "calendar") == 0) {
+      int scale = (w - 8) / ((int)strlen(clock_text) * 6 - 1);
+      scale = AGENT_MAX(1, AGENT_MIN(3, scale));
+      int clock_width = ((int)strlen(clock_text) * 6 - 1) * scale;
+      prv_pixel_text(ctx, clock_text, x + (w - clock_width) / 2, y + 16, scale, h < 130 ? 6 : 8, GColorBlack);
+      prv_pixel_text(ctx, period, x + w - 18, y + (h < 130 ? 63 : 77), 1, 1, GColorBlack);
+      int16_t date_y = y + h - 38;
+      prv_dashboard_icon(ui, ctx, 0, x + 7, date_y);
+      prv_pixel_text(ctx, day, x + 35, date_y + 2, 1, 1, GColorBlack);
+      prv_pixel_text(ctx, date, x + 35, date_y + 15, 1, 1, GColorBlack);
+    } else if (strcmp(e->id, "dashboard-summary") == 0) {
+      prv_pixel_text(ctx, "NOTIFICATIONS", x + (w - 77) / 2, y + 7, 1, 1, GColorBlack);
+      AgentUiElement *items[AGENT_UI_MAX_ELEMENTS];
+      int count = 0;
+      for (uint8_t j = 0; j < ui->element_count; ++j) {
+        AgentUiElement *item = &ui->elements[j];
+        if (item->used && (strncmp(item->id, "schedule-", 9) == 0 ||
+            strcmp(item->id, "dashboard-stopwatch") == 0)) { items[count++] = item; }
+      }
+      // No category placeholders: only actual records occupy the tile. The
+      // complete list remains one Select/tap away when there are more than four.
+      int shown = AGENT_MIN(count, 4);
+      int columns = count == 1 ? 1 : 2;
+      int rows = count <= 2 ? 1 : 2;
+      int row_height = (h - 20) / rows;
+      for (int item = 0; item < shown; ++item) {
+        int cell_width = (w - 6) / columns;
+        int16_t cx = x + 3 + cell_width * (item % columns) + cell_width / 2;
+        int16_t cy = y + 18 + (item / columns) * row_height;
+        if (count > 4 && item == 3) {
+          char more[20];
+          snprintf(more, sizeof(more), "%d MORE", count - 3);
+          prv_pixel_text(ctx, more, cx - ((int)strlen(more) * 6 - 1) / 2,
+                         cy + row_height / 2 - 3, 1, 1, GColorBlack);
+          continue;
+        }
+        int diameter = AGENT_MIN(32, row_height - 10);
+        GRect ring = GRect(cx - diameter / 2, cy, diameter, diameter);
+        char kind[16] = "";
+        agent_protocol_meta_get(items[item]->meta, "dashboard_kind", kind, sizeof(kind));
+        bool timer = strcmp(kind, "timer") == 0;
+        if (timer) {
+          int progress = AGENT_MAX(0, AGENT_MIN(100, agent_protocol_meta_get_int(items[item]->meta, "progress", 0)));
+          graphics_context_set_fill_color(ctx, GColorLightGray);
+          graphics_fill_radial(ctx, ring, GOvalScaleModeFitCircle, 3, 0, TRIG_MAX_ANGLE);
+          if (progress > 0) {
+            graphics_context_set_fill_color(ctx, GColorBlack);
+            graphics_fill_radial(ctx, ring, GOvalScaleModeFitCircle, 3, 0,
+                                 (int32_t)((int64_t)TRIG_MAX_ANGLE * progress / 100));
+          }
+        }
+        // The compact timer mark leaves the progress ring unobstructed.
+        if (timer) {
+          graphics_context_set_stroke_color(ctx, GColorBlack);
+          graphics_context_set_stroke_width(ctx, 1);
+          GPoint center = GPoint(cx, cy + diameter / 2);
+          graphics_draw_circle(ctx, center, 4);
+          graphics_draw_line(ctx, center, GPoint(cx, center.y - 3));
+          graphics_draw_line(ctx, GPoint(cx - 2, center.y - 6), GPoint(cx + 2, center.y - 6));
+        } else {
+          prv_dashboard_icon(ui, ctx, strcmp(items[item]->id, "dashboard-stopwatch") == 0 ? 8 : 9,
+                             cx - 10, cy + (diameter - 20) / 2);
+        }
+        char label[16];
+        int max_chars = AGENT_MIN((int)sizeof(label) - 1, (cell_width - 2) / 6);
+        agent_protocol_copy(label, max_chars + 1, items[item]->title);
+        if ((int)strlen(items[item]->title) > max_chars && max_chars > 0) { label[max_chars - 1] = '.'; }
+        prv_pixel_text(ctx, label, cx - ((int)strlen(label) * 6 - 1) / 2,
+                       cy + diameter + 2, 1, 1, GColorBlack);
+      }
+    } else if (strcmp(e->id, "dictate") == 0) {
+      prv_dashboard_icon(ui, ctx, 2, x + 5, y + (h - 24) / 2);
+      prv_pixel_text(ctx, "TALK TO", x + 32, y + h / 2 - 10, 1, 1, GColorWhite);
+      prv_pixel_text(ctx, "AGENT", x + 32, y + h / 2 + 3, 1, 1, GColorWhite);
+
+    } else if (strcmp(e->id, "weather") == 0) {
+      char icon[24]; agent_protocol_meta_get(e->meta, "icon", icon, sizeof(icon));
+      prv_weather_icon(ui, ctx, icon, x + 6, y + 7);
+      const char *temperature = e->value[0] ? e->value : "--";
+      int scale = strlen(temperature) <= 4 ? 2 : 1;
+      prv_pixel_text(ctx, temperature, x + 35, y + 12, scale, 2, GColorBlack);
+      prv_pixel_text(ctx, e->subtitle[0] ? e->subtitle : "L -- H --", x + 6, y + h - 14, 1, 1, GColorBlack);
+    } else if (strcmp(e->id, "todos") == 0) {
+      prv_dashboard_icon(ui, ctx, 4, x + 5, y + (h - 24) / 2);
+      char label[16];
+      snprintf(label, sizeof(label), "%s TODO", e->value[0] ? e->value : "0");
+      prv_pixel_text(ctx, label, x + 32, y + (h - 7) / 2, 1, 1, GColorBlack);
+    }
+  }
+}
+
 static void prv_content_update_proc(Layer *layer, GContext *ctx) {
   AgentUi **slot = layer_get_data(layer);
   AgentUi *ui = slot ? *slot : NULL;
@@ -538,8 +826,10 @@ static void prv_content_update_proc(Layer *layer, GContext *ctx) {
   if (!ui) {
     return;
   }
-  graphics_context_set_fill_color(ctx, GColorWhite);
+  bool dashboard = strcmp(ui->screen_id, "dashboard") == 0;
+  graphics_context_set_fill_color(ctx, dashboard ? GColorBlack : GColorWhite);
   graphics_fill_rect(ctx, layer_get_bounds(layer), 0, GCornerNone);
+  if (dashboard) { prv_draw_dashboard(ui, ctx); }
 
   if (ui->title[0]) {
     int16_t header_inset = prv_header_inset();
@@ -553,7 +843,7 @@ static void prv_content_update_proc(Layer *layer, GContext *ctx) {
     }
   }
 
-  for (index = 0; index < ui->element_count; index += 1) {
+  for (index = 0; !dashboard && index < ui->element_count; index += 1) {
     AgentUiElement *element = &ui->elements[index];
     if (prv_is_rendered(element)) {
       prv_draw_element(ui, ctx, element, ui->selected_element == index && prv_is_selectable(element));
@@ -571,6 +861,79 @@ static void prv_content_update_proc(Layer *layer, GContext *ctx) {
                   grect_inset(status_frame, GEdgeInsets(2, 4)), GTextAlignmentCenter,
                   ui->error ? GColorWhite : GColorBlack, GTextOverflowModeTrailingEllipsis);
   }
+}
+
+static GRect prv_menu_frame(AgentUi *ui) {
+  GRect bounds = layer_get_bounds(window_get_root_layer(ui->window));
+  int16_t width = AGENT_MIN(176, bounds.size.w - 24);
+  int16_t height = ui->menu_count * 38 + 8;
+  return GRect((bounds.size.w - width) / 2, (bounds.size.h - height) / 2, width, height);
+}
+static GRect prv_menu_row(AgentUi *ui, int index) {
+  GRect f = prv_menu_frame(ui);
+  return GRect(f.origin.x + 4, f.origin.y + 4 + index * 38, f.size.w - 8, 38);
+}
+static void prv_menu_update(Layer *layer, GContext *ctx) {
+  AgentUi *ui = *(AgentUi **)layer_get_data(layer);
+  if (!ui->menu_count) { return; }
+  GRect target = prv_menu_frame(ui), frame = target;
+  frame.size.h = AGENT_MAX(4, target.size.h * ui->menu_step / 8);
+  frame.origin.y += (target.size.h - frame.size.h) / 2;
+  graphics_context_set_fill_color(ctx, GColorBlack);
+  graphics_fill_rect(ctx, frame, 5, GCornersAll);
+  graphics_context_set_fill_color(ctx, GColorWhite);
+  graphics_fill_rect(ctx, grect_inset(frame, GEdgeInsets(2)), 3, GCornersAll);
+  if (ui->menu_step < 8) { return; }
+  for (uint8_t i = 0; i < ui->menu_count; ++i) {
+    GRect row = prv_menu_row(ui, i);
+    bool selected = i == ui->menu_selected;
+    if (selected) {
+      graphics_context_set_fill_color(ctx, PBL_IF_COLOR_ELSE(GColorBlue, GColorBlack));
+      graphics_fill_rect(ctx, row, 2, GCornersAll);
+    }
+    prv_draw_text(ctx, ui->menu_items[i].title, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+                  grect_inset(row, GEdgeInsets(3, 6)), GTextAlignmentLeft,
+                  selected ? GColorWhite : GColorBlack, GTextOverflowModeTrailingEllipsis);
+  }
+}
+static void prv_menu_animate(void *context) {
+  AgentUi *ui = context;
+  ui->menu_timer = NULL;
+  if (!ui->menu_count) { return; }
+  if (ui->menu_step < 8) { ++ui->menu_step; }
+  layer_mark_dirty(ui->menu_layer);
+  if (ui->menu_step < 8) {
+    ui->menu_timer = app_timer_register(20, prv_menu_animate, ui);
+    if (!ui->menu_timer) { ui->menu_step = 8; layer_mark_dirty(ui->menu_layer); }
+  }
+}
+static void prv_dismiss_menu(AgentUi *ui) {
+  if (ui->menu_timer) { app_timer_cancel(ui->menu_timer); ui->menu_timer = NULL; }
+  ui->menu_count = 0;
+  if (ui->menu_layer) { layer_set_hidden(ui->menu_layer, true); }
+}
+void agent_ui_open_menu(AgentUi *ui, const AgentUiMenuItem *items, uint8_t count) {
+  if (!ui || !ui->menu_layer || !items || !count) { return; }
+  prv_dismiss_menu(ui);
+  ui->menu_count = AGENT_MIN(count, 4);
+  ui->menu_selected = 0; ui->menu_step = 0;
+  for (uint8_t i = 0; i < ui->menu_count; ++i) {
+    agent_protocol_copy(ui->menu_items[i].title, sizeof(ui->menu_items[i].title), items[i].title);
+    agent_protocol_copy(ui->menu_items[i].action, sizeof(ui->menu_items[i].action), items[i].action);
+  }
+  layer_set_hidden(ui->menu_layer, false);
+  prv_menu_animate(ui);
+}
+static void prv_agent_menu(AgentUi *ui) {
+  const AgentUiMenuItem items[] = {{"Talk to Agent", "local.dictate"}, {"New Chat", "local.new-chat"}};
+  agent_ui_open_menu(ui, items, 2);
+}
+static void prv_menu_select(AgentUi *ui, int index) {
+  char action[AGENT_UI_ACTION_LENGTH];
+  if (index < 0 || index >= ui->menu_count) { prv_dismiss_menu(ui); return; }
+  agent_protocol_copy(action, sizeof(action), ui->menu_items[index].action);
+  prv_dismiss_menu(ui);
+  prv_emit(ui, "select", NULL, action, "");
 }
 
 static void prv_draw_action_icon(GContext *ctx, GRect frame, const char *input, const char *icon) {
@@ -631,6 +994,7 @@ static void prv_relayout_root(AgentUi *ui) {
   // A hidden status bar still needs equivalent breathing room so custom
   // content does not begin in the clipped crown of the circle.
   if (!status_visible) { top = STATUS_BAR_LAYER_HEIGHT; }
+  if (strcmp(ui->screen_id, "dashboard") == 0) { top = 0; }
 #endif
   action_width = action_visible ? AGENT_UI_ACTION_BAR_WIDTH : 0;
   action_top = top;
@@ -782,6 +1146,26 @@ static void prv_activate_element(AgentUi *ui, AgentUiElement *element, const cha
 }
 
 static void prv_handle_input(AgentUi *ui, const char *input) {
+  if (ui->menu_count) {
+    if (strcmp(input, "up") == 0 && ui->menu_selected) { --ui->menu_selected; }
+    else if (strcmp(input, "down") == 0 && ui->menu_selected + 1 < ui->menu_count) { ++ui->menu_selected; }
+    else if (strcmp(input, "select") == 0) { prv_menu_select(ui, ui->menu_selected); return; }
+    layer_mark_dirty(ui->menu_layer); return;
+  }
+  if (strcmp(ui->screen_id, "dashboard") == 0) {
+    if (strcmp(input, "up") == 0) { prv_emit(ui, input, NULL, "local.dashboard.notifications", ""); return; }
+    if (strcmp(input, "down") == 0) { prv_emit(ui, input, NULL, "local.todos", ""); return; }
+    if (strcmp(input, "select") == 0) { prv_emit(ui, input, NULL, "local.dictate", ""); return; }
+  }
+  // Read long failure details a viewport step at a time before moving to actions.
+  if (strcmp(ui->screen_id, "request-error") == 0 && ui->selected_element == 1) {
+    GPoint offset = scroll_layer_get_content_offset(ui->scroll_layer);
+    AgentUiElement *retry = &ui->elements[1];
+    if (strcmp(input, "up") == 0 && offset.y < 0) { prv_scroll(ui, 42, true); return; }
+    if (strcmp(input, "down") == 0 && retry->frame.origin.y + retry->frame.size.h > -offset.y + ui->viewport_height) {
+      prv_scroll(ui, -42, true); return;
+    }
+  }
   AgentUiElement *binding = prv_find_binding(ui, input);
   if (binding) {
     prv_emit_binding(ui, input, binding);
@@ -812,6 +1196,7 @@ static void prv_back_click(ClickRecognizerRef recognizer, void *context) {
   AgentUi *ui = context;
   AgentUiElement *binding;
   (void)recognizer;
+  if (ui->menu_count) { prv_dismiss_menu(ui); return; }
   binding = prv_find_binding(ui, "back");
   if (binding) {
     prv_emit_binding(ui, "back", binding);
@@ -825,6 +1210,8 @@ static void prv_back_click(ClickRecognizerRef recognizer, void *context) {
 static void prv_select_long_click(ClickRecognizerRef recognizer, void *context) {
   AgentUi *ui = context;
   (void)recognizer;
+  if (ui->menu_count) { return; }
+  if (strcmp(ui->screen_id, "dashboard") == 0) { prv_agent_menu(ui); return; }
   if (ui->dictation_handler) {
     ui->dictation_handler(ui->context);
   }
@@ -890,10 +1277,26 @@ static void prv_number_click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_BACK, prv_number_back_click);
 }
 
+static void prv_todo_left(ClickRecognizerRef recognizer, void *context) {
+  (void)recognizer; AgentUi *ui = context;
+  if (ui->selected_element >= 0) { prv_pan_todo(ui, &ui->elements[ui->selected_element], -1); }
+}
+static void prv_todo_right(ClickRecognizerRef recognizer, void *context) {
+  (void)recognizer; AgentUi *ui = context;
+  if (ui->selected_element >= 0) { prv_pan_todo(ui, &ui->elements[ui->selected_element], 1); }
+}
+
 static void prv_click_config_provider(void *context) {
   (void)context;
-  window_single_repeating_click_subscribe(BUTTON_ID_UP, 180, prv_up_click);
-  window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 180, prv_down_click);
+  if (prv_todo_screen(context)) {
+    window_single_click_subscribe(BUTTON_ID_UP, prv_up_click);
+    window_single_click_subscribe(BUTTON_ID_DOWN, prv_down_click);
+    window_long_click_subscribe(BUTTON_ID_UP, 450, prv_todo_left, NULL);
+    window_long_click_subscribe(BUTTON_ID_DOWN, 450, prv_todo_right, NULL);
+  } else {
+    window_single_repeating_click_subscribe(BUTTON_ID_UP, 180, prv_up_click);
+    window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 180, prv_down_click);
+  }
   window_single_click_subscribe(BUTTON_ID_SELECT, prv_select_click);
   window_long_click_subscribe(BUTTON_ID_SELECT, AGENT_UI_SELECT_HOLD_MS,
                               prv_select_long_click, NULL);
@@ -947,6 +1350,17 @@ static AgentUiElement *prv_hotspot(AgentUi *ui, int16_t x, int16_t y) {
   return NULL;
 }
 
+static void prv_cancel_hold(AgentUi *ui) {
+  if (ui->hold_timer) { app_timer_cancel(ui->hold_timer); ui->hold_timer = NULL; }
+}
+static void prv_touch_hold(void *context) {
+  AgentUi *ui = context; ui->hold_timer = NULL;
+  if (ui->touch_down && !ui->touch_dragged && strcmp(ui->screen_id, "dashboard") == 0) {
+    ui->touch_consumed = true;
+    prv_agent_menu(ui);
+  }
+}
+
 static void prv_touch_handler(const TouchEvent *event, void *context) {
   AgentUi *ui = context;
   int dx;
@@ -954,17 +1368,42 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
   if (!ui || !event) { return; }
   switch (event->type) {
     case TouchEvent_Touchdown:
+      prv_cancel_hold(ui);
+      ui->touch_consumed = false;
+      ui->touch_horizontal = ui->touch_vertical = false;
+      ui->touch_was_menu = ui->menu_count != 0;
+      ui->touch_last_x = event->x;
       ui->touch_down = true;
       ui->touch_dragged = false;
       ui->touch_down_x = event->x;
       ui->touch_down_y = event->y;
       ui->touch_last_y = event->y;
+      if (!ui->menu_count) {
+        AgentUiElement *hit = prv_hit_test(ui, event->x, event->y);
+        ui->touch_row = prv_todo_row(hit);
+        if (ui->touch_row) { ui->selected_element = prv_index_of(ui, hit); }
+        if (hit && strcmp(hit->id, "dictate") == 0 && strcmp(ui->screen_id, "dashboard") == 0) {
+          ui->hold_timer = app_timer_register(AGENT_UI_SELECT_HOLD_MS, prv_touch_hold, ui);
+        }
+      }
       break;
     case TouchEvent_PositionUpdate:
-      if (!ui->touch_down) { break; }
+      if (!ui->touch_down || ui->touch_consumed || ui->touch_was_menu) { break; }
       if (prv_abs(event->x - ui->touch_down_x) > AGENT_UI_TOUCH_TAP_MAX ||
           prv_abs(event->y - ui->touch_down_y) > AGENT_UI_TOUCH_TAP_MAX) {
         ui->touch_dragged = true;
+        prv_cancel_hold(ui);
+        if (!ui->touch_horizontal && !ui->touch_vertical) {
+          ui->touch_horizontal = ui->touch_row && prv_abs(event->x - ui->touch_down_x) > prv_abs(event->y - ui->touch_down_y);
+          ui->touch_vertical = !ui->touch_horizontal;
+        }
+      }
+      if (ui->touch_horizontal) {
+        if (prv_abs(event->x - ui->touch_last_x) >= 12 && ui->selected_element >= 0) {
+          prv_pan_todo(ui, &ui->elements[ui->selected_element], event->x < ui->touch_last_x ? 1 : -1);
+          ui->touch_last_x = event->x;
+        }
+        break;
       }
       dy = event->y - ui->touch_last_y;
       if (dy) { prv_scroll(ui, dy, false); }
@@ -973,12 +1412,25 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
     case TouchEvent_Liftoff:
       if (!ui->touch_down) { break; }
       ui->touch_down = false;
+      prv_cancel_hold(ui);
+      if (ui->touch_consumed) { ui->touch_consumed = false; break; }
+      if (ui->touch_was_menu) {
+        GPoint tap = GPoint(event->x, event->y);
+        int selected = -1;
+        for (uint8_t i = 0; i < ui->menu_count; ++i) {
+          GRect row = prv_menu_row(ui, i);
+          if (grect_contains_point(&row, &tap)) { selected = i; break; }
+        }
+        prv_menu_select(ui, selected); break;
+      }
+      if (ui->touch_horizontal) { break; }
       dx = event->x - ui->touch_down_x;
       dy = event->y - ui->touch_down_y;
       if (prv_abs(dx) > AGENT_UI_TOUCH_SWIPE_MIN && prv_abs(dx) > prv_abs(dy)) {
         const char *gesture = dx > 0 ? "swipe-right" : "swipe-left";
         AgentUiElement *binding = prv_find_binding(ui, gesture);
         if (binding) { prv_emit_binding(ui, gesture, binding); }
+        else if (prv_todo_screen(ui) && ui->selected_element >= 0) { prv_pan_todo(ui, &ui->elements[ui->selected_element], dx < 0 ? 1 : -1); }
         else if (dx > 0) { window_stack_pop(true); }
       } else if (prv_abs(dy) > AGENT_UI_TOUCH_SWIPE_MIN && prv_abs(dy) > prv_abs(dx)) {
         const char *gesture = dy > 0 ? "swipe-down" : "swipe-up";
@@ -998,6 +1450,8 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
         if (!element) { element = prv_hit_test(ui, ui->touch_down_x, ui->touch_down_y); }
         if (element && element->kind == AgentUiElementHotspot) {
           prv_emit(ui, "tap", element, element->action, element->value);
+        } else if (prv_todo_row(element) && ui->touch_down_x >= element->frame.origin.x + 28) {
+          ui->selected_element = prv_index_of(ui, element); layer_mark_dirty(ui->content_layer);
         } else if (element) { prv_activate_element(ui, element, "tap"); }
         else {
           AgentUiElement *binding = prv_find_binding(ui, "tap");
@@ -1014,6 +1468,12 @@ static void prv_window_load(Window *window) {
   Layer *root = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(root);
   AgentUi **slot;
+  ui->menu_layer = layer_create_with_data(bounds, sizeof(AgentUi *));
+  if (ui->menu_layer) {
+    *(AgentUi **)layer_get_data(ui->menu_layer) = ui;
+    layer_set_update_proc(ui->menu_layer, prv_menu_update);
+    layer_set_hidden(ui->menu_layer, true);
+  }
   ui->status_bar_layer = status_bar_layer_create();
   if (!ui->status_bar_layer) { return; }
   status_bar_layer_set_colors(ui->status_bar_layer, GColorWhite, GColorBlack);
@@ -1037,6 +1497,7 @@ static void prv_window_load(Window *window) {
   *slot = ui;
   layer_set_update_proc(ui->action_bar_layer, prv_action_bar_update_proc);
   layer_add_child(root, ui->action_bar_layer);
+  if (ui->menu_layer) { layer_add_child(root, ui->menu_layer); }
 
   ui->loaded = true;
   prv_relayout_root(ui);
@@ -1044,7 +1505,12 @@ static void prv_window_load(Window *window) {
 
 static void prv_window_unload(Window *window) {
   AgentUi *ui = window_get_user_data(window);
+#if defined(PBL_TOUCH)
+  prv_cancel_hold(ui);
+#endif
   ui->loaded = false;
+  prv_dismiss_menu(ui);
+  if (ui->menu_layer) { layer_destroy(ui->menu_layer); ui->menu_layer = NULL; }
   if (ui->action_bar_layer) { layer_destroy(ui->action_bar_layer); ui->action_bar_layer = NULL; }
   if (ui->content_layer) { layer_destroy(ui->content_layer); ui->content_layer = NULL; }
   if (ui->scroll_layer) { scroll_layer_destroy(ui->scroll_layer); ui->scroll_layer = NULL; }
@@ -1066,6 +1532,7 @@ static void prv_window_appear(Window *window) {
 static void prv_window_disappear(Window *window) {
   AgentUi *ui = window_get_user_data(window);
 #if defined(PBL_TOUCH)
+  prv_cancel_hold(ui);
   if (ui->touch_subscribed) {
     touch_service_unsubscribe();
     ui->touch_subscribed = false;
@@ -1099,6 +1566,10 @@ AgentUi *agent_ui_create(AgentUiEventHandler event_handler, AgentUiDictationHand
   });
   window_set_click_config_provider_with_context(ui->window, prv_click_config_provider, ui);
   agent_protocol_copy(ui->layout_name, sizeof(ui->layout_name), "text");
+  const uint32_t icons[] = { RESOURCE_ID_DASH_CALENDAR, RESOURCE_ID_DASH_WEATHER, RESOURCE_ID_DASH_ROBOT,
+    RESOURCE_ID_DASH_CHAT, RESOURCE_ID_DASH_TODOS, RESOURCE_ID_DASH_TIMER, RESOURCE_ID_DASH_ALARM, RESOURCE_ID_DASH_BELL, RESOURCE_ID_DASH_TIMER_SMALL, RESOURCE_ID_DASH_ALARM_SMALL,
+    RESOURCE_ID_DASH_BELL_SMALL, RESOURCE_ID_DASH_TODOS_SMALL };
+  for (int i = 0; i < 12; ++i) { ui->dashboard_icons[i] = gbitmap_create_with_resource(icons[i]); }
   return ui;
 }
 
@@ -1109,6 +1580,7 @@ void agent_ui_destroy(AgentUi *ui) {
 #endif
   if (ui->number_window) { number_window_destroy(ui->number_window); }
   if (ui->window) { window_destroy(ui->window); }
+  for (int i = 0; i < 12; ++i) { if (ui->dashboard_icons[i]) { gbitmap_destroy(ui->dashboard_icons[i]); } }
   free(ui);
 }
 
@@ -1132,6 +1604,11 @@ void agent_ui_begin(AgentUi *ui, const char *screen_id, const char *layout, cons
     number_window_destroy(ui->number_window);
     ui->number_window = NULL;
   }
+  prv_dismiss_menu(ui);
+#if defined(PBL_TOUCH)
+  prv_cancel_hold(ui);
+  ui->touch_down = false;
+#endif
   ui->editing_element = -1;
   memset(ui->elements, 0, sizeof(ui->elements));
   ui->element_count = 0;
@@ -1150,6 +1627,7 @@ void agent_ui_begin(AgentUi *ui, const char *screen_id, const char *layout, cons
   if (ui->loaded) {
     scroll_layer_set_content_offset(ui->scroll_layer, GPointZero, false);
     prv_relayout_root(ui);
+    window_set_click_config_provider_with_context(ui->window, prv_click_config_provider, ui);
   }
 }
 
@@ -1186,7 +1664,8 @@ bool agent_ui_add(AgentUi *ui, const AgentUiElementSpec *spec) {
   memset(element, 0, sizeof(*element));
   element->used = true;
   prv_apply_spec(element, spec, false);
-  if (prv_is_selectable(element) && ui->selected_element < 0) {
+  if (prv_is_selectable(element) && (ui->selected_element < 0 ||
+      (strcmp(ui->screen_id, "dashboard") == 0 && strcmp(element->action, "local.dictate") == 0))) {
     ui->selected_element = ui->element_count;
   }
   ui->element_count += 1;
@@ -1251,11 +1730,24 @@ void agent_ui_end(AgentUi *ui) {
   prv_refresh(ui);
 }
 
+static void prv_show_error(AgentUi *ui, const char *reason) {
+  char details[AGENT_UI_VALUE_LENGTH];
+  agent_protocol_copy(details, sizeof(details), reason && reason[0] ? reason : "The request could not be completed.");
+  agent_ui_begin(ui, "request-error", "list", "Request failed", "", "", 0);
+  agent_ui_add(ui, &(AgentUiElementSpec) { .kind = "text", .id = "error-reason", .value = details });
+  agent_ui_add(ui, &(AgentUiElementSpec) { .kind = "item", .id = "error-retry", .title = "Try again",
+    .subtitle = "Speak your request again", .action = "local.dictate" });
+  agent_ui_add(ui, &(AgentUiElementSpec) { .kind = "item", .id = "error-home", .title = "Dashboard", .action = "local.home" });
+  agent_ui_end(ui);
+}
+
 void agent_ui_set_status(AgentUi *ui, const char *status, bool is_error, bool loading) {
   if (!ui) { return; }
+  if (is_error) { prv_show_error(ui, status); return; }
   agent_protocol_copy(ui->status, sizeof(ui->status), status);
   ui->error = is_error;
   ui->loading = loading;
+  if (is_error) { ui->complete = true; }
   prv_refresh(ui);
 }
 

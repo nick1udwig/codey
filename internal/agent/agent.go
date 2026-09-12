@@ -59,7 +59,7 @@ func (agent *Agent) Respond(ctx context.Context, request pam.Request, emit func(
 		err = stream.Finish()
 	}
 	if err != nil {
-		if emitErr := stream.EmitError(err); emitErr != nil {
+		if emitErr := stream.EmitError(fmt.Errorf("Request failed: %w", err)); emitErr != nil {
 			return fmt.Errorf("%w (also failed to send PAM error: %v)", err, emitErr)
 		}
 	}

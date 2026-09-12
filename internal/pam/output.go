@@ -18,6 +18,7 @@ var layouts = set("text", "list", "menu", "grid", "card", "progress", "form", "c
 var elements = set("section", "item", "text", "metric", "progress", "field", "choice", "action", "bind", "image", "spacer", "hotspot")
 var inputs = set("up", "select", "down", "back", "tap", "swipe-left", "swipe-right", "swipe-up", "swipe-down")
 var capabilityCommands = map[string]map[string]bool{
+	"todo":      set("add", "list", "archive"),
 	"timer":     set("start", "pause", "resume", "cancel", "show", "list", "ack", "cancel_all"),
 	"stopwatch": set("start", "pause", "resume", "lap", "reset", "show"),
 	"weather":   set("current", "show"),

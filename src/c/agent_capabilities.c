@@ -23,12 +23,15 @@ struct AgentCapabilities {
   uint8_t module_count;
   char active_name[AGENT_CAPABILITY_NAME_LENGTH];
   char connection[72];
+  char weather_temperature[12], weather_range[32], weather_meta[40];
+  uint16_t weather_ticks;
   AppTimer *tick_timer;
   uint32_t navigation_revision;
   uint32_t notification_revision;
 };
 
 static AgentCapabilities *s_wakeup_capabilities;
+static void prv_show_notifications(AgentCapabilities *capabilities);
 
 static void prv_tick(void *context) {
   AgentCapabilities *capabilities = context;
@@ -38,6 +41,10 @@ static void prv_tick(void *context) {
     if (module->module.tick) { module->module.tick(module->context); }
   }
   agent_capabilities_refresh_dashboard(capabilities);
+  if (++capabilities->weather_ticks >= 900) {
+    capabilities->weather_ticks = 0;
+    agent_capabilities_emit(capabilities, "weather", "", "refresh", "");
+  }
   capabilities->tick_timer = app_timer_register(1000, prv_tick, capabilities);
 }
 
@@ -135,6 +142,23 @@ bool agent_capabilities_handle_ui_event(AgentCapabilities *capabilities, const A
     agent_capabilities_show_dashboard(capabilities);
     return true;
   }
+  if (strcmp(event->action, "local.dashboard.notifications") == 0) {
+    capabilities->navigation_revision += 1;
+    prv_show_notifications(capabilities);
+    return true;
+  }
+  if (strcmp(event->action, "local.calendar") == 0) {
+    capabilities->navigation_revision += 1;
+    agent_capabilities_set_active(capabilities, "calendar", true);
+    agent_ui_begin(capabilities->ui, "calendar", "card",
+                   "Calendar", "", "", 16);
+    agent_capability_add_element(capabilities->ui, "text", "placeholder", "", "",
+                                 "Calendar view coming soon.", "", "", 0);
+    agent_capability_add_element(capabilities->ui, "item", "home", "Back to dashboard", "", "", "local.home", "", 0);
+    agent_ui_end(capabilities->ui);
+    return true;
+  }
+  if (strcmp(event->action, "local.todos") == 0 || strncmp(event->action, "local.todo.", 11) == 0) { capabilities->navigation_revision += 1; }
   for (index = 0; index < capabilities->module_count; index += 1) {
     RegisteredModule *registered = &capabilities->modules[index];
     if (registered->module.event &&
@@ -157,17 +181,32 @@ void agent_capabilities_show_dashboard(AgentCapabilities *capabilities) {
   if (!capabilities) { return; }
   capabilities->navigation_revision += 1;
   agent_capabilities_set_active(capabilities, "dashboard", true);
-  agent_ui_begin(capabilities->ui, "dashboard", "list", "Agent", "", "", 16);
+  agent_ui_begin(capabilities->ui, "dashboard", "list", "", "", "", 0);
+  agent_capability_add_element(capabilities->ui, "item", "calendar", "Calendar", "", "", "local.calendar", "", 0);
+  agent_capability_add_element(capabilities->ui, "item", "dashboard-summary", "Notifications",
+                               "", "", "local.dashboard.notifications", "", 0);
+  agent_capability_add_element(capabilities->ui, "item", "dictate", "Talk to Agent",
+                               "Hold Select", "", "local.dictate", "", 0);
+  agent_capability_add_element(capabilities->ui, "item", "weather", "Weather", capabilities->weather_range, capabilities->weather_temperature, "local.weather", capabilities->weather_meta, 0);
+  agent_capability_add_element(capabilities->ui, "item", "todos", "Todos", "", "", "local.todos", "", 0);
   for (uint8_t i = 0; i < capabilities->module_count; ++i) {
     RegisteredModule *module = &capabilities->modules[i];
     if (module->module.dashboard) {
       module->module.dashboard(capabilities, module->context, false);
     }
   }
-  agent_capability_add_element(capabilities->ui, "item", "dictate", "Ask Agent",
-                               "Hold Select to dictate", "", "local.dictate", "", 0);
   agent_capability_add_element(capabilities->ui, "text", "connection", "", "",
                                capabilities->connection, "", "", 0);
+  agent_ui_end(capabilities->ui);
+}
+
+static void prv_show_notifications(AgentCapabilities *capabilities) {
+  agent_capabilities_set_active(capabilities, "notifications", true);
+  agent_ui_begin(capabilities->ui, "notifications", "list", "Notifications", "", "", 16);
+  for (uint8_t i = 0; i < capabilities->module_count; ++i) {
+    RegisteredModule *module = &capabilities->modules[i];
+    if (module->module.dashboard) { module->module.dashboard(capabilities, module->context, false); }
+  }
   agent_ui_end(capabilities->ui);
 }
 
@@ -182,7 +221,8 @@ uint32_t agent_capabilities_notification_revision(const AgentCapabilities *capab
 void agent_capabilities_rebuild_dashboard(AgentCapabilities *capabilities) {
   if (!capabilities) { return; }
   uint32_t revision = capabilities->navigation_revision;
-  agent_capabilities_show_dashboard(capabilities);
+  if (agent_capabilities_is_active(capabilities, "notifications")) { prv_show_notifications(capabilities); }
+  else { agent_capabilities_show_dashboard(capabilities); }
   capabilities->navigation_revision = revision;
 }
 
@@ -190,11 +230,13 @@ void agent_capabilities_show_notifications(AgentCapabilities *capabilities) {
   if (!capabilities) { return; }
   // A due alert changes focus, but must not cancel an outstanding user command.
   capabilities->notification_revision += 1;
-  agent_capabilities_rebuild_dashboard(capabilities);
+  prv_show_notifications(capabilities);
 }
 
 void agent_capabilities_refresh_dashboard(AgentCapabilities *capabilities) {
-  if (!agent_capabilities_is_active(capabilities, "dashboard")) { return; }
+  if (!agent_capabilities_is_active(capabilities, "dashboard") &&
+      !agent_capabilities_is_active(capabilities, "notifications")) { return; }
+  agent_capability_patch_value(capabilities->ui, "connection", capabilities->connection);
   for (uint8_t i = 0; i < capabilities->module_count; ++i) {
     RegisteredModule *module = &capabilities->modules[i];
     if (module->module.dashboard) {
@@ -232,7 +274,7 @@ void agent_capabilities_set_active(AgentCapabilities *capabilities, const char *
 }
 
 bool agent_capabilities_install_builtins(AgentCapabilities *capabilities) {
-  return agent_schedules_install(capabilities) && agent_stopwatch_install(capabilities);
+  return agent_schedules_install(capabilities) && agent_stopwatch_install(capabilities) && agent_todos_install(capabilities);
 }
 
 int32_t agent_capability_parse_duration(const char *value, int32_t fallback) {
@@ -287,4 +329,17 @@ void agent_capability_patch_value(AgentUi *ui, const char *id, const char *value
     .value = value,
     .present = AgentUiPresentId | AgentUiPresentValue,
   });
+}
+
+void agent_capabilities_set_weather(AgentCapabilities *c, const char *temperature, const char *range, const char *meta) {
+  if (!c) { return; }
+  agent_protocol_copy(c->weather_temperature, sizeof(c->weather_temperature), temperature);
+  agent_protocol_copy(c->weather_range, sizeof(c->weather_range), range);
+  agent_protocol_copy(c->weather_meta, sizeof(c->weather_meta), meta);
+  if (strcmp(agent_ui_screen_id(c->ui), "dashboard") == 0) {
+    AgentUiElementSpec spec = { .id = "weather", .value = c->weather_temperature,
+      .subtitle = c->weather_range, .meta = c->weather_meta,
+      .present = AgentUiPresentValue | AgentUiPresentSubtitle | AgentUiPresentMeta };
+    agent_ui_patch(c->ui, &spec);
+  }
 }

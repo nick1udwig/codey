@@ -9,6 +9,7 @@ var Settings = require("../src/common/settings");
 var Capabilities = require("../src/common/capabilities");
 var Weather = require("../src/common/weather");
 var Writer = require("../src/common/writer");
+var LocalDictation = require("../src/common/local-dictation");
 
 var tests = [];
 
@@ -505,7 +506,7 @@ test("agent client validates endpoints and reports HTTP failure modes once", fun
   second.readyState = 4;
   second.onreadystatechange();
   if (second.onerror) { second.onerror(); }
-  assert.deepStrictEqual(secondErrors, ["Agent HTTP 503"]);
+  assert.deepStrictEqual(secondErrors, ["Server returned HTTP 503. Try again shortly."]);
 });
 
 test("agent client reports HTTP network and timeout errors", function() {
@@ -693,9 +694,11 @@ test("weather fetch builds a metric request and renders a validated forecast", f
   var statuses = [];
   var errors = [];
   var rendered = "";
+  var summary;
   var handler = Weather.createWeatherHandler({ XMLHttpRequest: FakeXHR });
   handler({ command: "current", id: "wx", latitude: "45.5", longitude: "-122.6" }, {
     settings: { units: "metric", locationLabel: "Portland" },
+    summary: function(value) { summary = value; },
     status: function(value) { statuses.push(value); },
     error: function(value) { errors.push(value); },
     renderPam: function(value) { rendered = value; }
@@ -718,6 +721,11 @@ test("weather fetch builds a metric request and renders a validated forecast", f
   });
   requests[0].onload();
   assert.deepStrictEqual(errors, []);
+  assert.strictEqual(summary.temperature, "13");
+  assert.strictEqual(summary.high, "18");
+  assert.strictEqual(summary.low, "8");
+  assert.strictEqual(summary.unit, "C");
+  assert.strictEqual(summary.icon, "partly-cloudy");
   var nodes = parse(rendered);
   assert.strictEqual(nodes[1].attrs.title, "Portland");
   assert.strictEqual(nodes[2].attrs.value, "13°C");
@@ -937,6 +945,60 @@ test("new-session settings cancel the old response and persist a fresh conversat
   } finally { h.cleanup(); }
 });
 
+test("New Chat resets the session before acknowledging dictation and carries no stale reset flag", function() {
+  var requests = [], aborted = 0;
+  function FakeXHR() { this.responseText = ""; requests.push(this); }
+  FakeXHR.prototype.open = function(method, url) { this.method = method; this.url = url; };
+  FakeXHR.prototype.setRequestHeader = function() {};
+  FakeXHR.prototype.send = function(body) { this.body = body; };
+  FakeXHR.prototype.abort = function() { this.aborted = true; aborted += 1; };
+  var storage = { "pebble-agent.session.v1": "old-session" };
+  storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test/respond" });
+  var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
+  try {
+    h.handlers.appmessage({ payload: { 0: "input", 1: 5, 2: "dictation", 8: "old request" } });
+    assert.strictEqual(parse(requests[0].body)[1].attrs.session, "old-session");
+    h.handlers.appmessage({ payload: { 0: "input", 1: 91, 2: "new-chat", 9: "local.new-chat" } });
+    var fresh = storage["pebble-agent.session.v1"];
+    assert.notStrictEqual(fresh, "old-session");
+    assert.strictEqual(aborted, 1);
+    assert.strictEqual(requests[0].aborted, true);
+    var control = h.sent.filter(function(message) { return message[Watch.Key.messageType] === "control"; })[0];
+    assert.ok(control);
+    assert.strictEqual(control[Watch.Key.operation], "dictate");
+    assert.strictEqual(control[Watch.Key.requestId], 91);
+    h.handlers.appmessage({ payload: { 0: "input", 1: 6, 2: "dictation", 8: "fresh request" } });
+    assert.strictEqual(parse(requests[1].body)[1].attrs.session, fresh);
+    assert.strictEqual(storage["pebble-agent.session.v1"], fresh);
+  } finally { h.cleanup(); }
+});
+
+test("Weather dashboard action opens the built-in local weather capability without contacting the agent", function() {
+  var requests = [];
+  function FakeXHR() { this.responseText = ""; requests.push(this); }
+  FakeXHR.prototype.open = function(method, url) { this.method = method; this.url = url; };
+  FakeXHR.prototype.setRequestHeader = function() {};
+  FakeXHR.prototype.send = function(body) { this.body = body; };
+  FakeXHR.prototype.abort = function() {};
+  var storage = {};
+  storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test/respond", units: "metric", locationLabel: "Here" });
+  global.navigator = { geolocation: { getCurrentPosition: function(success) {
+    success({ coords: { latitude: 45.5, longitude: -122.6 } });
+  } } };
+  var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
+  try {
+    h.handlers.appmessage({ payload: { 0: "input", 1: 4, 2: "dictation", 8: "weather", 9: "local.weather" } });
+    assert.strictEqual(requests.length, 1);
+    assert.strictEqual(requests[0].method, "GET");
+    assert.match(requests[0].url, /^https:\/\/api\.open-meteo\.com\/v1\/forecast\?/);
+    assert.match(requests[0].url, /latitude=45\.5/);
+    assert.doesNotMatch(requests[0].url, /agent\.test/);
+    assert.ok(h.sent.some(function(message) {
+      return message[Watch.Key.messageType] === "status" && message[Watch.Key.value] === "Loading weather";
+    }));
+  } finally { h.cleanup(); }
+});
+
 test("PebbleKit bridge carries watch input through HTTP streaming to render operations", function() {
   var xhr;
   function FakeXHR() { this.headers = {}; this.responseText = ""; xhr = this; }
@@ -985,6 +1047,91 @@ test("PebbleKit bridge carries watch input through HTTP streaming to render oper
   } finally {
     harness.cleanup();
   }
+});
+
+test("server failures before or after a screen clear loading and retain the failure reason", function() {
+  [false, true].forEach(function(partial) {
+    var xhr;
+    function FakeXHR() { xhr = this; this.responseText = ""; }
+    FakeXHR.prototype.open = FakeXHR.prototype.setRequestHeader = FakeXHR.prototype.send = FakeXHR.prototype.abort = function() {};
+    var storage = {};
+    storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test" });
+    var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
+    try {
+      h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "find local files" } });
+      var begin = h.sent.find(function(m) { return m[Watch.Key.messageType] === "answer" && m[Watch.Key.operation] === "begin"; });
+      assert.ok(begin);
+      xhr.responseText = "pam version=1\n" + (partial ? "screen id=a layout=card\n" : "") +
+        'error message="Request failed: invalid agent response"\n';
+      xhr.status = 200; xhr.readyState = 4; xhr.onreadystatechange();
+      var errors = h.sent.filter(function(m) { return m[Watch.Key.operation] === "error"; });
+      assert.strictEqual(errors.length, 1);
+      assert.strictEqual(errors[0][Watch.Key.requestId], begin[Watch.Key.requestId]);
+      assert.strictEqual(errors[0][Watch.Key.value], "Request failed: invalid agent response");
+      assert.ok(!h.sent.some(function(m) { return m[Watch.Key.operation] === "idle" || m[Watch.Key.operation] === "complete"; }));
+      // A subsequent response succeeds; failure does not strand the pipeline.
+      h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "try again" } });
+      xhr.responseText = "pam version=1\nscreen id=b layout=card\ndone\n";
+      xhr.status = 200; xhr.readyState = 4; xhr.onreadystatechange();
+      assert.ok(h.sent.some(function(m) { return m[Watch.Key.operation] === "idle"; }));
+    } finally { h.cleanup(); }
+  });
+});
+
+test("HTTP zero explains connection failure and ignores non-PAM server error pages", function() {
+  [0, 401, 503].forEach(function(status) {
+    var xhr;
+    function FakeXHR() { xhr = this; this.responseText = ""; }
+    FakeXHR.prototype.open = FakeXHR.prototype.setRequestHeader = FakeXHR.prototype.send = FakeXHR.prototype.abort = function() {};
+    var storage = {};
+    storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test" });
+    var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
+    try {
+      h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "find files" } });
+      xhr.responseText = status ? "<html>service unavailable</html>" : "";
+      xhr.status = status; xhr.readyState = 4; xhr.onreadystatechange();
+      var errors = h.sent.filter(function(m) { return m[Watch.Key.operation] === "error"; });
+      assert.strictEqual(errors.length, 1);
+      assert.ok(errors[0][Watch.Key.value].indexOf(status === 0 ? "No response from server" : status === 401 ? "Check the token" : "HTTP 503") >= 0);
+      assert.ok(!h.sent.some(function(m) { return m[Watch.Key.operation] === "complete"; }));
+    } finally { h.cleanup(); }
+  });
+});
+
+test("todo phrases accept creation verbs and preserve the complete task", function() {
+  ["make a to-do to ", "set a task to ", "create a task to ", "please add a todo to ", "put down a task to "].forEach(function(prefix) {
+    assert.strictEqual(LocalDictation.parse(prefix + "Call José about the New York trip").node.attrs.value, "Call José about the New York trip");
+  });
+  ["do not make a todo to buy milk", "can you explain how to set a task", "make a todo"].forEach(function(phrase) {
+    assert.strictEqual(LocalDictation.parse(phrase), null);
+  });
+});
+test("weather icons distinguish day, night, clouds and precipitation", function() {
+  [[0,1,"sun"],[0,0,"moon"],[2,1,"partly-cloudy"],[2,0,"night-cloud"],[3,1,"cloud"],
+    [63,1,"rain"],[73,1,"snow"],[95,0,"storm"],[999,1,"unknown"]].forEach(function(row) {
+      assert.strictEqual(Weather.weatherIcon(row[0], row[1]), row[2]);
+    });
+});
+
+test("bare todo prefix creates an item without interpreting its text as an alarm", function() {
+  ["to-do", "To-do", "todo", "to do", "To-do:"].forEach(function(prefix) {
+    var result = LocalDictation.parse(prefix + " send a birthday card to John.");
+    assert.strictEqual(result.node.attrs.type, "todo");
+    assert.strictEqual(result.node.attrs.command, "add");
+    assert.strictEqual(result.node.attrs.value, "send a birthday card to John.");
+  });
+  assert.strictEqual(LocalDictation.parse("to-do set an alarm for 7 am").node.attrs.type, "todo");
+  assert.strictEqual(LocalDictation.parse("to-do"), null);
+  assert.strictEqual(LocalDictation.parse("please explain the to-do list"), null);
+});
+
+test("todo voice commands preserve item text and use the local capability", function() {
+  var todo = LocalDictation.parse("Add a todo to Buy Milk and call José", new Date());
+  assert.strictEqual(todo.node.attrs.type, "todo");
+  assert.strictEqual(todo.node.attrs.command, "add");
+  assert.strictEqual(todo.node.attrs.value, "Buy Milk and call José");
+  assert.strictEqual(LocalDictation.parse("show my todos", new Date()).node.attrs.command, "list");
+  assert.ok(Capabilities.installBuiltins(new Capabilities.CapabilityRegistry()).has("todo"));
 });
 
 test("answer completion respects settings and excludes invalid, failed, and superseded responses", function() {
@@ -1074,13 +1221,42 @@ test("Capability delivery IDs distinguish identical model commands and survive b
   }
 });
 
+test("background weather updates only the tile and caches the forecast", function() {
+  var requests = [], storage = {};
+  function FakeXHR() { requests.push(this); }
+  FakeXHR.prototype.open = function(method, url) { this.url = url; };
+  FakeXHR.prototype.send = function() {};
+  global.navigator = { geolocation: { getCurrentPosition: function(success) {
+    success({ coords: { latitude: 45, longitude: -122 } });
+  } } };
+  var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
+  try {
+    h.handlers.appmessage({ payload: { 0: "ready", 8: "local-active" } });
+    assert.strictEqual(requests.length, 1);
+    requests[0].status = 200;
+    requests[0].responseText = JSON.stringify({ current: { temperature_2m: 12, weather_code: 0, is_day: 0 },
+      daily: { time: ["2026-09-12"], temperature_2m_max: [18], temperature_2m_min: [8], weather_code: [0] } });
+    requests[0].onload();
+    assert.ok(h.sent.every(function(m) { return m[0] === "bridge"; }));
+    var last = h.sent[h.sent.length - 1];
+    assert.strictEqual(last[10], "icon=moon");
+    assert.strictEqual(last[7], "L 8 H 18");
+    assert.strictEqual(JSON.parse(storage["pebble-agent.weather.v1"]).temperature, "12");
+    h.handlers.appmessage({ payload: { 0: "capability_event", 2: "weather", 9: "refresh" } });
+    assert.strictEqual(requests.length, 2);
+    requests[1].ontimeout();
+    assert.ok(h.sent.every(function(m) { return m[0] === "bridge"; }));
+  } finally { h.cleanup(); }
+});
+
 test("Native dashboard survives bridge startup, configuration, and local notifications", function() {
   var requests = 0;
   function FakeXHR() { requests += 1; }
   var harness = loadPkjsHarness({ XMLHttpRequest: FakeXHR });
   try {
     harness.handlers.appmessage({ payload: { 0: "ready", 8: "local-active" } });
-    assert.strictEqual(harness.sent.length, 1);
+    assert.strictEqual(harness.sent.length, 2);
+    assert.strictEqual(harness.sent[1][Watch.Key.operation], "weather");
     assert.strictEqual(harness.sent[0][Watch.Key.messageType], "bridge");
     ["timer.finished", "reminder.acknowledged", "stopwatch.reset"].forEach(function(action) {
       harness.handlers.appmessage({ payload: { 0: "capability_event", 9: action } });

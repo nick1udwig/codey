@@ -50,7 +50,68 @@
       "Index": 12
     },
     "resources": {
-      "media": []
+      "media": [
+        {
+          "type": "bitmap",
+          "name": "DASH_CALENDAR",
+          "file": "images/icon_calendar.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DASH_WEATHER",
+          "file": "images/icon_weather.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DASH_ROBOT",
+          "file": "images/icon_robot.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DASH_CHAT",
+          "file": "images/icon_chat.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DASH_TODOS",
+          "file": "images/icon_todos.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DASH_TIMER",
+          "file": "images/icon_timer.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DASH_ALARM",
+          "file": "images/icon_alarm.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DASH_BELL",
+          "file": "images/icon_bell.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DASH_TIMER_SMALL",
+          "file": "images/icon_timer_small.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DASH_ALARM_SMALL",
+          "file": "images/icon_alarm_small.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DASH_BELL_SMALL",
+          "file": "images/icon_bell_small.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DASH_TODOS_SMALL",
+          "file": "images/icon_todos_small.png"
+        }
+      ]
     }
   }
 }

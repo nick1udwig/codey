@@ -13,11 +13,11 @@ static WakeupId wake_id = -1;
 static time_t wake_at;
 static int32_t wake_cookie;
 static WakeupHandler wake_handler;
-static struct { size_t size; unsigned char data[256]; } storage[4300];
+static struct { size_t size; unsigned char data[256]; } storage[4400];
 struct AppTimer { bool used; time_t at; void (*callback)(void *); void *context; };
 static AppTimer timers[16];
-struct AgentUi { char screen[32], status[100]; int count;
-  struct { char id[32], title[72], subtitle[100], value[320], action[48]; } elements[48]; };
+struct AgentUi { char screen[32], status[100]; int count; int32_t flags;
+  struct { char id[32], title[72], subtitle[100], value[320], action[48], meta[224]; } elements[48]; };
 static AgentUi ui;
 
 time_t time(time_t *out) { if (out) { *out = now; } return now; }
@@ -38,14 +38,14 @@ WakeupId wakeup_schedule(time_t at, int32_t cookie, bool notify) {
   assert(wake_id == -1);
   wake_at = at; wake_cookie = cookie; wake_id = ++next_wake; return wake_id;
 }
-bool persist_exists(uint32_t key) { assert(key < 4300); return storage[key].size != 0; }
+bool persist_exists(uint32_t key) { assert(key < 4400); return storage[key].size != 0; }
 int persist_write_data(uint32_t key, const void *data, size_t size) {
-  assert(key < 4300 && size <= 256);
+  assert(key < 4400 && size <= 256);
   if (writes_fail) { return -1; }
   memcpy(storage[key].data, data, size); storage[key].size = size; return (int)size;
 }
 int persist_read_data(uint32_t key, void *data, size_t size) {
-  assert(key < 4300);
+  assert(key < 4400);
   if (!storage[key].size) { return -1; }
   size_t copy = size < storage[key].size ? size : storage[key].size;
   memcpy(data, storage[key].data, copy); return (int)copy;
@@ -58,8 +58,9 @@ void vibes_cancel(void) { ++canceled; }
 void agent_ui_begin(AgentUi *u, const char *id, const char *layout, const char *title,
                     const char *subtitle, const char *meta, int32_t flags) {
   (void)layout; (void)title; (void)subtitle; (void)meta; (void)flags;
-  u->count = 0; u->status[0] = 0; agent_protocol_copy(u->screen, sizeof(u->screen), id);
+  u->flags = flags; u->count = 0; u->status[0] = 0; agent_protocol_copy(u->screen, sizeof(u->screen), id);
 }
+const char *agent_ui_screen_id(const AgentUi *u) { return u->screen; }
 static int element(const char *id) {
   for (int i = 0; i < ui.count; ++i) { if (strcmp(ui.elements[i].id, id) == 0) { return i; } }
   return -1;
@@ -73,10 +74,12 @@ bool agent_ui_add(AgentUi *u, const AgentUiElementSpec *spec) {
   agent_protocol_copy(u->elements[i].subtitle, 100, spec->subtitle);
   agent_protocol_copy(u->elements[i].value, 320, spec->value);
   agent_protocol_copy(u->elements[i].action, 48, spec->action);
+  agent_protocol_copy(u->elements[i].meta, 224, spec->meta);
   return true;
 }
 bool agent_ui_patch(AgentUi *u, const AgentUiElementSpec *spec) {
   int i = element(spec->id); if (i < 0) { return false; }
+  if (spec->present & AgentUiPresentMeta) { agent_protocol_copy(u->elements[i].meta, 224, spec->meta); }
   if (spec->present & AgentUiPresentValue) { agent_protocol_copy(u->elements[i].value, 320, spec->value); }
   if (spec->present & AgentUiPresentSubtitle) { agent_protocol_copy(u->elements[i].subtitle, 100, spec->subtitle); }
   return true;
@@ -109,6 +112,103 @@ static void reset(void) {
   memset(storage, 0, sizeof(storage)); memset(timers, 0, sizeof(timers)); memset(&ui, 0, sizeof(ui));
   wake_id = -1; buzzes = canceled = writes_fail = 0; wake_fail = false; now = 100000;
 }
+static void test_weather_summary(void) {
+  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  agent_capabilities_set_weather(caps, "58F", "L 46 H 68", "icon=moon");
+  assert(strcmp(ui.elements[element("weather")].value, "58F") == 0);
+  event(caps, "local.calendar"); assert(ui.flags & 16);
+  agent_capabilities_set_weather(caps, "60F", "L 46 H 68", "icon=sun");
+  assert(strcmp(ui.screen, "calendar") == 0);
+  event(caps, "local.home");
+  assert(strcmp(ui.elements[element("weather")].value, "60F") == 0);
+  assert(strcmp(ui.elements[element("weather")].meta, "icon=sun") == 0);
+  agent_capabilities_destroy(caps);
+}
+
+static void test_todos(void) {
+  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  assert(strcmp(ui.elements[element("todos")].value, "0") == 0);
+  AgentCapabilityCommand cmd = { .type = "todo", .command = "add", .id = "milk", .value = "Buy milk and call a friend about the long weekend plans", .invocation_id = 456 };
+  assert(agent_capabilities_handle_command(caps, &cmd));
+  assert(strcmp(ui.screen, "todos") == 0 && element("todo-0") >= 0);
+  assert((ui.flags & 16) && element("todo-add") < 0);
+  assert(strcmp(ui.elements[element("todo-0")].value, cmd.value) == 0);
+  assert(agent_capabilities_handle_command(caps, &cmd));
+  assert(element("todo-1") < 0); // retry does not add another row
+  event(caps, "local.home"); assert(strcmp(ui.elements[element("todos")].value, "1") == 0);
+  event(caps, "local.todos");
+  writes_fail = 1; event(caps, "local.todo.toggle.0"); assert(strstr(ui.status, "Could not save"));
+  writes_fail = 0; event(caps, "local.todo.toggle.0"); assert(element("todo-0") < 0);
+  event(caps, "local.home"); assert(strcmp(ui.elements[element("todos")].value, "0") == 0);
+  event(caps, "local.todos"); event(caps, "local.todo.archive");
+  assert(strcmp(ui.screen, "todo-archive") == 0 && element("todo-0") >= 0);
+  agent_capabilities_destroy(caps);
+  caps = agent_capabilities_create(&ui, NULL, NULL);
+  event(caps, "local.todos"); assert(element("todo-0") < 0);
+  event(caps, "local.todo.archive"); assert(element("todo-0") >= 0);
+  event(caps, "local.todo.toggle.0"); assert(element("todo-0") < 0);
+  event(caps, "local.todos"); assert(element("todo-0") >= 0);
+  char long_text[181]; memset(long_text, 'x', 180); long_text[180] = 0;
+  cmd.value = long_text; cmd.invocation_id = 457;
+  assert(agent_capabilities_handle_command(caps, &cmd)); assert(strstr(ui.status, "179"));
+  for (int i = 1; i < 32; ++i) {
+    cmd.value = "Another item"; cmd.invocation_id = 500 + i;
+    assert(agent_capabilities_handle_command(caps, &cmd));
+  }
+  cmd.invocation_id = 999; assert(agent_capabilities_handle_command(caps, &cmd));
+  assert(strstr(ui.status, "storage is full"));
+  event(caps, "local.home"); assert(strcmp(ui.elements[element("todos")].value, "32") == 0);
+  agent_capabilities_destroy(caps);
+}
+
+static int timer_progress(void) {
+  int index = element("schedule-0"); assert(index >= 0);
+  return agent_protocol_meta_get_int(ui.elements[index].meta, "progress", -1);
+}
+static void test_dashboard_progress(void) {
+  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  assert(element("schedule-0") < 0);
+  command(caps, "timer", "start", "Pasta", "duration=100s show=false");
+  assert(timer_progress() == 0);
+  assert(strcmp(ui.elements[element("schedule-0")].title, "Pasta") == 0);
+  advance(25); assert(timer_progress() == 25);
+  command(caps, "timer", "pause", "Pasta", ""); event(caps, "local.home");
+  advance(10); assert(timer_progress() == 25);
+  command(caps, "timer", "resume", "Pasta", ""); event(caps, "local.home");
+  advance(25); assert(timer_progress() == 50);
+  advance(50); assert(timer_progress() == 100);
+  event(caps, "local.schedule.0"); event(caps, "local.schedule.toggle");
+  assert(element("schedule-0") < 0);
+  command(caps, "timer", "start", "Long", "duration=7d show=false");
+  assert(timer_progress() == 0);
+  command(caps, "timer", "cancel", "Long", ""); assert(element("schedule-0") < 0);
+  agent_capabilities_destroy(caps);
+}
+
+static void test_dashboard_destinations(void) {
+  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  const char *ids[] = { "calendar", "dashboard-summary", "dictate", "weather", "todos" };
+  const char *actions[] = { "local.calendar", "local.dashboard.notifications", "local.dictate", "local.weather", "local.todos" };
+  for (unsigned i = 0; i < 5; ++i) {
+    int index = element(ids[i]); assert(index >= 0);
+    assert(strcmp(ui.elements[index].action, actions[i]) == 0);
+  }
+  event(caps, "local.calendar"); assert(strcmp(ui.screen, "calendar") == 0);
+  assert(strstr(ui.elements[element("placeholder")].value, "coming soon"));
+  event(caps, "local.home");
+  event(caps, "local.todos"); assert(strcmp(ui.screen, "todos") == 0);
+  event(caps, "local.home");
+  event(caps, "local.dashboard.notifications"); assert(strcmp(ui.screen, "notifications") == 0);
+  assert(element("all-clear") >= 0);
+  command(caps, "timer", "start", "tea", "duration=60s show=false");
+  assert(strcmp(ui.screen, "notifications") == 0 && element("schedule-0") >= 0);
+  advance(2); assert(strstr(ui.elements[element("schedule-0")].subtitle, "00:58"));
+  event(caps, "local.home"); assert(strcmp(ui.screen, "dashboard") == 0);
+  event(caps, "local.dashboard.notifications");
+  event(caps, "local.schedule.0"); assert(strcmp(ui.screen, "tea") == 0);
+  agent_capabilities_destroy(caps);
+}
+
 static void test_multiple_and_ack(void) {
   reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL); assert(caps);
   command(caps, "timer", "start", "tea", "duration=5s");
@@ -120,7 +220,7 @@ static void test_multiple_and_ack(void) {
   uint32_t revision = agent_capabilities_notification_revision(caps);
   uint32_t navigation = agent_capabilities_navigation_revision(caps);
   advance(5);
-  assert(strcmp(ui.screen, "dashboard") == 0 && element("notifications") >= 0);
+  assert(strcmp(ui.screen, "notifications") == 0 && element("notifications") >= 0);
   assert(agent_capabilities_notification_revision(caps) > revision);
   assert(agent_capabilities_navigation_revision(caps) == navigation);
   assert(strstr(ui.elements[element("schedule-0")].subtitle, "Finished"));
@@ -226,7 +326,7 @@ static void test_reused_ids_and_screen_independent_expiry(void) {
   assert(agent_capabilities_handle_command(caps, &second));
   assert(strcmp(ui.screen, "timer-1") == 0);
   advance(10); // Expire the FIRST timer while viewing the SECOND timer.
-  assert(buzzes > 0 && strcmp(ui.screen, "dashboard") == 0);
+  assert(buzzes > 0 && strcmp(ui.screen, "notifications") == 0);
   assert(strstr(ui.elements[element("schedule-0")].subtitle, "Finished"));
   assert(strstr(ui.elements[element("schedule-1")].subtitle, "00:50"));
   event(caps, "local.schedule.1");
@@ -248,7 +348,7 @@ static void test_reused_ids_and_screen_independent_expiry(void) {
     agent_capabilities_set_active(caps, screens[i], true);
     agent_ui_begin(&ui, screens[i], "card", "Other screen", "", "", 16);
     advance(5);
-    assert(buzzes > 0 && strcmp(ui.screen, "dashboard") == 0);
+    assert(buzzes > 0 && strcmp(ui.screen, "notifications") == 0);
     assert(element("schedule-4") >= 0 && element("schedule-5") >= 0);
     event(caps, "local.schedule.4"); event(caps, "local.schedule.toggle");
     agent_capabilities_set_active(caps, "remote", true);
@@ -287,7 +387,7 @@ static void test_previous_dashboard_upgrade(void) {
   agent_capabilities_destroy(caps);
 }
 int main(void) {
-  test_multiple_and_ack(); test_pause_cancel_restore(); test_failures_and_capacity(); test_stopwatch_dashboard(); test_migration(); test_explicit_replacement();
+  test_weather_summary(); test_todos(); test_dashboard_progress(); test_dashboard_destinations(); test_multiple_and_ack(); test_pause_cancel_restore(); test_failures_and_capacity(); test_stopwatch_dashboard(); test_migration(); test_explicit_replacement();
   test_reused_ids_and_screen_independent_expiry(); test_delivery_replay_after_relaunch();
   test_previous_dashboard_upgrade();
   puts("✓ schedules: concurrent deadlines, repeated alerts, acknowledge, snooze, navigation, persistence, failures, bounds, stopwatch");

@@ -4,6 +4,7 @@
 #include "agent_protocol.h"
 #include "agent_ui.h"
 #include "answer_notification.h"
+#include "watch_response.h"
 #include "message_keys.auto.h"
 
 #include <stdlib.h>
@@ -13,6 +14,8 @@
 #define OUTBOX_RETRY_MS 100
 #define OUTBOX_VALUE_LENGTH 220
 #define DICTATION_LENGTH 220
+#define NEW_CHAT_TIMEOUT_MS 8000
+#define RESPONSE_TIMEOUT_MS 135000
 
 typedef struct {
   char type[24];
@@ -35,15 +38,63 @@ static bool s_outbox_busy;
 static AppTimer *s_outbox_retry_timer;
 static AppTimer *s_ready_timer;
 static AppTimer *s_quick_launch_timer;
+static AppTimer *s_new_chat_timer;
+static AppTimer *s_response_timer;
 static bool s_accept_remote;
 static AnswerNotification s_answer_notification;
+static WatchResponse s_response;
 static bool s_dictation_active;
 static uint32_t s_navigation_revision;
 static uint32_t s_notification_revision;
+static uint32_t s_next_action_request_id;
+static uint32_t s_new_chat_request_id;
+static uint32_t s_new_chat_navigation_revision;
+static uint32_t s_new_chat_notification_revision;
+static bool s_new_chat_pending;
 static void prv_start_dictation(void *context);
 
-static void prv_begin_request(void) {
+static void prv_cancel_new_chat(void) {
+  if (s_new_chat_timer) {
+    app_timer_cancel(s_new_chat_timer);
+    s_new_chat_timer = NULL;
+  }
+  s_new_chat_pending = false;
+}
+
+static void prv_new_chat_timeout(void *context) {
+  (void)context;
+  s_new_chat_timer = NULL;
+  if (!s_new_chat_pending) { return; }
+  s_new_chat_pending = false;
+  if (s_new_chat_navigation_revision != agent_capabilities_navigation_revision(s_capabilities) ||
+      s_new_chat_notification_revision != agent_capabilities_notification_revision(s_capabilities)) {
+    return;
+  }
+  agent_ui_set_status(s_ui, "Phone unavailable", true, false);
+}
+
+static void prv_stop_response_timer(void) {
+  if (s_response_timer) { app_timer_cancel(s_response_timer); s_response_timer = NULL; }
+}
+
+static void prv_response_timeout(void *context) {
+  (void)context;
+  s_response_timer = NULL;
+  if (!s_accept_remote || (!s_response.active && !s_response.awaiting_begin)) { return; }
+  watch_response_fail(&s_response);
   s_answer_notification.pending = false;
+  s_accept_remote = false;
+  if (s_navigation_revision == agent_capabilities_navigation_revision(s_capabilities) &&
+      s_notification_revision == agent_capabilities_notification_revision(s_capabilities)) {
+    agent_ui_set_status(s_ui, "Request failed: phone timed out", true, false);
+  }
+}
+
+static void prv_begin_request(void) {
+  prv_stop_response_timer();
+  s_response_timer = app_timer_register(RESPONSE_TIMEOUT_MS, prv_response_timeout, NULL);
+  s_answer_notification.pending = false;
+  watch_response_wait(&s_response);
   s_accept_remote = true;
   s_navigation_revision = agent_capabilities_navigation_revision(s_capabilities);
   s_notification_revision = agent_capabilities_notification_revision(s_capabilities);
@@ -164,7 +215,33 @@ static bool prv_queue_message(const char *type, uint32_t request_id, const char 
 
 static void prv_ui_event(const AgentUiEvent *event, void *context) {
   (void)context;
+  // Any newer interaction supersedes an unacknowledged new-chat request. Its
+  // delayed phone acknowledgment must never open dictation on another screen.
+  prv_cancel_new_chat();
   if (strcmp(event->action, "local.dictate") == 0) { prv_start_dictation(NULL); return; }
+  if (strcmp(event->action, "local.new-chat") == 0) {
+    s_accept_remote = false;
+    s_next_action_request_id = s_next_action_request_id == INT32_MAX ? 1 : s_next_action_request_id + 1;
+    if (!s_next_action_request_id) { s_next_action_request_id = 1; }
+    s_new_chat_request_id = s_next_action_request_id;
+    s_new_chat_navigation_revision = agent_capabilities_navigation_revision(s_capabilities);
+    s_new_chat_notification_revision = agent_capabilities_notification_revision(s_capabilities);
+    s_new_chat_pending = true;
+    s_new_chat_timer = app_timer_register(NEW_CHAT_TIMEOUT_MS, prv_new_chat_timeout, NULL);
+    if (!s_new_chat_timer || !prv_queue_message("input", s_new_chat_request_id, "new-chat", "", "local.new-chat", "", "")) {
+      prv_cancel_new_chat();
+      agent_ui_set_status(s_ui, "Phone unavailable", true, false);
+      return;
+    }
+    agent_ui_set_status(s_ui, "Starting new chat", false, true);
+    return;
+  }
+  if (strcmp(event->action, "local.weather") == 0) {
+    prv_begin_request();
+    prv_queue_message("input", s_request_id, "dictation", "", "local.weather", "weather", "");
+    agent_ui_set_status(s_ui, "Loading weather", false, true);
+    return;
+  }
   if (agent_capabilities_handle_ui_event(s_capabilities, event)) {
     return;
   }
@@ -208,6 +285,9 @@ static void prv_dictation_callback(DictationSession *session, DictationSessionSt
 
 static void prv_start_dictation(void *context) {
   (void)context;
+  // The regular physical-select path can enter here without a UI action
+  // callback. It still supersedes any delayed New Chat acknowledgment.
+  prv_cancel_new_chat();
 #if defined(PBL_MICROPHONE)
   if (s_dictation_active) { return; }
   if (!s_dictation) {
@@ -330,17 +410,36 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   const char *operation = prv_tuple_string(iter, MESSAGE_KEY_Operation);
   uint32_t request_id = (uint32_t)prv_tuple_int(iter, MESSAGE_KEY_RequestId, 0);
   (void)context;
+  if (strcmp(type, "bridge") == 0 && strcmp(operation, "weather") == 0) {
+    agent_capabilities_set_weather(s_capabilities, prv_tuple_string(iter, MESSAGE_KEY_Value),
+      prv_tuple_string(iter, MESSAGE_KEY_Subtitle), prv_tuple_string(iter, MESSAGE_KEY_Meta));
+    return;
+  }
   if (strcmp(type, "bridge") == 0) {
     agent_capabilities_set_connection(s_capabilities, prv_tuple_string(iter, MESSAGE_KEY_Value));
     return;
   }
   if (strcmp(type, "answer") == 0) {
-    if (strcmp(operation, "begin") == 0 && request_id) {
+    if (strcmp(operation, "begin") == 0 && s_accept_remote &&
+        s_navigation_revision == agent_capabilities_navigation_revision(s_capabilities) &&
+        watch_response_begin(&s_response, request_id)) {
+      s_request_id = request_id;
       s_answer_notification = (AnswerNotification) { .request_id = request_id, .pending = true };
     } else if (strcmp(operation, "complete") == 0) {
+      if (watch_response_accepts(&s_response, request_id)) { prv_stop_response_timer(); }
       answer_notification_complete(&s_answer_notification, request_id,
                                    prv_tuple_int(iter, MESSAGE_KEY_Flags, 0) == 1);
     }
+    return;
+  }
+  if (strcmp(type, "control") == 0 && strcmp(operation, "dictate") == 0) {
+    if (!s_new_chat_pending || request_id != s_new_chat_request_id) { return; }
+    prv_cancel_new_chat();
+    if (s_new_chat_navigation_revision != agent_capabilities_navigation_revision(s_capabilities) ||
+        s_new_chat_notification_revision != agent_capabilities_notification_revision(s_capabilities)) {
+      return;
+    }
+    prv_start_dictation(NULL);
     return;
   }
   if (!s_accept_remote || s_navigation_revision != agent_capabilities_navigation_revision(s_capabilities)) { return; }
@@ -348,11 +447,17 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   // commands, but keep late screen/status traffic from hiding the notification.
   if (strcmp(type, "capability") != 0 &&
       s_notification_revision != agent_capabilities_notification_revision(s_capabilities)) { return; }
+  if (!watch_response_accepts(&s_response, request_id)) { return; }
   if (strcmp(type, "render") == 0) {
     prv_handle_render(iter, request_id, operation);
   } else if (strcmp(type, "capability") == 0) {
     prv_handle_capability(iter, request_id, operation);
   } else if (strcmp(type, "status") == 0 && (request_id == s_request_id || !request_id)) {
+    if (strcmp(operation, "error") == 0) {
+      prv_stop_response_timer();
+      watch_response_fail(&s_response);
+      s_answer_notification.pending = false;
+    }
     agent_ui_set_status(s_ui, prv_tuple_string(iter, MESSAGE_KEY_Value),
                         strcmp(operation, "error") == 0,
                         strcmp(operation, "loading") == 0);
@@ -440,8 +545,10 @@ static void prv_init(void) {
 }
 
 static void prv_deinit(void) {
+  prv_stop_response_timer();
   if (s_ready_timer) { app_timer_cancel(s_ready_timer); }
   if (s_quick_launch_timer) { app_timer_cancel(s_quick_launch_timer); }
+  if (s_new_chat_timer) { app_timer_cancel(s_new_chat_timer); }
   if (s_outbox_retry_timer) { app_timer_cancel(s_outbox_retry_timer); }
 #if defined(PBL_MICROPHONE)
   if (s_dictation) { dictation_session_destroy(s_dictation); }

@@ -277,3 +277,65 @@ transport failures, and malformed responses do not send this notification.
 - Unknown kinds/layouts and invalid hierarchy produce a visible protocol error rather than partially executing an unrecognized node.
 - A new response supersedes queued operations from an older request. The watch also rejects stale request IDs.
 - Capability commands are allowlisted by registries; PAM cannot call arbitrary native functions.
+
+
+### Dashboard controls
+
+`input` with operation `new-chat` and action `local.new-chat` carries a watch
+request ID. PebbleKit JS saves a fresh session ID, cancels the previous response,
+and replies with `control`, operation `dictate`, and the same request ID. Only
+then does the watch start dictation. The watch rejects stale acknowledgments,
+including those superseded by a local navigation or notification revision, and
+times out after eight seconds. Ordinary `local.dictate` keeps the current session.
+
+`input` with action `local.weather` invokes the existing local weather capability
+on the phone. Calendar is a local placeholder. Todos use the persistent native `todo` capability (`add` with quoted `value`, `list`, and `archive`). Notifications
+uses a separate native list; arrival of an alert opens it without incrementing
+the navigation revision that protects pending capability commands.
+
+### Request failures
+
+The server normalizes a narrowly defined model formatting mistake before strict
+validation: an unquoted trailing display-text attribute containing spaces (for
+example `title=File search results`) is quoted. It does not relax request parsing,
+repair command arguments, or guess around malformed quotes or ambiguous attributes.
+Other failures are emitted as a terminal PAM `error message="Request failed: ..."`,
+including when only the header or a partial screen has already streamed.
+
+The phone sends `answer begin` before response status/render messages; the watch
+binds that phone response ID immediately, so a failure before `render begin` is
+accepted. Error status clears loading and incomplete-screen indicators, cancels
+success vibration, and rejects subsequent render/status traffic for that request.
+The next request can start normally. A 135-second watch watchdog clears Thinking
+if the phone never completes delivery; it does not overwrite a newer screen or
+an alert. Phone transport timeouts normally report the failure sooner.
+
+The dashboard maps Up to Notifications, Down to Todos, and Select to dictation.
+Holding Talk to Agent or Select opens a reusable animated overlay menu; outside
+taps and Back dismiss it without changing the dashboard. New Chat lives in this
+menu. Todo rows use `choice` with `meta` containing `todo=true`, text in `value`,
+and the checked flag for archived items. Horizontal touch drags or long Up/Down
+pan text; short Up/Down scroll the list. Checking archives, unchecking restores.
+The native store holds 32 items including archived entries, 179 UTF-8 bytes each.
+
+Terminal errors replace the content with a scrollable Request failed screen,
+including the reason and Try again / Dashboard actions. Transport HTTP 0,
+401/403, and other HTTP failures have distinct explanations. Non-PAM HTML error
+bodies are not fed to the PAM parser.
+
+### Dashboard weather summaries
+
+The phone sends `bridge operation=weather` with current temperature/unit in
+`Value`, low/high in `Subtitle`, and `icon=<condition>` in `Meta`. The native
+host caches these fields independently of the current screen and patches only
+the dashboard weather tile. This channel neither starts nor completes an agent
+request. A native `capability_event operation=weather action=refresh` every 15
+minutes requests a background update; startup and saved settings also refresh.
+The phone caches validated fetched data for up to an hour. Weather failures leave
+the current screen alone. Current Open-Meteo `is_day` selects day/night icons.
+
+Todos and Calendar enable the native time status bar. Todos have no add control:
+whole-phrase local regex matching accepts add/create/make/set/put down plus
+todo/to-do/to do/task, preserving the trailing task text. The public Pebble SDK
+supports Timeline pins and launches from pins, but no direct open-Timeline call;
+Calendar remains a placeholder.

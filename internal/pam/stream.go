@@ -83,6 +83,7 @@ func (stream *OutputStream) accept(line []byte) error {
 	if bytes.HasSuffix(line, []byte{'\r'}) {
 		line = bytes.TrimSuffix(line, []byte{'\r'})
 	}
+	line = []byte(normalizeOutputLine(string(line)))
 	valid, err := stream.validator.Accept(string(line))
 	if err != nil {
 		return err

@@ -6,6 +6,7 @@
 #define AGENT_CAP_MIN(a, b) ((a) < (b) ? (a) : (b))
 
 bool agent_schedules_install(AgentCapabilities *capabilities);
+bool agent_todos_install(AgentCapabilities *capabilities);
 bool agent_stopwatch_install(AgentCapabilities *capabilities);
 
 int32_t agent_capability_parse_duration(const char *value, int32_t fallback);

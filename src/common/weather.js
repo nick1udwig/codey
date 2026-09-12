@@ -33,6 +33,16 @@ var WEATHER_CODES = {
   99: "Heavy hail storm"
 };
 
+function weatherIcon(code, isDay) {
+  if (code === 0 || code === 1) { return isDay === 0 ? "moon" : "sun"; }
+  if (code === 2) { return isDay === 0 ? "night-cloud" : "partly-cloudy"; }
+  if (code === 3 || code === 45 || code === 48) { return "cloud"; }
+  if (code === 95 || code === 96 || code === 99) { return "storm"; }
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) { return "snow"; }
+  if (code >= 51 && code <= 82) { return "rain"; }
+  return "unknown";
+}
+
 function bool(value) {
   return value === "true" || value === "1" || value === "yes";
 }
@@ -100,7 +110,7 @@ function createWeatherHandler(dependencies) {
       var params = [
         "latitude=" + encodeURIComponent(String(lat)),
         "longitude=" + encodeURIComponent(String(lon)),
-        "current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m",
+        "current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,is_day",
         "daily=weather_code,temperature_2m_max,temperature_2m_min",
         "timezone=auto",
         "forecast_days=3"
@@ -154,11 +164,19 @@ function createWeatherHandler(dependencies) {
             }, 1);
           }
           pam += "done\n";
+          if (context.summary && typeof current.temperature_2m === "number" && isFinite(current.temperature_2m) &&
+              typeof daily.temperature_2m_max[0] === "number" && typeof daily.temperature_2m_min[0] === "number") {
+            context.summary({ temperature: rounded(current.temperature_2m), high: rounded(daily.temperature_2m_max[0]),
+              low: rounded(daily.temperature_2m_min[0]), unit: imperial ? "F" : "C",
+              icon: weatherIcon(current.weather_code, current.is_day), updated: Date.now() });
+          }
           context.renderPam(pam);
         } catch (error) {
           context.error(error.message || "Weather failed");
         }
       };
+      request.timeout = 15000;
+      request.ontimeout = function() { context.error("Weather request timed out"); };
       request.onerror = function() {
         context.error("Could not load weather");
       };
@@ -188,6 +206,7 @@ function createWeatherHandler(dependencies) {
 
 module.exports = {
   WEATHER_CODES: WEATHER_CODES,
+  weatherIcon: weatherIcon,
   createWeatherHandler: createWeatherHandler,
   renderInline: renderInline
 };

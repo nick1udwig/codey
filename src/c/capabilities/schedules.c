@@ -130,16 +130,26 @@ static void prv_dashboard(AgentCapabilities *capabilities, void *context, bool r
         agent_capability_add_element(ui, "section", sections[group], headings[group], "", "", "", "", 0);
       }
       ++count;
-      char id[24], action[40], value[100];
+      char id[24], action[40], value[100], meta[80];
       snprintf(id, sizeof(id), "schedule-%d", i);
       snprintf(action, sizeof(action), "local.schedule.%d", i);
       prv_when(r, prv_timer(i), value, sizeof(value));
+      int32_t progress = 0;
+      if (r->state == Due) { progress = 100; }
+      else if (prv_timer(i) && r->duration > 0) {
+        int32_t remaining = prv_remaining(r);
+        if (remaining > r->duration) { remaining = r->duration; }
+        progress = (int32_t)((int64_t)(r->duration - remaining) * 100 / r->duration);
+      }
+      snprintf(meta, sizeof(meta), "dashboard_kind=%s progress=%ld",
+               prv_timer(i) ? "timer" : "alarm", (long)progress);
       if (refresh) {
         agent_ui_patch(ui, &(AgentUiElementSpec) {
-          .id = id, .subtitle = value, .present = AgentUiPresentSubtitle,
+          .id = id, .subtitle = value, .meta = meta,
+          .present = AgentUiPresentSubtitle | AgentUiPresentMeta,
         });
       } else {
-        agent_capability_add_element(ui, "item", id, r->title, value, "", action, "", 0);
+        agent_capability_add_element(ui, "item", id, r->title, value, "", action, meta, 0);
       }
     }
     if (!count && group == 0 && !refresh) {
@@ -231,7 +241,11 @@ static bool prv_command(AgentCapabilities *capabilities, const AgentCapabilityCo
   bool create = strcmp(cmd->command, "start") == 0 || strcmp(cmd->command, "set") == 0 ||
                 strcmp(cmd->command, "create") == 0 || strcmp(cmd->command, "schedule") == 0;
   int slot = prv_find(s, timer, cmd->id);
-  if (strcmp(cmd->command, "list") == 0) { agent_capabilities_show_dashboard(capabilities); return true; }
+  if (strcmp(cmd->command, "list") == 0) {
+    AgentUiEvent event = { .action = "local.dashboard.notifications" };
+    agent_capabilities_handle_ui_event(capabilities, &event);
+    return true;
+  }
   if (strcmp(cmd->command, "cancel_all") == 0) {
     bool ok = true;
     for (int i = timer ? 0 : TIMER_COUNT; i < (timer ? TIMER_COUNT : SLOT_COUNT); ++i) {
@@ -303,7 +317,8 @@ static bool prv_command(AgentCapabilities *capabilities, const AgentCapabilityCo
     agent_protocol_copy(next.body, sizeof(next.body), cmd->subtitle);
     if (!prv_commit(s, slot, next)) { return true; }
     if (agent_protocol_meta_get_bool(cmd->meta, "show", true)) { prv_render(s, slot); }
-    else if (agent_capabilities_is_active(capabilities, "dashboard")) { agent_capabilities_rebuild_dashboard(capabilities); }
+    else if (agent_capabilities_is_active(capabilities, "dashboard") ||
+             agent_capabilities_is_active(capabilities, "notifications")) { agent_capabilities_rebuild_dashboard(capabilities); }
   } else {
     if (slot < 0) { return false; }
     Record next = s->records[slot];

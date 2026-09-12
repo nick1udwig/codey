@@ -88,3 +88,50 @@ after relaunch, migration of existing dashboard records, a 10-second timer
 expiring while a 60-second timer is open, and alarm expiry over dashboard,
 remote response, stopwatch, and timer screens. Notification focus changes
 preserve outstanding capability commands while suppressing late render traffic.
+
+
+### Pixel dashboard regression
+
+The generated resource bundle builds on Emery and Gabbro. The JS bridge suite
+covers New Chat resetting/persisting a session before its dictation acknowledgment,
+canceling old responses, keeping subsequent normal dictation in that session,
+and routing Weather locally without a model request. Native scheduler tests cover
+all five dashboard action bindings, the Calendar placeholder, persistent todo addition,
+archive/restore, counts, storage failure, capacity and text limits, opening and
+refreshing the separate Notifications list, returning home, and concurrent expiry.
+
+Both Emery and Gabbro dashboards were visually checked with the generated assets
+and fully visible cards. On Emery, Calendar,
+Notifications (with existing due timers/reminders), and Todos open via buttons.
+Real microphone transcription, physical touch, phone geolocation, and New Chat's
+end-to-end device handshake remain hardware checks.
+
+If the phone simulator reports a successful installation but leaves the app menu
+empty, the SDK's packet installer works through `pebble repl --emulator emery`:
+
+```python
+from libpebble2.services.install import AppInstaller
+AppInstaller(pebble, 'build/pebble-agent.pbw').install()
+```
+
+Notification progress regression checks 0%, 25%, paused stability, resumed 50%,
+100% completion, removal after acknowledgment/cancellation, and seven-day duration
+bounds. The native scheduler sends explicit timer/alarm kind and elapsed percentage
+metadata. The SDK radial primitive defines zero at 12 o’clock and clockwise growth;
+empty models draw no notification icons or labels.
+
+### Failure delivery regression
+
+Regression coverage replays the unquoted multiword screen title at every chunk
+split, verifies strict request parsing and rejection of ambiguous repairs, and
+checks terminal error lines after a header or partial screen. Bridge tests ensure
+that the original failure reason reaches the watch with the response-begin ID,
+is not replaced by “no screen,” does not emit success/idle notifications, and
+allows a subsequent request to succeed. Native response-state tests cover errors
+before any screen, stale IDs, terminal failure, pre-handshake timeout, and retry.
+
+Todo and failure regressions also cover local voice parsing with preserved case/Unicode and HTTP 0/401/503 explanations without HTML parser errors. Hardware checks: drag long todo text both ways, scroll a long checklist, hold Talk to open the menu, tap outside to dismiss, and dictate through both conversation options.
+
+The revised dashboard and conversation overlay were visually checked on Emery and Gabbro. Emery button checks confirmed Back dismisses the overlay, Down opens Todos, and Up opens Notifications. Screenshots are in `docs/screenshots/`.
+
+Time-bar tests verify Todos and Calendar flags and absence of an Add item row. Weather tests cover summary values, day/night/precipitation icons, background refresh isolation, cache writes, timeouts, and retaining a new summary across dashboard navigation. `dashboard-weather-emery.png` uses an injected synthetic 58F moon forecast for layout verification, not live weather.
