@@ -287,6 +287,7 @@ test("UTF-8 splitting preserves valid and malformed JavaScript strings", functio
   sources.forEach(function(source) {
     [4, 7, 31, 180].forEach(function(limit) {
       var chunks = Watch.splitUtf8(source, limit);
+      assert.strictEqual(Watch.truncateUtf8(source, limit), chunks[0]);
       assert.strictEqual(chunks.join(""), source);
       chunks.forEach(function(chunk) {
         assert.ok(Buffer.byteLength(chunk, "utf8") <= limit,
@@ -294,6 +295,27 @@ test("UTF-8 splitting preserves valid and malformed JavaScript strings", functio
       });
     });
   });
+});
+
+test("UTF-8 truncation handles short budgets and stops scanning after the prefix", function() {
+  [null, undefined, "", 123, "é漢🙂end", "\uD800x\uDC00"].forEach(function(source) {
+    [0, 1, 2, 3, 4, 7, 31].forEach(function(limit) {
+      assert.strictEqual(Watch.truncateUtf8(source, limit), Watch.splitUtf8(source, limit)[0]);
+    });
+  });
+  var source = "🙂".repeat(32768);
+  var charCodeAt = String.prototype.charCodeAt;
+  var reads = 0;
+  String.prototype.charCodeAt = function(index) {
+    reads++;
+    return charCodeAt.call(this, index);
+  };
+  try {
+    assert.strictEqual(Watch.truncateUtf8(source, 71), "🙂".repeat(17));
+    assert.ok(reads <= 36, "truncation scanned beyond the next code point");
+  } finally {
+    String.prototype.charCodeAt = charCodeAt;
+  }
 });
 
 test("watch encoder covers begin, remove, end, error, and capability operations", function() {

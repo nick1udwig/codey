@@ -1,7 +1,21 @@
 {
   "version": 1,
-  "created_at": "2026-09-13T01:25:13.971424999+00:00",
+  "created_at": "2026-09-13T01:49:44.352261492+00:00",
   "documents": [
+    {
+      "id": "01a09873-51ed-7da2-9675-ffbbafae0eaa",
+      "slug": "issues/utf8-prefix-efficiency",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Stop UTF-8 truncation after the requested prefix",
+      "content": "Context: truncateUtf8 currently splits and allocates chunks for the whole input, including 64K-character notes, just to return the first chunk. Acceptance: preserve existing Unicode and byte-boundary behavior; share byte-width logic with splitting; prove bounded prefix scanning and measure long-input performance; pass phone tests and watch builds.\n\nCompletion evidence (2026-09-12): shared utf8ChunkEnd stops after the first prefix for truncation while splitUtf8 retains lossless chunking. node tests/run.js passes (84 tests), including malformed surrogates, tiny budgets, and at most 36 code-unit reads for a 71-byte prefix of 64K code units. npm run build:watch passes for Emery and Gabbro. Node benchmark: 2,000 truncations of repeated é漢🙂 (64K code units), 71-byte budget, 100 warmups: 185.87 us before, 0.38 us after per call. Timing is host-specific, not a phone battery measurement. Code: [[code:src/common/watch-protocol.js::truncateUtf8]].\n",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-13T01:49:44.316022822Z",
+      "modified_at": "2026-09-13T01:49:44.316022822Z"
+    },
     {
       "id": "01a0985d-589b-7300-b88a-2f62f75e4bc3",
       "slug": "issues/dashboard-quota-agent-tile",
@@ -573,6 +587,24 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a09874-c407-7633-938b-6a93aadd6a09",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Complete UTF-8 prefix efficiency improvement",
+      "created_at": "2026-09-13T01:49:44.316022822Z",
+      "changes": [
+        {
+          "document_id": "01a09873-51ed-7da2-9675-ffbbafae0eaa",
+          "slug": "issues/utf8-prefix-efficiency",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "b4e051d5d9402face95bb62f9c00b1995dbc64e8cf662b97ee6b1d485392cfb7",
+          "doc_type": "task",
+          "title": "Stop UTF-8 truncation after the requested prefix"
+        }
+      ]
+    },
     {
       "id": "01a0985e-1e7e-7633-bdd9-e9568649f1be",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

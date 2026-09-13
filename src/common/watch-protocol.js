@@ -43,11 +43,8 @@ var CORE_ATTRS = {
 var MAX_VALUE_BYTES = 180;
 var MAX_META_BYTES = 220;
 
-function splitUtf8(value, maxBytes) {
-  var source = String(value == null ? "" : value);
-  var chunks = [];
-  var start = 0;
-  var index = 0;
+function utf8ChunkEnd(source, start, maxBytes) {
+  var index = start;
   var bytes = 0;
   var count;
   var width;
@@ -73,19 +70,30 @@ function splitUtf8(value, maxBytes) {
       count = 3;
     }
     if (bytes && bytes + count > maxBytes) {
-      chunks.push(source.slice(start, index));
-      start = index;
-      bytes = 0;
+      break;
     }
     bytes += count;
     index += width;
   }
-  chunks.push(source.slice(start));
+  return index;
+}
+
+function splitUtf8(value, maxBytes) {
+  var source = String(value == null ? "" : value);
+  var chunks = [];
+  var start = 0;
+  var end;
+  do {
+    end = utf8ChunkEnd(source, start, maxBytes);
+    chunks.push(source.slice(start, end));
+    start = end;
+  } while (start < source.length);
   return chunks;
 }
 
 function truncateUtf8(value, maxBytes) {
-  return splitUtf8(value, maxBytes)[0];
+  var source = String(value == null ? "" : value);
+  return source.slice(0, utf8ChunkEnd(source, 0, maxBytes));
 }
 
 function flagsFor(attrs) {
