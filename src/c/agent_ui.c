@@ -110,6 +110,7 @@ struct AgentUi {
   bool loading;
   bool error;
 #if defined(PBL_TOUCH)
+  bool tap_animation;
   TouchGuard touch_guard;
   Layer *ripple_layer;
   AppTimer *ripple_timer;
@@ -1321,10 +1322,12 @@ static void prv_handle_input(AgentUi *ui, const char *input) {
     if (strcmp(input, "down") == 0) { prv_emit(ui, input, NULL, "local.todos", ""); return; }
     if (strcmp(input, "select") == 0) { prv_emit(ui, input, NULL, "local.dictate", ""); return; }
   }
-  // Read long failure details a viewport step at a time before moving to actions.
-  if (strcmp(ui->screen_id, "request-error") == 0 && ui->selected_element == 1) {
+  // Read long failure details and phone-loaded note pages before their actions.
+  bool reading_note = !strcmp(ui->screen_id,"note-detail") && ui->selected_element >= 0 &&
+                      !strcmp(ui->elements[ui->selected_element].action,"local.note.edit");
+  if ((strcmp(ui->screen_id, "request-error") == 0 && ui->selected_element == 1) || reading_note) {
     GPoint offset = scroll_layer_get_content_offset(ui->scroll_layer);
-    AgentUiElement *retry = &ui->elements[1];
+    AgentUiElement *retry = &ui->elements[ui->selected_element];
     if (strcmp(input, "up") == 0 && offset.y < 0) { prv_scroll(ui, 42, true); return; }
     if (strcmp(input, "down") == 0 && retry->frame.origin.y + retry->frame.size.h > -offset.y + ui->viewport_height) {
       prv_scroll(ui, -42, true); return;
@@ -1633,7 +1636,7 @@ static void prv_ripple_tick(void *context) {
 }
 static void prv_start_ripple(AgentUi *ui, int x, int y) {
   prv_stop_ripple(ui);
-  if (!ui->ripple_layer) return;
+  if (!ui->ripple_layer || !ui->tap_animation) return;
   ui->ripple_origin = GPoint(x,y); ui->ripple_frame = 1;
   layer_set_hidden(ui->ripple_layer, false);
   layer_mark_dirty(ui->ripple_layer);
@@ -1820,6 +1823,7 @@ static void prv_window_load(Window *window) {
   if (ui->menu_layer) { layer_add_child(root, ui->menu_layer); }
 
 #if defined(PBL_TOUCH)
+  ui->tap_animation = !persist_exists(4397) || persist_read_int(4397) != 0;
   ui->ripple_layer = layer_create_with_data(bounds, sizeof(AgentUi *));
   if (ui->ripple_layer) {
     *(AgentUi **)layer_get_data(ui->ripple_layer) = ui;
@@ -2108,4 +2112,13 @@ const char *agent_ui_screen_id(const AgentUi *ui) {
 
 const char *agent_ui_layout_name(const AgentUi *ui) {
   return ui ? ui->layout_name : "";
+}
+
+void agent_ui_set_tap_animation(AgentUi *ui, bool enabled) {
+  if (!persist_exists(4397) || (persist_read_int(4397)!=0)!=enabled) persist_write_int(4397,enabled?1:0);
+#if defined(PBL_TOUCH)
+  if(ui){ui->tap_animation=enabled;if(!enabled)prv_stop_ripple(ui);}
+#else
+  (void)ui;
+#endif
 }

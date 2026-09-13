@@ -29,22 +29,44 @@ These commands are recognized locally by the phone:
 The explicit edit phrase uses the first ` to ` delimiter. Use the note's Edit
 action when the old text contains that delimiter or multiple notes match.
 Missing/ambiguous matches do not modify anything. The PAM capability also accepts
-a stable ID for edits. The watch currently stores 24 notes, each up to 179 UTF-8
-bytes, alongside 32 to-dos including archived items. Storage errors are reported
-without replacing the previous record. Re-delivery of the most recent operation
-on a record does not duplicate it. These are local watch collections; no remote
-sync or provider connection is implemented.
+a stable ID for edits.
 
-## Identity and storage boundary
+## Phone storage and on-demand loading
 
-`capabilities/notes.c` and `capabilities/todos.c` own their records and persistence;
-views and dictation invoke collection commands instead of owning storage.
-`record_identity.h` allocates durable local IDs using a persisted sequence and
-creation time. IDs survive note edits and todo archive/restore operations. An
-explicit ID can also be supplied by a command. Existing to-dos without IDs are
-migrated in place, retaining the old on-disk format, text, invocation ID, and
-archive state. Failed migration writes preserve the original record and can be
-retried on a later launch. UI row indexes are never remote identities.
+Notes live in PebbleKit JS phone storage (`pebble-agent.notes.v1`), owned by
+`src/common/notes.js`. Opening Notes requests a fresh list from the phone: each
+page contains at most eight titles/summaries and IDs, without downloading note
+bodies. Opening a note requests its contents; long notes have Previous/Next page
+actions. A content page contains at most four UTF-8 chunks of 179 bytes each.
+The watch retains only the current rendered page in RAM, with no persistent
+note copies. Returning to the list fetches it again. The phone store accepts
+notes up to 65,536 JavaScript characters, subject to phone storage availability;
+agent/dictation transports retain their own message limits. An overlong direct
+edit dictation is rejected rather than silently saving a truncated replacement.
+
+Edits replace the full note on the phone, preserving its ID. The store commits
+records and replay keys together before reporting success. Failed writes leave
+previous records intact. Existing watch notes transfer one at a time at phone
+startup or on opening Notes. A watch record is deleted only after a matching
+phone acknowledgment of durable storage; interruptions retry safely. Legacy
+records awaiting acknowledgment are the only remaining notes on watch storage.
+
+The watch retains the selected collection preference and note count in the UI,
+not the phone's note database. Opening a collection requires a connected phone;
+a missing reply times out after 15 seconds. Per-request tokens reject stale
+Notes replies, and successful browsing completes quietly without a buzz.
+
+To-dos remain watch-owned (32 including archived items) and retain their stable
+IDs and existing storage format. Notes and to-dos do not sync to external
+providers yet.
+
+## First-tap animation preference
+
+The phone settings page includes **First-tap ripple animation**, enabled by
+default. Saving it sends the preference to the watch, where it survives restart.
+Disabling it stops an active ripple and prevents future ripple timers. It does
+not disable the first-tap guard: checkbox completion and other touch actions
+still require their arming tap. Physical buttons are unchanged.
 
 ## Planned sync boundary — not implemented
 

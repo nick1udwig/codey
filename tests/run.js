@@ -1086,6 +1086,50 @@ test("Job submission timeout preserves an unconfirmed ID and a useful error", fu
   }finally{h.cleanup();}
 });
 
+test("phone notes persist full bodies and send only requested summaries or pages", function() {
+  var Notes=require("../src/common/notes"), raw={}, fail=false;
+  var storage={getItem:function(k){return raw[k]||null;},setItem:function(k,v){if(fail)throw new Error("full");raw[k]=v;}};
+  var store=new Notes.Store(storage), body="José 🌙 ".repeat(500);
+  var id=store.mutate({command:"add",value:body},"once");
+  assert.strictEqual(store.mutate({command:"add",value:body},"once"),id);assert.strictEqual(store.count(),1);
+  assert.ok(!store.render("",0).includes(body.slice(-200)));
+  var page=0, reconstructed="", more=true;
+  while(more){var nodes=parse(store.render(id,page));nodes.filter(function(n){return n.attrs.id && /^body-/.test(n.attrs.id);}).forEach(function(n){reconstructed+=n.attrs.value;});more=nodes.some(function(n){return n.attrs.id==="next";});page++;assert.ok(page<100);}
+  assert.strictEqual(reconstructed,body);
+  store=new Notes.Store(storage);assert.strictEqual(store.load().entries[0].text,body);
+  fail=true;assert.throws(function(){store.mutate({command:"edit",id:id,value:"lost"});},/full/);fail=false;
+  assert.strictEqual(store.load().entries[0].text,body);
+  store.mutate({command:"edit",id:id,value:"Saved replacement"},"edit");assert.strictEqual(store.load().entries[0].id,id);
+  for(var i=0;i<10;i++)store.mutate({command:"add",value:"Title "+i},"n"+i);
+  assert.strictEqual(parse(store.render("",0)).filter(function(n){return n.attrs.action==="local.note.open";}).length,8);
+  assert.strictEqual(parse(store.render("",1)).filter(function(n){return n.attrs.action==="local.note.open";}).length,3);
+});
+test("phone notes requests, migration acknowledgement and ripple preference stay local", function() {
+  var storage={}, h=loadPkjsHarness({storageData:storage,XMLHttpRequest:function(){throw new Error("must stay local");}});
+  try {
+    h.handlers.appmessage({payload:{0:"capability_event",2:"note",4:"legacy",9:"migrate",8:"Legacy content"}});
+    assert.ok(h.sent.some(function(m){return m[0]==="notes" && m[2]==="migrated" && m[4]==="legacy";}));
+    h.sent.length=0;
+    var set=global.localStorage.setItem;
+    global.localStorage.setItem=function(){throw new Error("Phone storage full");};
+    h.handlers.appmessage({payload:{0:"capability_event",2:"note",4:"unsaved",9:"migrate",8:"Do not acknowledge"}});
+    assert.ok(!h.sent.some(function(m){return m[2]==="migrated";}));
+    global.localStorage.setItem=set;
+    h.handlers.appmessage({payload:{0:"capability_event",2:"note",9:"list",8:"0",10:"42"}});
+    assert.ok(h.sent.some(function(m){return m[0]==="answer"&&m[2]==="begin"&&m[12]===42;}));
+    assert.ok(h.sent.some(function(m){return m[0]==="answer"&&m[2]==="complete"&&m[11]===0;}));
+    assert.ok(h.sent.some(function(m){return m[0]==="render" && m[6]==="Legacy content";}));
+    assert.ok(!h.sent.some(function(m){return m[0]==="render" && /^body-/.test(m[4]||"");}));
+    h.sent.length=0;
+    h.handlers.appmessage({payload:{0:"capability_event",2:"note",4:"legacy",9:"read",8:"0"}});
+    assert.ok(h.sent.some(function(m){return m[0]==="render" && m[8]==="Legacy content";}));
+    h.handlers.appmessage({payload:{0:"ready",8:"local-active"}});
+    h.handlers.webviewclosed({response:JSON.stringify({tapAnimation:false})});
+    assert.ok(h.sent.some(function(m){return m[0]==="bridge"&&m[2]==="preferences"&&m[11]===0;}));
+    assert.strictEqual(JSON.parse(storage[Settings.STORAGE_KEY]).tapAnimation,false);
+  }finally{h.cleanup();}
+});
+
 test("note dictation preserves content and edits an explicit match locally", function() {
   ["make a note ", "create a note: ", "please add a note ", "note: ", "note:"].forEach(function(prefix) {
     var attrs=LocalDictation.parse(prefix+"Call José tomorrow at 7").node.attrs;
@@ -1100,7 +1144,8 @@ test("note dictation preserves content and edits an explicit match locally", fun
   var h=loadPkjsHarness({XMLHttpRequest:function(){throw new Error("Note must stay local");}});
   try {
     h.handlers.appmessage({payload:{0:"input",2:"dictation",8:"note: set an alarm for 7 am"}});
-    assert.ok(h.sent.some(function(m){return m[0]==="capability" && m[3]==="note" && m[2]==="add" && m[8]==="set an alarm for 7 am";}));
+    assert.ok(h.sent.some(function(m){return m[0]==="render" && m[8]==="set an alarm for 7 am";}));
+    assert.ok(!h.sent.some(function(m){return m[0]==="capability";}));
   } finally {h.cleanup();}
 });
 
@@ -1232,7 +1277,7 @@ test("background weather updates only the tile and caches the forecast", functio
     requests[0].responseText = JSON.stringify({ current: { temperature_2m: 12, weather_code: 0, is_day: 0 },
       daily: { time: ["2026-09-12"], temperature_2m_max: [18], temperature_2m_min: [8], weather_code: [0] } });
     requests[0].onload();
-    assert.ok(h.sent.every(function(m) { return m[0] === "bridge" || (m[0] === "job" && m[2] === "reset"); }));
+    assert.ok(h.sent.every(function(m) { return m[0] === "notes" || m[0] === "bridge" || (m[0] === "job" && m[2] === "reset"); }));
     var last = h.sent[h.sent.length - 1];
     assert.strictEqual(last[10], "icon=moon");
     assert.strictEqual(last[7], "L 8 H 18");
@@ -1252,7 +1297,7 @@ test("background weather updates only the tile and caches the forecast", functio
     assert.strictEqual(requests.length,3,"changing units invalidates even a fresh weather cache");
     assert.strictEqual(JSON.parse(storage["pebble-agent.weather.v1"]),null);
     requests[2].ontimeout();
-    assert.ok(h.sent.every(function(m) { return m[0] === "bridge" || (m[0] === "job" && m[2] === "reset"); }));
+    assert.ok(h.sent.every(function(m) { return m[0] === "notes" || m[0] === "bridge" || (m[0] === "job" && m[2] === "reset"); }));
   } finally { h.cleanup(); }
 });
 
@@ -1281,7 +1326,7 @@ test("Native dashboard survives bridge startup, configuration, and local notific
   var harness = loadPkjsHarness({ XMLHttpRequest: FakeXHR });
   try {
     harness.handlers.appmessage({ payload: { 0: "ready", 8: "local-active" } });
-    assert.strictEqual(harness.sent.length, 3);
+    assert.strictEqual(harness.sent.length, 6);
     assert.strictEqual(harness.sent[0][Watch.Key.messageType], "job");
     assert.strictEqual(harness.sent[2][Watch.Key.operation], "weather");
     assert.strictEqual(harness.sent[1][Watch.Key.messageType], "bridge");
@@ -1290,7 +1335,7 @@ test("Native dashboard survives bridge startup, configuration, and local notific
     });
     assert.strictEqual(requests, 0);
     harness.handlers.webviewclosed({ response: encodeURIComponent(JSON.stringify({ endpoint: "https://agent.test" })) });
-    assert.ok(harness.sent.every(function(message) { return message[Watch.Key.messageType] === "bridge" || message[Watch.Key.messageType] === "job"; }));
+    assert.ok(harness.sent.every(function(message) { return message[Watch.Key.messageType] === "notes" || message[Watch.Key.messageType] === "bridge" || message[Watch.Key.messageType] === "job"; }));
   } finally { harness.cleanup(); }
 });
 

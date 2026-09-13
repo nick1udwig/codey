@@ -8,7 +8,7 @@
     locationLabel: "Current location",
     timeoutSeconds: 45,
     codexModel: "gpt-5.6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
-    networkAccess: false, shellAccess: false, autoReview: false, answerVibrate: true
+    networkAccess: false, shellAccess: false, autoReview: false, answerVibrate: true, tapAnimation: true
   };
   var form = document.getElementById("settings");
   var endpoint = document.getElementById("endpoint");
@@ -19,6 +19,7 @@
   var status = document.getElementById("status");
 
   var extraFields = {
+    tapAnimation: document.getElementById("tap-animation"),
     answerVibrate: document.getElementById("answer-vibrate"),
     codexModel: document.getElementById("codex-model"),
     codexEffort: document.getElementById("codex-effort"),

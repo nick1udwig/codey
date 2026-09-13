@@ -457,41 +457,28 @@ static void test_checkbox_double_tap(void) {
   event(caps,"local.todo.archive"); assert(element("todo-0") >= 0);
   agent_capabilities_destroy(caps);
 }
+static char note_action[24], note_id[32], note_value[220];
+static void note_event(const char *type,const char *id,const char *action,const char *value,void *context) {
+  (void)context;if(strcmp(type,"note"))return;
+  agent_protocol_copy(note_action,sizeof(note_action),action);agent_protocol_copy(note_id,sizeof(note_id),id);agent_protocol_copy(note_value,sizeof(note_value),value);
+}
 static void test_notes(void) {
-  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
-  assert(!agent_capabilities_collection_is_notes(caps));
-  AgentCapabilityCommand c = {.type="note",.command="add",.value="Call John",.invocation_id=123};
-  assert(agent_capabilities_handle_command(caps,&c));
-  assert(!strcmp(ui.screen,"note-detail") && (ui.flags & 16));
-  assert(!strcmp(ui.elements[element("note-body")].value,"Call John"));
-  assert(agent_capabilities_collection_is_notes(caps));
-  assert(agent_capabilities_handle_command(caps,&c)); // Replay is idempotent.
-  event(caps,"local.notes"); assert(ui.count==1);
-  char id[32]; agent_protocol_copy(id,sizeof(id),ui.elements[0].id); assert(id[0]);
-  event(caps,"local.home");
-  assert(!strcmp(ui.elements[element("todos")].action,"local.notes"));
-  assert(!strcmp(ui.elements[element("todos")].value,"1"));
-  agent_capabilities_destroy(caps); caps=agent_capabilities_create(&ui,NULL,NULL);
-  assert(agent_capabilities_collection_is_notes(caps));
-  c.command="edit"; c.invocation_id=124; c.meta="match=\"Call John\""; c.value="Call Jane";
-  assert(agent_capabilities_handle_command(caps,&c));
-  assert(!strcmp(ui.elements[element("note-body")].value,"Call Jane"));
-  event(caps,"local.notes"); assert(!strcmp(ui.elements[0].id,id));
-  writes_fail=1;c.id=id;c.value="Must not save";c.invocation_id=125;
-  assert(agent_capabilities_handle_command(caps,&c));assert(strstr(ui.status,"Could not save"));
-  writes_fail=0; event(caps,"local.notes"); assert(!strcmp(ui.elements[0].title,"Call Jane"));
-  c=(AgentCapabilityCommand){.type="note",.command="add",.value="Call Jane",.invocation_id=126};
-  assert(agent_capabilities_handle_command(caps,&c));
-  c.command="edit";c.meta="match=\"Call Jane\"";c.value="Ambiguous";c.invocation_id=127;
-  assert(agent_capabilities_handle_command(caps,&c));assert(strstr(ui.status,"Several notes"));
-  c.id=id; assert(agent_capabilities_handle_command(caps,&c)); // Explicit ID disambiguates.
-  assert(!strcmp(ui.elements[element("note-body")].value,"Ambiguous"));
-  event(caps,"local.todos"); assert(!agent_capabilities_collection_is_notes(caps));
-  agent_capabilities_destroy(caps);caps=agent_capabilities_create(&ui,NULL,NULL);
-  assert(!strcmp(ui.elements[element("todos")].action,"local.todos"));
-  event(caps,"local.notes");assert(ui.count==2);
-  for(int i=2;i<24;i++) {c=(AgentCapabilityCommand){.type="note",.command="add",.value="Another note",.invocation_id=200+i};assert(agent_capabilities_handle_command(caps,&c));}
-  c.invocation_id=300;assert(agent_capabilities_handle_command(caps,&c));assert(strstr(ui.status,"full"));
+  reset();AgentCapabilities *caps=agent_capabilities_create(&ui,note_event,NULL);
+  int before=writes;event(caps,"local.notes");assert(!strcmp(note_action,"list"));
+  assert(!strcmp(ui.screen,"notes-loading"));assert(writes==before+1); // Only the tile preference.
+  before=writes;event(caps,"local.notes");assert(writes==before);
+  AgentUiEvent open={.action="local.note.open",.element_id="phone-1"};
+  assert(agent_capabilities_handle_ui_event(caps,&open));assert(!strcmp(note_action,"read") && !strcmp(note_id,"phone-1"));
+  assert(!strcmp(note_value,"0"));assert(writes==before);
+  AgentUiEvent page={.action="local.note.page",.value="2",.meta="note=phone-1"};
+  assert(agent_capabilities_handle_ui_event(caps,&page));assert(!strcmp(note_id,"phone-1") && !strcmp(note_value,"2"));
+  AgentCapabilityCommand edit={.type="note",.command="edit",.id="phone-1",.value="Replacement"};
+  assert(agent_capabilities_handle_command(caps,&edit));assert(!strcmp(note_action,"edit"));assert(writes==before);
+  struct LegacyNote {uint32_t magic,invocation;char id[32],text[180];} legacy={.magic=0x4e4f5431,.id="legacy-1",.text="Keep this note"};
+  persist_write_data(4400,&legacy,sizeof(legacy));
+  command(caps,"note","ready","","");assert(!strcmp(note_action,"migrate"));assert(persist_exists(4400));
+  command(caps,"note","migrated","wrong-id","");assert(persist_exists(4400));
+  command(caps,"note","migrated","legacy-1","");assert(!persist_exists(4400));
   agent_capabilities_destroy(caps);
 }
 static void test_idle_cadence(void) {

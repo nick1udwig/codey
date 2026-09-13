@@ -91,3 +91,5 @@ void agent_ui_animate_request(AgentUi *ui);
 // Immediate user interaction; passive redraws are coalesced to one per minute.
 void agent_ui_note_input(AgentUi *ui);
 void agent_ui_refresh_clock(AgentUi *ui);
+
+void agent_ui_set_tap_animation(AgentUi *ui, bool enabled);

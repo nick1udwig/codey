@@ -148,8 +148,9 @@ improvements have not been measured on hardware.
 ## Collection integration boundary
 
 Notes and To Do share a remembered dashboard tile, while their capability
-modules retain independent records and commands. Both allocate stable local
-identities; note edits and task completion preserve them. See
+modules retain independent commands. Notes are owned by the phone store and
+loaded onto the watch as transient summary/content pages; To Do retains its
+watch store. Note edits and task completion preserve stable record identities. See
 [collections](collections.md) for the planned provider adapter, canonical store,
 outbox, revision, and conflict boundaries. Remote synchronization is not yet
 implemented.

@@ -8,6 +8,8 @@ var JobModule = require("../common/jobs");
 var Settings = require("../common/settings");
 var Capabilities = require("../common/capabilities");
 var Weather = require("../common/weather");
+var Notes = require("../common/notes");
+var notes = new Notes.Store(localStorage);
 var LocalDictation = require("../common/local-dictation");
 
 var Key = WatchProtocol.Key;
@@ -107,6 +109,32 @@ function sendControl(operation, requestId) {
   watchQueue.enqueue(message);
 }
 
+function sendPreferences() {
+  var m={};m[Key.messageType]="bridge";m[Key.operation]="preferences";
+  m[Key.flags]=settings.tapAnimation?1:0;watchQueue.enqueue(m);
+}
+function sendNoteMessage(command,id,value) {
+  var m={};m[Key.messageType]="notes";m[Key.operation]=command;
+  m[Key.elementId]=id||"";m[Key.value]=String(value||"");watchQueue.enqueue(m);
+}
+function sendNoteCount() { sendNoteMessage("count","",notes.count()); }
+function handleNoteRequest(action,id,value,token) {
+  if(action==="migrate") {
+    try { notes.mutate({command:"add",id:id,value:value},"migration:"+id);sendNoteMessage("migrated",id,"");sendNoteCount(); }
+    catch(error){log("Note migration pending",error.message);}
+    return;
+  }
+  var requestId=nextRequestId();
+  if(activeRequestId)watchQueue.clearRequest(activeRequestId);
+  activeRequestId=requestId;
+  sendAnswerNotification(requestId,"begin",true,token);
+  try {
+    if(action==="edit") { notes.mutate({command:"edit",id:id,value:value});value="0"; }
+    capabilityContext(requestId).renderPam(notes.render(action==="list"?"":id,value));
+    sendNoteCount();sendStatus("","idle",requestId);sendAnswerNotification(requestId,"complete",true);
+  } catch(error){sendStatus(error.message,"error",requestId);}
+}
+
 function sendConnection() {
   var message = {};
   message[Key.messageType] = "bridge";
@@ -114,12 +142,13 @@ function sendConnection() {
   watchQueue.enqueue(message);
 }
 
-function sendAnswerNotification(requestId, operation) {
+function sendAnswerNotification(requestId, operation, quiet, token) {
   var message = {};
   message[Key.messageType] = "answer";
   message[Key.requestId] = requestId;
   message[Key.operation] = operation || "complete";
-  message[Key.flags] = settings.answerVibrate ? 1 : 0;
+  message[Key.flags] = !quiet && settings.answerVibrate ? 1 : 0;
+  if (token) message[Key.index] = token;
   watchQueue.enqueue(message);
 }
 
@@ -173,6 +202,21 @@ function capabilityContext(requestId, complete, isFailed, job, commandIndex) {
   return {
     settings: settings,
     summary: saveWeather,
+    phoneNote: function(attrs) {
+      try {
+        var id = "";
+        if (attrs.command !== "list") {
+          var operation = job ? job.id + ":note:" + commandIndex : "local:" + nextCommandId();
+          id = notes.mutate(attrs, operation);
+        }
+        sendNoteCount();
+        capabilityContext(requestId).renderPam(notes.render(id, 0));
+        if (complete) complete(true);
+      } catch (error) {
+        sendStatus(error.message, "error", requestId);
+        if (complete) complete(false);
+      }
+    },
     sendWatchCapability: function(operation) {
       if (requestId !== activeRequestId || (isFailed && isFailed())) { return; }
       // Assign once before queueing; retries retain the same ID, while new
@@ -207,6 +251,7 @@ var capabilityRegistry = Capabilities.installBuiltins(
   new Capabilities.CapabilityRegistry(),
   weatherHandler
 );
+capabilityRegistry.register("note", function(attrs, context) { context.phoneNote(attrs); });
 
 function createPipeline(requestId, job) {
   var capabilityIndex = 0;
@@ -431,12 +476,15 @@ function handleWatchMessage(event) {
       sendJob({}, false, "reset");
       jobManager.entries.forEach(function(job) { if (!job.opened) { sendJob(job, false); } });
     }
-    if (nativeDashboard) { sendConnection(); refreshWeather(); }
+    if (nativeDashboard) { sendConnection(); refreshWeather(); sendPreferences();
+      try { sendNoteCount();sendNoteMessage("ready","",""); } catch(error){log("Notes unavailable",error.message);}
+    }
     if (value !== "local-active") {
       renderOnboarding();
     }
     return;
   }
+  if (type === "capability_event" && operation === "note") { handleNoteRequest(action,element,value,Number(read(payload,Key.meta,"Meta"))||0);return; }
   if (type === "capability_event" && operation === "job") {
     if (action === "refresh") { jobManager.refreshAll(); return; }
     if (action === "retrieved" || action === "dismiss") {
@@ -537,6 +585,6 @@ Pebble.addEventListener("webviewclosed", function(event) {
   }
   settings = Settings.save(updated);
   if (updated.newSession) { startNewSession(); }
-  if (nativeDashboard) { sendConnection(); refreshWeather(); }
+  if (nativeDashboard) { sendConnection(); refreshWeather(); sendPreferences(); }
   else { renderOnboarding(); }
 });

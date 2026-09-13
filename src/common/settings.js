@@ -17,6 +17,7 @@ var DEFAULTS = Object.freeze({
   networkAccess: false,
   shellAccess: false,
   autoReview: false,
+  tapAnimation: true,
   answerVibrate: true
 });
 
@@ -37,7 +38,7 @@ function copyDefaults(value) {
   });
   settings.webSearch = ["cached", "live"].indexOf(settings.webSearch) >= 0 ? settings.webSearch : "disabled";
   settings.fileAccess = ["read-only", "workspace-write"].indexOf(settings.fileAccess) >= 0 ? settings.fileAccess : "none";
-  ["networkAccess", "shellAccess", "autoReview", "fastMode", "answerVibrate"].forEach(function(key) {
+  ["networkAccess", "shellAccess", "autoReview", "fastMode", "answerVibrate", "tapAnimation"].forEach(function(key) {
     settings[key] = settings[key] === true;
   });
   return settings;

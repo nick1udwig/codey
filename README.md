@@ -133,12 +133,13 @@ pixel patterns supplied by a Luna subagent.
 Notes shares the To Do tile: tap, then hold the tile to choose **Notes** or
 **To Do**. The last collection opened stays on the dashboard. Say “make a note
 Call Jane,” “note: Call Jane,” or “edit a note Call Jane to Call John.” Open a
-note and select **Edit note** to dictate its replacement directly. Notes are
-stored locally (24 notes, up to 179 UTF-8 bytes each). See
+note and select **Edit note** to dictate its replacement directly. Notes live on the phone: opening the list loads summaries, and opening a note
+loads its contents in pages. The watch keeps only the displayed page in memory. See
 [collections and future sync design](docs/collections.md).
 
 The arming tap now shows a brief expanding ripple with edge reflection. The
-next touch stops it immediately. Checkbox completion still requires two taps.
+next touch stops it immediately. Disable the effect with **First-tap ripple
+animation** in phone settings; checkbox completion still requires two taps.
 
 Back returns to the dashboard
 without stopping anything; Back from the dashboard exits the app. On a timer,

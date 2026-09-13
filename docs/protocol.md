@@ -375,6 +375,7 @@ Use `capability type=note command=add value="Call Jane"` to save a note,
 `capability type=note command=list` to browse, and
 `capability type=note command=edit id="KNOWN-ID" value="Call John"` to replace
 one. An edit can use `match="EXACT OLD TEXT"` instead of `id`; a nonunique or
-missing match is rejected. Note text is limited to 179 UTF-8 bytes. Voice edits
-from a note detail view target its stable ID and bypass agent interpretation.
+missing match is rejected. The phone stores full note bodies and serves list summaries or content pages on
+demand. Voice edits from a note detail view target its stable ID and bypass agent
+interpretation. Previous/Next controls fetch additional pages from the phone.
 See [collections](collections.md) for local storage and planned sync boundaries.

@@ -43,6 +43,7 @@ static AppTimer *s_new_chat_timer;
 static AppTimer *s_response_timer;
 static bool s_accept_remote;
 static char s_note_edit_id[32];
+static uint32_t s_note_token, s_note_sequence;
 static AnswerNotification s_answer_notification;
 static WatchResponse s_response;
 static bool s_dictation_active;
@@ -95,6 +96,7 @@ static void prv_response_timeout(void *context) {
 }
 
 static void prv_begin_request(void) {
+  s_note_token = 0;
   prv_stop_response_timer();
   s_response_timer = app_timer_register(RESPONSE_TIMEOUT_MS, prv_response_timeout, NULL);
   s_answer_notification.pending = false;
@@ -311,6 +313,9 @@ static void prv_dictation_callback(DictationSession *session, DictationSessionSt
     return;
   }
   if (s_note_edit_id[0]) {
+    if (strlen(transcription) >= OUTBOX_VALUE_LENGTH) {
+      s_note_edit_id[0]=0;agent_ui_set_status(s_ui,"Dictation is too long. Note was not changed.",true,false);return;
+    }
     AgentCapabilityCommand command = {.type="note", .command="edit", .id=s_note_edit_id, .value=transcription};
     agent_capabilities_handle_command(s_capabilities, &command);
     s_note_edit_id[0] = 0;
@@ -350,8 +355,16 @@ static void prv_start_dictation(void *context) {
 static void prv_capability_event(const char *type, const char *id, const char *action,
                                  const char *value, void *context) {
   (void)context;
-  if (strcmp(type, "job") == 0 && (!strcmp(action,"check") || !strcmp(action,"cancel"))) { prv_begin_request(); }
-  prv_queue_message("capability_event", s_request_id, type, id, action, value, "");
+  char token[16] = "";
+  if (!strcmp(type,"note") && strcmp(action,"migrate")) {
+    prv_begin_request();
+    s_note_sequence = s_note_sequence == INT32_MAX ? 1 : s_note_sequence + 1;
+    s_note_token = s_note_sequence;
+    snprintf(token,sizeof(token),"%lu",(unsigned long)s_note_token);
+    prv_stop_response_timer();
+    s_response_timer=app_timer_register(15000,prv_response_timeout,NULL);
+  } else if (!strcmp(type,"job") && (!strcmp(action,"check") || !strcmp(action,"cancel"))) prv_begin_request();
+  prv_queue_message("capability_event", s_request_id, type, id, action, value, token);
 }
 
 static uint32_t prv_spec_presence(DictionaryIterator *iter) {
@@ -400,6 +413,8 @@ static void prv_handle_render(DictionaryIterator *iter, uint32_t request_id, con
   AgentUiElementSpec spec;
   if (!prv_accept_request(request_id, operation)) { return; }
   if (strcmp(operation, "begin") == 0) {
+    const char *screen_id = prv_tuple_string(iter, MESSAGE_KEY_ElementId);
+    if (!strcmp(screen_id,"notes") || !strcmp(screen_id,"note-detail")) agent_capabilities_set_collection(s_capabilities,true);
     agent_capabilities_set_active(s_capabilities, "remote", true);
     agent_ui_begin(s_ui,
                    prv_tuple_string(iter, MESSAGE_KEY_ElementId),
@@ -453,6 +468,13 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   const char *operation = prv_tuple_string(iter, MESSAGE_KEY_Operation);
   uint32_t request_id = (uint32_t)prv_tuple_int(iter, MESSAGE_KEY_RequestId, 0);
   (void)context;
+  if (!strcmp(type,"notes")) {
+    AgentCapabilityCommand c={.type="note",.command=operation,.id=prv_tuple_string(iter,MESSAGE_KEY_ElementId),.value=prv_tuple_string(iter,MESSAGE_KEY_Value)};
+    agent_capabilities_handle_command(s_capabilities,&c);return;
+  }
+  if (!strcmp(type,"bridge") && !strcmp(operation,"preferences")) {
+    agent_ui_set_tap_animation(s_ui,prv_tuple_int(iter,MESSAGE_KEY_Flags,1)!=0);return;
+  }
   if (strcmp(type, "job") == 0) {
     const char *id = prv_tuple_string(iter, MESSAGE_KEY_ElementId);
     if (strcmp(operation, "upsert") == 0 && strcmp(id, "pending") != 0) {
@@ -477,6 +499,7 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   }
   if (strcmp(type, "answer") == 0) {
     if (strcmp(operation, "begin") == 0 && s_accept_remote &&
+        (uint32_t)prv_tuple_int(iter,MESSAGE_KEY_Index,0) == s_note_token &&
         s_navigation_revision == agent_capabilities_navigation_revision(s_capabilities) &&
         watch_response_begin(&s_response, request_id)) {
       s_request_id = request_id;

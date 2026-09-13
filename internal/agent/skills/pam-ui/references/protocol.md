@@ -69,7 +69,8 @@ Todos use the native watch capability: `capability type=todo command=add value="
 Notes use `capability type=note command=add value="Call Jane"`,
 `capability type=note command=list`, or
 `capability type=note command=edit id="KNOWN-ID" value="Replacement text"`.
-Text is limited to 179 UTF-8 bytes. IDs persist across edits; do not invent an
+The phone stores full note bodies and the watch loads summaries/content pages
+on demand. IDs persist across edits; do not invent an
 ID for an existing note. When no ID is available, edit with
-`match="EXACT OLD TEXT"` instead. The watch rejects missing or ambiguous matches.
-Notes and todos are currently stored on the watch; do not claim external sync.
+`match="EXACT OLD TEXT"` instead. The phone rejects missing or ambiguous matches.
+Notes are phone-owned and todos remain watch-owned; do not claim external sync.

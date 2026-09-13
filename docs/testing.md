@@ -206,3 +206,20 @@ emulator does not provide validated touchscreen/dictation coverage: confirm on
 hardware that the first checkbox tap only ripples, the second archives, the next
 contact stops the ripple immediately, guarded holds open the collection menu,
 and Edit note dictation replaces only the selected note.
+
+## Phone-owned Notes and ripple preference
+
+Notes storage tests now exercise the phone repository: complete Unicode bodies,
+summary-only list pages, content pagination with lossless reconstruction, stable
+IDs and operation replay, and failed writes preserving prior data. Bridge tests
+cover on-demand list/read, quiet completion, echoed request tokens, migration
+acknowledgments only after successful storage, and the disabled ripple preference.
+Native tests verify list/read/page/edit requests write no note bodies, and legacy
+records remain until the matching migration acknowledgment. Settings-page tests
+cover default-on hydration and saving the ripple toggle as false.
+
+The full suite passes: 82 phone tests, native sanitizer cases, seven integration
+tests and all Go packages. Both watch builds, the settings-site build, and the
+PAM skill validator pass. Emery transferred the existing fixture note to the
+phone and displayed its fetched summary and selected content page. The emulator
+was stopped with `pebble kill`. Real touch/dictation feel remains a hardware check.
