@@ -1,8 +1,8 @@
 package pam
 
 import (
-	"bytes"
 	"fmt"
+	"strings"
 )
 
 type OutputStream struct {
@@ -21,20 +21,28 @@ func (stream *OutputStream) Push(chunk string) error {
 	if stream.finished {
 		return fmt.Errorf("cannot write PAM after stream completion")
 	}
-	stream.buffer = append(stream.buffer, []byte(chunk)...)
-	for {
-		newline := bytes.IndexByte(stream.buffer, '\n')
+	for len(chunk) > 0 {
+		newline := strings.IndexByte(chunk, '\n')
+		end := newline
+		if end < 0 {
+			end = len(chunk)
+		}
+		// Allow one extra byte for CRLF, even when split between chunks.
+		if len(stream.buffer)+end > DefaultMaxLineBytes+1 {
+			return fmt.Errorf("agent output line is too long")
+		}
+		stream.buffer = append(stream.buffer, chunk[:end]...)
+		if len(stream.buffer) > DefaultMaxLineBytes && stream.buffer[len(stream.buffer)-1] != '\r' {
+			return fmt.Errorf("agent output line is too long")
+		}
 		if newline < 0 {
 			break
 		}
-		line := stream.buffer[:newline]
-		stream.buffer = stream.buffer[newline+1:]
-		if err := stream.accept(line); err != nil {
+		if err := stream.accept(stream.buffer); err != nil {
 			return err
 		}
-	}
-	if len(stream.buffer) > DefaultMaxLineBytes {
-		return fmt.Errorf("agent output line is too long")
+		stream.buffer = stream.buffer[:0]
+		chunk = chunk[newline+1:]
 	}
 	return nil
 }
@@ -80,18 +88,15 @@ func (stream *OutputStream) EmitError(err error) error {
 }
 
 func (stream *OutputStream) accept(line []byte) error {
-	if bytes.HasSuffix(line, []byte{'\r'}) {
-		line = bytes.TrimSuffix(line, []byte{'\r'})
-	}
-	line = []byte(normalizeOutputLine(string(line)))
-	valid, err := stream.validator.Accept(string(line))
+	source := normalizeOutputLine(strings.TrimSuffix(string(line), "\r"))
+	valid, err := stream.validator.Accept(source)
 	if err != nil {
 		return err
 	}
 	if !valid {
 		return nil
 	}
-	payload := append(bytes.Clone(line), '\n')
+	payload := []byte(source + "\n")
 	if err := stream.emit(payload); err != nil {
 		return err
 	}
