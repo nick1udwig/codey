@@ -7,8 +7,6 @@
 #include <string.h>
 
 #define COLLECTION_PREFERENCE_KEY 4399
-#define AGENT_WAKEUP_SCHEMA_KEY 4099
-#define AGENT_WAKEUP_SCHEMA_VERSION 1
 
 typedef struct {
   char name[AGENT_CAPABILITY_NAME_LENGTH];
@@ -44,6 +42,7 @@ static void prv_tick(void *context) {
   }
   agent_capabilities_refresh_dashboard(capabilities);
   agent_ui_refresh_clock(capabilities->ui);
+  agent_capabilities_emit(capabilities,"status","","refresh","");
   if (++capabilities->weather_ticks >= 15) {
     capabilities->weather_ticks = 0;
     agent_capabilities_emit(capabilities, "weather", "", "refresh", "");
@@ -79,13 +78,6 @@ AgentCapabilities *agent_capabilities_create(AgentUi *ui, AgentCapabilityEventHa
   capabilities->ui = ui;
   capabilities->event_handler = event_handler;
   capabilities->context = context;
-  if (!persist_exists(AGENT_WAKEUP_SCHEMA_KEY) ||
-      persist_read_int(AGENT_WAKEUP_SCHEMA_KEY) != AGENT_WAKEUP_SCHEMA_VERSION) {
-    // Wakeup IDs can outlive a development/app upgrade. Clear the app's old
-    // registrations once; each persisted module reschedules its valid state.
-    wakeup_cancel_all();
-    persist_write_int(AGENT_WAKEUP_SCHEMA_KEY, AGENT_WAKEUP_SCHEMA_VERSION);
-  }
   s_wakeup_capabilities = capabilities;
   wakeup_service_subscribe(prv_wakeup_handler);
   capabilities->collection_notes = persist_read_int(COLLECTION_PREFERENCE_KEY) == 1;

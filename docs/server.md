@@ -167,8 +167,8 @@ Retrieved results remain cached on the phone. Failed/canceled entries can be
 dismissed. Restoring the original endpoint is required to check a job after
 changing servers, so a new server token is never sent to an old endpoint.
 
-The legacy streaming `/v1/agent` endpoint remains available for compatible
-clients. The updated watch uses the job routes. Reverse proxies must route
+The streaming `/v1/agent` endpoint is used by the standalone client and demo
+protocol. The watch uses the job routes. Reverse proxies must route
 `/v1/jobs/` as well; a shorter proxy timeout only ends the completion wait, not
 the work.
 
@@ -196,3 +196,26 @@ Run `pebble-agent-server -h` for the complete set. Common options include:
 ```
 
 The workspace is an otherwise empty directory by default. It becomes the writable root only when workspace writes are selected in phone settings. Read-only and workspace-write modes allow reads outside that root; no-user-files mode restricts reads to minimal runtime paths.
+
+## Dashboard status
+
+The authenticated `GET /v1/status` endpoint reads Codex app-server telemetry on
+demand. `remainingPercent` is the lowest remaining percentage across the primary
+and secondary windows of `rateLimitsByLimitId["codex"]` from
+`account/rateLimits/read`. It is quota remaining, not context-window capacity.
+Missing quota data is `null`, including accounts without reported limits.
+
+`activeThreads` counts loaded threads whose current status is `active`, using
+`thread/loaded/list` and metadata-only `thread/read` calls. It covers the connected
+app-server instance, including its threads outside Agent. The state is `working`
+when any thread is active, `idle` otherwise, and `error` for a thread system error.
+Unavailable status/counts remain unknown. The endpoint has a 15-second deadline.
+
+The phone fetches at startup and at most once per minute using the existing watch
+tick; unchanged telemetry sends no additional watch packet. Dashboard rendering
+keeps its existing passive minute limit. The header shows battery charge, a brain
+with quota remaining, and small sleeping/thinking pictographs with the active
+thread count. Unknown values display dashes and a question face. The pictographs
+are drawn directly because the watch system font does not supply emoji glyphs.
+
+Protocol reference: [Codex app-server](https://learn.chatgpt.com/docs/app-server).

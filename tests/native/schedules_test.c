@@ -288,21 +288,7 @@ static void test_failures_and_capacity(void) {
   caps = agent_capabilities_create(&ui, NULL, NULL); assert(element("schedule-0") < 0);
   agent_capabilities_destroy(caps);
 }
-static void test_migration(void) {
-  reset();
-  struct { uint32_t magic; uint8_t active, running; int32_t duration, remaining;
-    time_t at; WakeupId wakeup; char id[32], title[72]; } old = {
-      .magic = 0x54494d52, .active = 1, .running = 1, .duration = 30, .remaining = 30,
-      .at = 100030, .wakeup = 12, .id = "legacy", .title = "Legacy timer" };
-  persist_write_data(4100, &old, sizeof(old));
-  AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
-  assert(element("schedule-0") >= 0 && wake_at == 100030);
-  command(caps, "timer", "cancel", "legacy", "");
-  agent_capabilities_destroy(caps);
-  caps = agent_capabilities_create(&ui, NULL, NULL);
-  assert(element("schedule-0") < 0); // never resurrect canceled legacy state
-  agent_capabilities_destroy(caps);
-}
+
 static void test_explicit_replacement(void) {
   reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
   command(caps, "timer", "start", "tea", "duration=5s");
@@ -381,22 +367,7 @@ static void test_delivery_replay_after_relaunch(void) {
   assert(strstr(ui.elements[element("schedule-0")].subtitle, "00:50"));
   agent_capabilities_destroy(caps);
 }
-static void test_previous_dashboard_upgrade(void) {
-  reset();
-  struct { uint32_t magic; uint8_t state, reserved[3]; int32_t duration, remaining;
-    time_t at; char id[32], title[72], body[84]; } old = {
-      .magic = 0x53434832, .state = 1, .duration = 60, .remaining = 60,
-      .at = 100060, .id = "timer", .title = "Existing timer" };
-  persist_write_data(4200, &old, sizeof(old));
-  AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
-  assert(element("schedule-0") >= 0 && wake_at == 100060);
-  command(caps, "timer", "start", "timer", "duration=10s");
-  assert(strcmp(ui.screen, "timer-1") == 0);
-  advance(10);
-  assert(strstr(ui.elements[element("schedule-0")].subtitle, "00:50"));
-  assert(strstr(ui.elements[element("schedule-1")].subtitle, "Finished"));
-  agent_capabilities_destroy(caps);
-}
+
 static char job_event[24], job_id[32];
 static void job_event_handler(const char *type,const char *id,const char *action,const char *value,void *context) {
   (void)value; (void)context;
@@ -430,20 +401,7 @@ static void test_jobs(void) {
   agent_capabilities_destroy(caps);
 }
 
-static void test_todo_identity_migration(void) {
-  reset();
-  struct LegacyTodo { uint32_t magic, invocation; uint8_t state; char id[32], text[180]; } old = {.magic=0x544f4431,.invocation=88,.state=2,.text="Archived legacy task"};
-  persist_write_data(4300,&old,sizeof(old));
-  AgentCapabilities *caps=agent_capabilities_create(&ui,NULL,NULL);
-  struct LegacyTodo migrated;persist_read_data(4300,&migrated,sizeof(migrated));
-  assert(migrated.id[0] && migrated.state==2 && migrated.invocation==88 && !strcmp(migrated.text,old.text));
-  event(caps,"local.todo.archive"); assert(element("todo-0")>=0);
-  event(caps,"local.todo.toggle.0");
-  agent_capabilities_destroy(caps);caps=agent_capabilities_create(&ui,NULL,NULL);
-  struct LegacyTodo restored;persist_read_data(4300,&restored,sizeof(restored));
-  assert(!strcmp(restored.id,migrated.id) && restored.state==1);
-  agent_capabilities_destroy(caps);
-}
+
 static void test_checkbox_double_tap(void) {
   reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
   command(caps,"todo","add","checkbox","ignored");
@@ -474,11 +432,6 @@ static void test_notes(void) {
   assert(agent_capabilities_handle_ui_event(caps,&page));assert(!strcmp(note_id,"phone-1") && !strcmp(note_value,"2"));
   AgentCapabilityCommand edit={.type="note",.command="edit",.id="phone-1",.value="Replacement"};
   assert(agent_capabilities_handle_command(caps,&edit));assert(!strcmp(note_action,"edit"));assert(writes==before);
-  struct LegacyNote {uint32_t magic,invocation;char id[32],text[180];} legacy={.magic=0x4e4f5431,.id="legacy-1",.text="Keep this note"};
-  persist_write_data(4400,&legacy,sizeof(legacy));
-  command(caps,"note","ready","","");assert(!strcmp(note_action,"migrate"));assert(persist_exists(4400));
-  command(caps,"note","migrated","wrong-id","");assert(persist_exists(4400));
-  command(caps,"note","migrated","legacy-1","");assert(!persist_exists(4400));
   agent_capabilities_destroy(caps);
 }
 static void test_idle_cadence(void) {
@@ -490,10 +443,10 @@ static void test_idle_cadence(void) {
   advance(120); assert(timer_callbacks == 3);
 }
 int main(void) {
-  test_todo_identity_migration(); test_checkbox_double_tap(); test_notes(); test_idle_cadence();
-  test_weather_summary(); test_todos(); test_dashboard_progress(); test_dashboard_destinations(); test_multiple_and_ack(); test_pause_cancel_restore(); test_failures_and_capacity(); test_stopwatch_dashboard(); test_migration(); test_explicit_replacement();
+   test_checkbox_double_tap(); test_notes(); test_idle_cadence();
+  test_weather_summary(); test_todos(); test_dashboard_progress(); test_dashboard_destinations(); test_multiple_and_ack(); test_pause_cancel_restore(); test_failures_and_capacity(); test_stopwatch_dashboard();  test_explicit_replacement();
   test_reused_ids_and_screen_independent_expiry(); test_delivery_replay_after_relaunch();
-  test_previous_dashboard_upgrade(); test_jobs();
+   test_jobs();
   puts("✓ schedules: concurrent deadlines, repeated alerts, acknowledge, snooze, navigation, persistence, failures, bounds, stopwatch, jobs");
   return 0;
 }

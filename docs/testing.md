@@ -84,7 +84,7 @@ until exercised on the updated app.
 Do not treat emulator wakeup timing, simulated dictation, or mouse-based touch as a substitute for the corresponding hardware checks.
 
 Concurrent-alert regressions cover reused model IDs, delivery retries before and
-after relaunch, migration of existing dashboard records, a 10-second timer
+after relaunch, a 10-second timer
 expiring while a 60-second timer is open, and alarm expiry over dashboard,
 remote response, stopwatch, and timer screens. Notification focus changes
 preserve outstanding capability commands while suppressing late render traffic.
@@ -192,7 +192,7 @@ Physical display timing and battery savings still require hardware.
 
 The native sanitizer suite covers two-tap checkbox completion, note add/edit,
 exact-match ambiguity, stable IDs across edits/relaunches, capacity, write failure,
-operation replay, persisted tile preference, and archived todo identity migration.
+operation replay, persisted tile preference, and archived todo identities.
 Ripple tests cover half-width travel and reflected points at rectangular edges
 and the circular bezel, including grazing contacts. Phone tests cover note voice
 regexes, preserved text, and bypassing both agent and timer interpretation. Go PAM
@@ -212,14 +212,20 @@ and Edit note dictation replaces only the selected note.
 Notes storage tests now exercise the phone repository: complete Unicode bodies,
 summary-only list pages, content pagination with lossless reconstruction, stable
 IDs and operation replay, and failed writes preserving prior data. Bridge tests
-cover on-demand list/read, quiet completion, echoed request tokens, migration
-acknowledgments only after successful storage, and the disabled ripple preference.
-Native tests verify list/read/page/edit requests write no note bodies, and legacy
-records remain until the matching migration acknowledgment. Settings-page tests
-cover default-on hydration and saving the ripple toggle as false.
+cover on-demand list/read, quiet completion, echoed request tokens, and the
+disabled ripple preference. Native tests verify list/read/page/edit requests write
+no note bodies. Settings-page tests cover default-on hydration and saving the
+ripple toggle as false.
 
-The full suite passes: 82 phone tests, native sanitizer cases, seven integration
-tests and all Go packages. Both watch builds, the settings-site build, and the
-PAM skill validator pass. Emery transferred the existing fixture note to the
-phone and displayed its fetched summary and selected content page. The emulator
-was stopped with `pebble kill`. Real touch/dictation feel remains a hardware check.
+## Dashboard telemetry and compatibility removal
+
+The pre-alpha app reads only current storage/protocol formats. Watch-to-phone
+Notes migration, earlier schedule conversions, missing to-do ID backfilling, the
+one-time wakeup upgrade, and old-watch onboarding have been removed.
+
+Status tests cover the current multi-bucket quota API, paginated active-thread
+counting without loading conversation turns, unavailable data, bearer auth,
+method checks, once-per-minute requests, and stale endpoint response rejection.
+The full suite includes 83 phone tests, native sanitizer cases, seven integration
+tests, and all Go packages. Emulator screenshots verify dashboard layout; real
+touch and dictation remain hardware checks.

@@ -10,10 +10,7 @@
 #define TIMER_COUNT 4
 #define STORE_BASE 4200
 #define RECORD_MAGIC 0x53434833
-#define PREVIOUS_RECORD_MAGIC 0x53434832
 #define WAKE_COOKIE 0x53434832
-#define LEGACY_TIMER_KEY 4100
-#define LEGACY_REMINDER_BASE 4120
 
 enum { Empty, Running, Paused, Due };
 // One record per persistence key, below Pebble's 256-byte value limit.
@@ -402,58 +399,17 @@ static void prv_destroy(void *context) {
   vibes_cancel();
   free(s);
 }
-static void prv_migrate(Schedules *s, int slot) {
-  Record *r = &s->records[slot];
-  // Legacy formats retain their exact layout so upgrades preserve running work.
-  if (slot == 0) {
-    struct { uint32_t magic; uint8_t active, running; int32_t duration, remaining;
-      time_t at; WakeupId wakeup; char id[32], title[72]; } old;
-    if (persist_read_data(LEGACY_TIMER_KEY, &old, sizeof(old)) == sizeof(old) &&
-        old.magic == 0x54494d52 && old.active == 1 && old.running <= 1 && old.duration > 0 && old.duration <= 7 * 86400 &&
-        old.remaining >= 0 && old.remaining <= old.duration && old.at >= 0 &&
-        memchr(old.id, 0, sizeof(old.id)) && memchr(old.title, 0, sizeof(old.title))) {
-      r->state = old.running ? Running : Paused; r->duration = old.duration;
-      r->remaining = old.remaining; r->at = old.at;
-      agent_protocol_copy(r->id, sizeof(r->id), old.id[0] ? old.id : "timer");
-      agent_protocol_copy(r->title, sizeof(r->title), old.title);
-    }
-  } else if (slot >= TIMER_COUNT) {
-    struct { uint32_t magic; uint8_t active; time_t at; WakeupId wakeup;
-      char id[32], title[72], body[84]; } old;
-    if (persist_read_data(LEGACY_REMINDER_BASE + slot - TIMER_COUNT, &old, sizeof(old)) == sizeof(old) &&
-        old.magic == 0x524d4452 && old.active == 1 && old.at >= 0 &&
-        memchr(old.id, 0, sizeof(old.id)) && memchr(old.title, 0, sizeof(old.title)) && memchr(old.body, 0, sizeof(old.body))) {
-      r->state = Running; r->at = old.at;
-      agent_protocol_copy(r->id, sizeof(r->id), old.id[0] ? old.id : "reminder");
-      agent_protocol_copy(r->title, sizeof(r->title), old.title);
-      agent_protocol_copy(r->body, sizeof(r->body), old.body);
-    }
-  }
-}
 bool agent_schedules_install(AgentCapabilities *capabilities) {
   Schedules *s = calloc(1, sizeof(*s));
   if (!s) { return false; }
   s->capabilities = capabilities; s->visible = -1; s->wakeup = -1;
   for (int i = 0; i < SLOT_COUNT; ++i) {
     Record *r = &s->records[i];
-    bool exists = persist_exists(STORE_BASE + i);
-    int size = persist_read_data(STORE_BASE + i, r, sizeof(*r));
-    // The preceding dashboard release stored the same record without the
-    // trailing delivery ID. Upgrade it in place without losing active work.
-    bool previous_format = r->magic == PREVIOUS_RECORD_MAGIC &&
-      (size == offsetof(Record, invocation_id) || size == sizeof(*r));
-    if (previous_format) { r->magic = RECORD_MAGIC; r->invocation_id = 0; }
-    if ((size != sizeof(*r) && !previous_format) || !prv_valid(r, i)) {
+    if (persist_read_data(STORE_BASE + i, r, sizeof(*r)) != sizeof(*r) || !prv_valid(r, i)) {
       memset(r, 0, sizeof(*r)); r->magic = RECORD_MAGIC;
-      if (!exists) { prv_migrate(s, i); }
-      prv_save(s, i);
-    } else if (previous_format) {
-      r->invocation_id = 0;
-      prv_save(s, i);
     }
   }
-  // All deadlines are now owned here; clear legacy registrations belonging to
-  // this app and install exactly one wakeup for the earliest pending deadline.
+  // Rebuild the single earliest-deadline wakeup from current records.
   wakeup_cancel_all();
   if (!agent_capabilities_register(capabilities, "timer", (AgentCapabilityModule) {
     .command = prv_command, .event = prv_event, .wakeup = prv_wakeup, .destroy = prv_destroy,

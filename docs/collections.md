@@ -46,10 +46,8 @@ edit dictation is rejected rather than silently saving a truncated replacement.
 
 Edits replace the full note on the phone, preserving its ID. The store commits
 records and replay keys together before reporting success. Failed writes leave
-previous records intact. Existing watch notes transfer one at a time at phone
-startup or on opening Notes. A watch record is deleted only after a matching
-phone acknowledgment of durable storage; interruptions retry safely. Legacy
-records awaiting acknowledgment are the only remaining notes on watch storage.
+previous records intact. Notes use phone storage only; there is no watch-to-phone
+migration or reader for earlier watch note formats.
 
 The watch retains the selected collection preference and note count in the UI,
 not the phone's note database. Opening a collection requires a connected phone;
@@ -86,9 +84,8 @@ cursor or acknowledging delivery. Server-side storage can retain complete note
 bodies; the watch should request bounded pages/previews and selected bodies,
 rather than truncating and uploading a long remote note as its replacement.
 
-Add versioned sync metadata (or sidecar records) for revisions, pending changes,
-provider mappings, and deletion tombstones. Preserve existing records during that
-migration. To-do archive means completed, not deleted; map it to provider task
+Add sync metadata for revisions, pending changes, provider mappings, and
+deletion tombstones. To-do archive means completed, not deleted; map it to provider task
 completion and restore semantics. A future note deletion requires a tombstone.
 Concurrent edits need an explicit conflict policy, such as retaining both
 versions for resolution, rather than overwriting according to device clock time.

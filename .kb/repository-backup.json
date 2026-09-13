@@ -1,7 +1,21 @@
 {
   "version": 1,
-  "created_at": "2026-09-13T00:11:35.334265271+00:00",
+  "created_at": "2026-09-13T00:32:28.267605878+00:00",
   "documents": [
+    {
+      "id": "01a09821-cef7-7e43-8121-72fb3db279db",
+      "slug": "issues/dashboard-telemetry-no-compat",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Remove compatibility paths and refresh dashboard telemetry",
+      "content": "## Context\n\nPre-alpha releases have no compatibility guarantee. Remove watch Notes migration\nand other old-format conversions; update the dashboard layout and add Codex quota\nand active-thread telemetry from the connected app-server.\n\n## Acceptance criteria — completed\n\n- Notes have no watch persistence/migration path. Removed old schedule conversions,\n  to-do identity backfill, one-time wakeup upgrade, and old-watch onboarding.\n- Weather has high above centered icon/current temperature and low below.\n  Time is lower, with one-line weekday/month/day and no calendar icon.\n- Header shows battery percentage, brain/quota remaining, and sleeping/thinking\n  status with active-thread count. Missing values are visibly unknown.\n- Current app-server multi-bucket quota and loaded-thread metadata APIs are used;\n  no conversation turns are fetched. Telemetry is throttled to once per minute.\n\n## Validation\n\n83 JavaScript tests, native sanitizer tests, seven integration tests, all Go\npackages, and Emery/Gabbro builds pass. Both dashboard layouts inspected in the\nemulators with sample quota/state packets. These are fixture values, not a live\naccount quota verification. SDK schema generated from installed Codex confirms\nRPC fields. Touch/dictation require hardware. Emulators cleaned up after testing.\n",
+      "frontmatter": {
+        "status": "done",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-13T00:31:13.954764738Z",
+      "modified_at": "2026-09-13T00:31:13.954764738Z"
+    },
     {
       "id": "01a09811-dac0-73f0-9f63-4e65e7de37a7",
       "slug": "issues/phone-notes-on-demand",
@@ -33,16 +47,16 @@
     {
       "id": "01a09805-4759-7923-a05c-5f27bab32e2d",
       "slug": "reference/docs/collections",
-      "version": 2,
+      "version": 3,
       "doc_type": "reference",
       "title": "docs/collections.md",
-      "content": "# Notes and To Do\n\n## Current behavior\n\nThe dashboard's bottom-right tile initially shows To Do. A tap followed by a\nhold opens the shared selection menu with Notes and To Do. Select an option\nwith two taps. The last collection opened occupies the tile, including after\nrestart. The physical Down shortcut continues to open To Do.\n\nA first touchscreen tap arms that control and produces a thin expanding ripple.\nThe next contact stops it immediately, including the start of a hold. The ripple\nreflects at rectangular edges or the circular bezel and fades over approximately\nhalf the screen width in 600 ms. Pebble lacks alpha-composited layers, so fading\nuses decreasing spatial coverage. This bounded input animation does not change\nthe once-per-minute passive refresh policy. A checkbox still needs two taps;\nthe second archives the task. Text panning cannot arm the adjacent checkbox.\n\nNotes list entries open a scrollable full-text view with the time at the top.\nSelect **Edit note** to dictate replacement text directly to that note. This\ninput is literal replacement text, even if it contains a timer command.\n\nThese commands are recognized locally by the phone:\n\n- “make a note Call Jane” or “create a note: Call Jane”\n- “note: Call Jane”\n- “edit a note Call Jane to Call John” (exact, case-sensitive old-text match)\n- “edit a note” or “show my notes” (opens the list)\n\nThe explicit edit phrase uses the first ` to ` delimiter. Use the note's Edit\naction when the old text contains that delimiter or multiple notes match.\nMissing/ambiguous matches do not modify anything. The PAM capability also accepts\na stable ID for edits.\n\n## Phone storage and on-demand loading\n\nNotes live in PebbleKit JS phone storage (`pebble-agent.notes.v1`), owned by\n`src/common/notes.js`. Opening Notes requests a fresh list from the phone: each\npage contains at most eight titles/summaries and IDs, without downloading note\nbodies. Opening a note requests its contents; long notes have Previous/Next page\nactions. A content page contains at most four UTF-8 chunks of 179 bytes each.\nThe watch retains only the current rendered page in RAM, with no persistent\nnote copies. Returning to the list fetches it again. The phone store accepts\nnotes up to 65,536 JavaScript characters, subject to phone storage availability;\nagent/dictation transports retain their own message limits. An overlong direct\nedit dictation is rejected rather than silently saving a truncated replacement.\n\nEdits replace the full note on the phone, preserving its ID. The store commits\nrecords and replay keys together before reporting success. Failed writes leave\nprevious records intact. Existing watch notes transfer one at a time at phone\nstartup or on opening Notes. A watch record is deleted only after a matching\nphone acknowledgment of durable storage; interruptions retry safely. Legacy\nrecords awaiting acknowledgment are the only remaining notes on watch storage.\n\nThe watch retains the selected collection preference and note count in the UI,\nnot the phone's note database. Opening a collection requires a connected phone;\na missing reply times out after 15 seconds. Per-request tokens reject stale\nNotes replies, and successful browsing completes quietly without a buzz.\n\nTo-dos remain watch-owned (32 including archived items) and retain their stable\nIDs and existing storage format. Notes and to-dos do not sync to external\nproviders yet.\n\n## First-tap animation preference\n\nThe phone settings page includes **First-tap ripple animation**, enabled by\ndefault. Saving it sends the preference to the watch, where it survives restart.\nDisabling it stops an active ripple and prevents future ripple timers. It does\nnot disable the first-tap guard: checkbox completion and other touch actions\nstill require their arming tap. Physical buttons are unchanged.\n\n## Planned sync boundary — not implemented\n\nKeep provider integration in the phone/server layer, outside watch rendering,\nvoice regexes, and the native record format. A future canonical collection store\nshould expose the same operations for every provider: list changes using a\ncursor, create/update by stable ID, mark tasks completed/restored, and acknowledge\ncommitted mutations. Views can request a refresh on opening while displaying the\ncached collection immediately. Local writes must remain usable offline.\n\nScope local IDs with a persisted installation namespace at first synchronization;\nstore a separate mapping from canonical ID to provider/account/collection and\nprovider record ID. Do not replace local IDs when a provider assigns its ID.\nUse a durable outbox with mutation IDs, revisions, and acknowledged cursors so\nretries are idempotent in both directions. Persist records before advancing a\ncursor or acknowledging delivery. Server-side storage can retain complete note\nbodies; the watch should request bounded pages/previews and selected bodies,\nrather than truncating and uploading a long remote note as its replacement.\n\nAdd versioned sync metadata (or sidecar records) for revisions, pending changes,\nprovider mappings, and deletion tombstones. Preserve existing records during that\nmigration. To-do archive means completed, not deleted; map it to provider task\ncompletion and restore semantics. A future note deletion requires a tombstone.\nConcurrent edits need an explicit conflict policy, such as retaining both\nversions for resolution, rather than overwriting according to device clock time.\nProvider adapters translate these operations and declare supported features;\nsettings select the account/collection for each provider. Provider credentials,\ncursors, retries, and webhook/polling mechanics belong in that integration layer.\nThis boundary supports future Todoist/Google Tasks and note backends without\nrequiring provider-specific watch screens.\n",
+      "content": "Source: `docs/collections.md`\n\n# Notes and To Do\n\n## Current behavior\n\nThe dashboard's bottom-right tile initially shows To Do. A tap followed by a\nhold opens the shared selection menu with Notes and To Do. Select an option\nwith two taps. The last collection opened occupies the tile, including after\nrestart. The physical Down shortcut continues to open To Do.\n\nA first touchscreen tap arms that control and produces a thin expanding ripple.\nThe next contact stops it immediately, including the start of a hold. The ripple\nreflects at rectangular edges or the circular bezel and fades over approximately\nhalf the screen width in 600 ms. Pebble lacks alpha-composited layers, so fading\nuses decreasing spatial coverage. This bounded input animation does not change\nthe once-per-minute passive refresh policy. A checkbox still needs two taps;\nthe second archives the task. Text panning cannot arm the adjacent checkbox.\n\nNotes list entries open a scrollable full-text view with the time at the top.\nSelect **Edit note** to dictate replacement text directly to that note. This\ninput is literal replacement text, even if it contains a timer command.\n\nThese commands are recognized locally by the phone:\n\n- “make a note Call Jane” or “create a note: Call Jane”\n- “note: Call Jane”\n- “edit a note Call Jane to Call John” (exact, case-sensitive old-text match)\n- “edit a note” or “show my notes” (opens the list)\n\nThe explicit edit phrase uses the first ` to ` delimiter. Use the note's Edit\naction when the old text contains that delimiter or multiple notes match.\nMissing/ambiguous matches do not modify anything. The PAM capability also accepts\na stable ID for edits.\n\n## Phone storage and on-demand loading\n\nNotes live in PebbleKit JS phone storage (`pebble-agent.notes.v1`), owned by\n`src/common/notes.js`. Opening Notes requests a fresh list from the phone: each\npage contains at most eight titles/summaries and IDs, without downloading note\nbodies. Opening a note requests its contents; long notes have Previous/Next page\nactions. A content page contains at most four UTF-8 chunks of 179 bytes each.\nThe watch retains only the current rendered page in RAM, with no persistent\nnote copies. Returning to the list fetches it again. The phone store accepts\nnotes up to 65,536 JavaScript characters, subject to phone storage availability;\nagent/dictation transports retain their own message limits. An overlong direct\nedit dictation is rejected rather than silently saving a truncated replacement.\n\nEdits replace the full note on the phone, preserving its ID. The store commits\nrecords and replay keys together before reporting success. Failed writes leave\nprevious records intact. Notes use phone storage only; there is no watch-to-phone\nmigration or reader for earlier watch note formats.\n\nThe watch retains the selected collection preference and note count in the UI,\nnot the phone's note database. Opening a collection requires a connected phone;\na missing reply times out after 15 seconds. Per-request tokens reject stale\nNotes replies, and successful browsing completes quietly without a buzz.\n\nTo-dos remain watch-owned (32 including archived items) and retain their stable\nIDs and existing storage format. Notes and to-dos do not sync to external\nproviders yet.\n\n## First-tap animation preference\n\nThe phone settings page includes **First-tap ripple animation**, enabled by\ndefault. Saving it sends the preference to the watch, where it survives restart.\nDisabling it stops an active ripple and prevents future ripple timers. It does\nnot disable the first-tap guard: checkbox completion and other touch actions\nstill require their arming tap. Physical buttons are unchanged.\n\n## Planned sync boundary — not implemented\n\nKeep provider integration in the phone/server layer, outside watch rendering,\nvoice regexes, and the native record format. A future canonical collection store\nshould expose the same operations for every provider: list changes using a\ncursor, create/update by stable ID, mark tasks completed/restored, and acknowledge\ncommitted mutations. Views can request a refresh on opening while displaying the\ncached collection immediately. Local writes must remain usable offline.\n\nScope local IDs with a persisted installation namespace at first synchronization;\nstore a separate mapping from canonical ID to provider/account/collection and\nprovider record ID. Do not replace local IDs when a provider assigns its ID.\nUse a durable outbox with mutation IDs, revisions, and acknowledged cursors so\nretries are idempotent in both directions. Persist records before advancing a\ncursor or acknowledging delivery. Server-side storage can retain complete note\nbodies; the watch should request bounded pages/previews and selected bodies,\nrather than truncating and uploading a long remote note as its replacement.\n\nAdd sync metadata for revisions, pending changes, provider mappings, and\ndeletion tombstones. To-do archive means completed, not deleted; map it to provider task\ncompletion and restore semantics. A future note deletion requires a tombstone.\nConcurrent edits need an explicit conflict policy, such as retaining both\nversions for resolution, rather than overwriting according to device clock time.\nProvider adapters translate these operations and declare supported features;\nsettings select the account/collection for each provider. Provider credentials,\ncursors, retries, and webhook/polling mechanics belong in that integration layer.\nThis boundary supports future Todoist/Google Tasks and note backends without\nrequiring provider-specific watch screens.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium"
       },
       "created_at": "2026-09-12T23:49:15.056444193Z",
-      "modified_at": "2026-09-13T00:11:33.726213195Z"
+      "modified_at": "2026-09-13T00:31:13.954764738Z"
     },
     {
       "id": "01a097ea-d805-7c22-9326-792e1e76bdb5",
@@ -460,10 +474,10 @@
     {
       "id": "01a091eb-4958-7731-a829-5a501e760d31",
       "slug": "reference/docs/server",
-      "version": 5,
+      "version": 6,
       "doc_type": "reference",
       "title": "docs/server.md",
-      "content": "Source: `docs/server.md`\n\n# Codex-backed agent server\n\n`pebble-agent-server` is the real self-hosted PAM endpoint. It accepts a watch request over streaming HTTP or the `pam.v1` WebSocket subprotocol, runs the corresponding conversation turn through Codex app-server, validates the model's PAM one complete line at a time, and streams those lines to the phone.\n\n## Prerequisites\n\n- Go 1.24 or newer to build the binary.\n- A current Codex CLI on `PATH`.\n- A working Codex CLI login on the same operating-system account that runs the service.\n- A TLS reverse proxy, VPN, or trusted private network through which the paired phone can reach the service.\n\nBuild and start it:\n\n```sh\ngo build -o build/pebble-agent-server ./cmd/pebble-agent-server\nexport PEBBLE_AGENT_TOKEN=\"replace-with-a-long-random-secret\"\n./build/pebble-agent-server --listen 0.0.0.0:8787\n```\n\nSet the watchapp endpoint to `http://SERVER:8787/v1/agent` and enter the same token. `POST /` is also accepted, but `/v1/agent` is the stable endpoint. `GET /healthz` reports process health.\n\nThe server refuses a non-loopback listener when `PEBBLE_AGENT_TOKEN` is empty. `--allow-unauthenticated-public` exists for tightly controlled development environments, but it is deliberately explicit. The bearer token is read from an environment variable rather than a command-line value so it is not exposed in a process listing.\n\n## Codex configuration\n\nDefaults:\n\n```text\nmodel:  gpt-5.6-luna\neffort: xhigh\nfast:   on\n```\n\nSet them when the process starts:\n\n```sh\n./build/pebble-agent-server \\\n  --model gpt-5.6-luna \\\n  --effort xhigh\n```\n\nThe corresponding environment variables are `PEBBLE_AGENT_MODEL` and `PEBBLE_AGENT_EFFORT`. These values are server defaults. Phone settings can override the model and effort for each request.\n\nThe phone settings provide model and effort selection plus web search (disabled,\ncached, live), filesystem access (runtime files only, read-only, workspace\nwrites), command execution, command network access, and automatic approval\nreview. Phone settings default to Luna / xhigh, fast mode, and live web search. Commands,\nuser-file access, command network access, and auto-review remain off. Older callers\nwithout a backend node retain disabled web search. Missing fast_mode defaults on. Permission settings do not affect local timers, alarms,\ndictation, phone weather, or the transport connection to Codex.\n\n`GET /v1/models` uses the same bearer authentication and returns the installed\nCodex `model/list` catalog, including supported reasoning efforts and server\ndefaults. It supports cross-origin requests from the static settings page using\nan explicit Authorization header and no cookies. A custom model with blank\neffort uses that model's advertised default; blank model and effort use server\ndefaults. Unsupported selections produce an error rather than silently changing\nmodels. The phone bridge preloads model choices before opening settings, including for\nlocal HTTP/WS endpoints. The page also has a refresh button; browser refresh may\nbe blocked as mixed content for HTTP endpoints. In that case, save the endpoint\nand reopen settings to load through the phone bridge.\n\nFast mode is sent as the allowlisted `fast_mode=true|false` backend attribute.\nEach turn requests `serviceTierForTurn=fast` or `default`, so turning it off does\nnot inherit a previous fast tier. Fast mode changes preserve the conversation.\nCodex maps fast to priority processing; model/account availability still applies.\nExisting saved preferences are preserved when defaults change.\n\nPermission options are allowlisted PAM `backend` attributes, excluded from the\nmodel-facing document. They resolve to a thread-local named Codex permission\nprofile. No user files grants only the platform's minimal runtime paths; read-only\nallows file reads; workspace-write additionally grants writes under `--workspace`.\nCommand execution and network access are independent. Shells inherit only core\nenvironment variables. Project instruction files and memory injection are disabled.\nInherited MCP servers, plugins, and app tools are disabled because their privileges\nare not controlled by the local command sandbox.\n\nAuto-review off means `approvalPolicy=never` and `approvalsReviewer=user`: operations\nrequiring additional permission are denied. Auto-review on means `on-request` and\n`auto_review`: Codex may review and approve exceptions beyond the selected baseline.\nIt is not blanket approval. Unexpected interactive client requests are rejected;\nthere is no manual approval UI on the watch. Managed server restrictions remain\nin force and can reject requested settings.\n\nPermission profiles are isolated by session, workspace, and permission settings.\nChanging permissions uses a separate conversation; returning to a previous profile\nresumes its conversation. Model/effort changes keep the same conversation.\nLegacy threads without a recorded permission profile are not reused. Each turn\ninherits the resolved thread permissions; it must not re-send the thread-local\nprofile name, which app-server otherwise resolves against global disk config.\n\nThis implementation was verified with Codex CLI 0.153.2 and its generated app-server\nschema. Named permissions use the experimental API handshake; unsupported servers\nfail explicitly. See the official [app-server documentation](https://learn.chatgpt.com/docs/app-server)\nand [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).\n\n\n## App-server transport selection\n\nEach connection attempt follows this order:\n\n1. Discover the running daemon with `codex app-server daemon version` and connect to its reported Unix socket using WebSocket-over-Unix-socket. `--app-server-unix /absolute/path.sock` skips discovery.\n2. Start and retain a managed `codex app-server --stdio` child process.\n3. Connect to `--app-server-url`, which defaults to `ws://127.0.0.1:4222`.\n\nUse `PEBBLE_AGENT_CODEX` to select another Codex executable, `PEBBLE_AGENT_APP_SERVER_UNIX` for an explicit socket, and `PEBBLE_AGENT_APP_SERVER_URL` for the fallback URL. If a remote WebSocket app-server requires a bearer token, put it in `CODEX_APP_SERVER_TOKEN` or change the variable name with `--app-server-token-env`.\n\nEvery transport performs the required `initialize` request and `initialized` notification. A dropped long-lived connection is re-resolved in the same order on the next request. A connection attempt has a five-second per-transport timeout by default.\n\nEvery JSON protocol message sent to or received from Codex app-server is logged at `info` with `direction=to_app_server` or `direction=from_app_server`, the selected transport, and the complete raw payload. This includes dictated prompts, model output deltas, thread metadata, errors, and any server requests or client responses. Phone endpoint bearer credentials are consumed at the HTTP/WebSocket boundary and are never forwarded in the model-facing PAM document.\n\n## Logs and rotation\n\nStart runtime debugging with:\n\n```text\n~/.pebble-agent/server.log\n```\n\nThe server mirrors its structured stderr output into that file. Before a complete log record would take the active file past 10 MiB (10,485,760 bytes), it rotates the file. It retains five backups: `server.log.1` is newest and `server.log.5` is oldest. A single record larger than 10 MiB remains intact. The active log is created with mode `0600`, and a newly created `.pebble-agent` directory is private to the current user.\n\nSet `PEBBLE_AGENT_LOG_FILE` or use `--log-file /absolute/path` to choose a different file. Use `--log-file -` to log only to stderr. The payloads are intentionally not content-redacted, so protect the active file and every backup as sensitive conversation data.\n\nThese logs prove what crossed the Go server/Codex boundary. If they show a completed, valid PAM response but the watchapp exits, collect Pebble watch logs next: that failure is downstream in the phone bridge, AppMessage delivery, or native watch process.\n\n## Conversations and streaming\n\nThe PAM `request.session` value and permission profile map to a persisted Codex thread. The default state file is the user cache directory's `pebble-agent/sessions.json`, written with mode `0600`; use `--state /absolute/path.json` to move it. Restarting either service resumes the thread. If Codex no longer has a persisted thread, the mapping is discarded and a new one is created.\n\nOnly final-answer agent-message deltas are forwarded. Commentary is ignored. Output is limited to 128 KiB, 2,048 bytes per line, 96 PAM nodes, eight indentation levels, and 48 screen elements. Layouts, element kinds, bindings, patches, removals, and built-in capability commands are allowlisted before each line is flushed. Invalid output becomes a valid root PAM `error` instead of arbitrary bytes reaching the watch. A missing final `done` is supplied for an otherwise valid screen.\n\nAgent execution is unlimited by default (`--turn-timeout 0`). A positive duration\nsets an execution deadline independent of the phone notification window.\n\n## Persistent request jobs\n\nThe phone generates and saves a 30-character hexadecimal ID before submitting\nPAM to `POST /v1/jobs/{id}`. The server persists the accepted job before replying\nwith JSON. Repeating the ID and identical request returns that job; a different\nrequest using the same ID receives HTTP 409. All job routes use the same bearer\nauthentication as `/v1/agent`.\n\n- `GET /v1/jobs/{id}` returns status and a completed PAM result, if available.\n- `GET /v1/jobs/{id}?wait=45` waits once for completion, bounded to 120 seconds.\n  Disconnecting this GET never cancels the job. The phone uses one wait and\n  makes no further automatic polls after it expires. Opening Notifications\n  explicitly refreshes all ongoing jobs once; overlapping checks for the same\n  job are coalesced. This batch never opens result screens or buzzes.\n- `POST /v1/jobs/{id}/cancel` explicitly cancels the work. The transitional\n  `canceling` status becomes `canceled` after execution unwinds.\n- `POST /v1/jobs/{id}/ack` releases the server result only after the phone has\n  cached it and the watch confirms presentation. The ID/hash remain as a\n  deduplication tombstone.\n\nJobs are stored as private JSON files beside session state, under `jobs/`.\nUnretrieved results have no expiry by default. `--job-retention 168h` expires\nterminal jobs seven days after completion, whether retrieved or not; cleanup\nruns every minute and during lookups/submissions. The finite retention setting\nalso bounds tombstone lifetime and therefore the duplicate-submission guarantee.\nRunning jobs are never removed by retention. On restart, unfinished jobs become\nfailed with an explicit restart message; completed results remain retrievable.\nCancellation does not roll back prior changes.\n\nWork in the same conversation is serialized. Up to 32 agent jobs may be active\non the server, with 24 unviewed requests in the phone/watch notification list.\nRetrieved results remain cached on the phone. Failed/canceled entries can be\ndismissed. Restoring the original endpoint is required to check a job after\nchanging servers, so a new server token is never sent to an old endpoint.\n\nThe legacy streaming `/v1/agent` endpoint remains available for compatible\nclients. The updated watch uses the job routes. Reverse proxies must route\n`/v1/jobs/` as well; a shorter proxy timeout only ends the completion wait, not\nthe work.\n\n## Internet-facing deployment\n\nKeep the Go listener on `127.0.0.1` when a reverse proxy runs on the same host. Terminate TLS at that proxy, disable response buffering for `/v1/agent`, permit WebSocket upgrades if using WSS, and forward `Authorization`. The service already sends `Cache-Control: no-store` and `X-Accel-Buffering: no`.\n\nDo not expose an unencrypted bearer token over the public internet. The service is designed for one trusted operator's Codex account; it is not a multi-tenant authorization or billing boundary.\n\n## Useful flags\n\nRun `pebble-agent-server -h` for the complete set. Common options include:\n\n```text\n--listen 127.0.0.1:8787\n--model gpt-5.6-luna\n--effort xhigh\n--connect-timeout 5s\n--turn-timeout 0\n--job-retention 0\n--state /absolute/path/sessions.json\n--workspace /absolute/path/empty-workspace\n--log-level debug|info|warn|error\n--log-file /absolute/path/server.log\n```\n\nThe workspace is an otherwise empty directory by default. It becomes the writable root only when workspace writes are selected in phone settings. Read-only and workspace-write modes allow reads outside that root; no-user-files mode restricts reads to minimal runtime paths.\n",
+      "content": "Source: `docs/server.md`\n\n# Codex-backed agent server\n\n`pebble-agent-server` is the real self-hosted PAM endpoint. It accepts a watch request over streaming HTTP or the `pam.v1` WebSocket subprotocol, runs the corresponding conversation turn through Codex app-server, validates the model's PAM one complete line at a time, and streams those lines to the phone.\n\n## Prerequisites\n\n- Go 1.24 or newer to build the binary.\n- A current Codex CLI on `PATH`.\n- A working Codex CLI login on the same operating-system account that runs the service.\n- A TLS reverse proxy, VPN, or trusted private network through which the paired phone can reach the service.\n\nBuild and start it:\n\n```sh\ngo build -o build/pebble-agent-server ./cmd/pebble-agent-server\nexport PEBBLE_AGENT_TOKEN=\"replace-with-a-long-random-secret\"\n./build/pebble-agent-server --listen 0.0.0.0:8787\n```\n\nSet the watchapp endpoint to `http://SERVER:8787/v1/agent` and enter the same token. `POST /` is also accepted, but `/v1/agent` is the stable endpoint. `GET /healthz` reports process health.\n\nThe server refuses a non-loopback listener when `PEBBLE_AGENT_TOKEN` is empty. `--allow-unauthenticated-public` exists for tightly controlled development environments, but it is deliberately explicit. The bearer token is read from an environment variable rather than a command-line value so it is not exposed in a process listing.\n\n## Codex configuration\n\nDefaults:\n\n```text\nmodel:  gpt-5.6-luna\neffort: xhigh\nfast:   on\n```\n\nSet them when the process starts:\n\n```sh\n./build/pebble-agent-server \\\n  --model gpt-5.6-luna \\\n  --effort xhigh\n```\n\nThe corresponding environment variables are `PEBBLE_AGENT_MODEL` and `PEBBLE_AGENT_EFFORT`. These values are server defaults. Phone settings can override the model and effort for each request.\n\nThe phone settings provide model and effort selection plus web search (disabled,\ncached, live), filesystem access (runtime files only, read-only, workspace\nwrites), command execution, command network access, and automatic approval\nreview. Phone settings default to Luna / xhigh, fast mode, and live web search. Commands,\nuser-file access, command network access, and auto-review remain off. Older callers\nwithout a backend node retain disabled web search. Missing fast_mode defaults on. Permission settings do not affect local timers, alarms,\ndictation, phone weather, or the transport connection to Codex.\n\n`GET /v1/models` uses the same bearer authentication and returns the installed\nCodex `model/list` catalog, including supported reasoning efforts and server\ndefaults. It supports cross-origin requests from the static settings page using\nan explicit Authorization header and no cookies. A custom model with blank\neffort uses that model's advertised default; blank model and effort use server\ndefaults. Unsupported selections produce an error rather than silently changing\nmodels. The phone bridge preloads model choices before opening settings, including for\nlocal HTTP/WS endpoints. The page also has a refresh button; browser refresh may\nbe blocked as mixed content for HTTP endpoints. In that case, save the endpoint\nand reopen settings to load through the phone bridge.\n\nFast mode is sent as the allowlisted `fast_mode=true|false` backend attribute.\nEach turn requests `serviceTierForTurn=fast` or `default`, so turning it off does\nnot inherit a previous fast tier. Fast mode changes preserve the conversation.\nCodex maps fast to priority processing; model/account availability still applies.\nExisting saved preferences are preserved when defaults change.\n\nPermission options are allowlisted PAM `backend` attributes, excluded from the\nmodel-facing document. They resolve to a thread-local named Codex permission\nprofile. No user files grants only the platform's minimal runtime paths; read-only\nallows file reads; workspace-write additionally grants writes under `--workspace`.\nCommand execution and network access are independent. Shells inherit only core\nenvironment variables. Project instruction files and memory injection are disabled.\nInherited MCP servers, plugins, and app tools are disabled because their privileges\nare not controlled by the local command sandbox.\n\nAuto-review off means `approvalPolicy=never` and `approvalsReviewer=user`: operations\nrequiring additional permission are denied. Auto-review on means `on-request` and\n`auto_review`: Codex may review and approve exceptions beyond the selected baseline.\nIt is not blanket approval. Unexpected interactive client requests are rejected;\nthere is no manual approval UI on the watch. Managed server restrictions remain\nin force and can reject requested settings.\n\nPermission profiles are isolated by session, workspace, and permission settings.\nChanging permissions uses a separate conversation; returning to a previous profile\nresumes its conversation. Model/effort changes keep the same conversation.\nLegacy threads without a recorded permission profile are not reused. Each turn\ninherits the resolved thread permissions; it must not re-send the thread-local\nprofile name, which app-server otherwise resolves against global disk config.\n\nThis implementation was verified with Codex CLI 0.153.2 and its generated app-server\nschema. Named permissions use the experimental API handshake; unsupported servers\nfail explicitly. See the official [app-server documentation](https://learn.chatgpt.com/docs/app-server)\nand [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).\n\n\n## App-server transport selection\n\nEach connection attempt follows this order:\n\n1. Discover the running daemon with `codex app-server daemon version` and connect to its reported Unix socket using WebSocket-over-Unix-socket. `--app-server-unix /absolute/path.sock` skips discovery.\n2. Start and retain a managed `codex app-server --stdio` child process.\n3. Connect to `--app-server-url`, which defaults to `ws://127.0.0.1:4222`.\n\nUse `PEBBLE_AGENT_CODEX` to select another Codex executable, `PEBBLE_AGENT_APP_SERVER_UNIX` for an explicit socket, and `PEBBLE_AGENT_APP_SERVER_URL` for the fallback URL. If a remote WebSocket app-server requires a bearer token, put it in `CODEX_APP_SERVER_TOKEN` or change the variable name with `--app-server-token-env`.\n\nEvery transport performs the required `initialize` request and `initialized` notification. A dropped long-lived connection is re-resolved in the same order on the next request. A connection attempt has a five-second per-transport timeout by default.\n\nEvery JSON protocol message sent to or received from Codex app-server is logged at `info` with `direction=to_app_server` or `direction=from_app_server`, the selected transport, and the complete raw payload. This includes dictated prompts, model output deltas, thread metadata, errors, and any server requests or client responses. Phone endpoint bearer credentials are consumed at the HTTP/WebSocket boundary and are never forwarded in the model-facing PAM document.\n\n## Logs and rotation\n\nStart runtime debugging with:\n\n```text\n~/.pebble-agent/server.log\n```\n\nThe server mirrors its structured stderr output into that file. Before a complete log record would take the active file past 10 MiB (10,485,760 bytes), it rotates the file. It retains five backups: `server.log.1` is newest and `server.log.5` is oldest. A single record larger than 10 MiB remains intact. The active log is created with mode `0600`, and a newly created `.pebble-agent` directory is private to the current user.\n\nSet `PEBBLE_AGENT_LOG_FILE` or use `--log-file /absolute/path` to choose a different file. Use `--log-file -` to log only to stderr. The payloads are intentionally not content-redacted, so protect the active file and every backup as sensitive conversation data.\n\nThese logs prove what crossed the Go server/Codex boundary. If they show a completed, valid PAM response but the watchapp exits, collect Pebble watch logs next: that failure is downstream in the phone bridge, AppMessage delivery, or native watch process.\n\n## Conversations and streaming\n\nThe PAM `request.session` value and permission profile map to a persisted Codex thread. The default state file is the user cache directory's `pebble-agent/sessions.json`, written with mode `0600`; use `--state /absolute/path.json` to move it. Restarting either service resumes the thread. If Codex no longer has a persisted thread, the mapping is discarded and a new one is created.\n\nOnly final-answer agent-message deltas are forwarded. Commentary is ignored. Output is limited to 128 KiB, 2,048 bytes per line, 96 PAM nodes, eight indentation levels, and 48 screen elements. Layouts, element kinds, bindings, patches, removals, and built-in capability commands are allowlisted before each line is flushed. Invalid output becomes a valid root PAM `error` instead of arbitrary bytes reaching the watch. A missing final `done` is supplied for an otherwise valid screen.\n\nAgent execution is unlimited by default (`--turn-timeout 0`). A positive duration\nsets an execution deadline independent of the phone notification window.\n\n## Persistent request jobs\n\nThe phone generates and saves a 30-character hexadecimal ID before submitting\nPAM to `POST /v1/jobs/{id}`. The server persists the accepted job before replying\nwith JSON. Repeating the ID and identical request returns that job; a different\nrequest using the same ID receives HTTP 409. All job routes use the same bearer\nauthentication as `/v1/agent`.\n\n- `GET /v1/jobs/{id}` returns status and a completed PAM result, if available.\n- `GET /v1/jobs/{id}?wait=45` waits once for completion, bounded to 120 seconds.\n  Disconnecting this GET never cancels the job. The phone uses one wait and\n  makes no further automatic polls after it expires. Opening Notifications\n  explicitly refreshes all ongoing jobs once; overlapping checks for the same\n  job are coalesced. This batch never opens result screens or buzzes.\n- `POST /v1/jobs/{id}/cancel` explicitly cancels the work. The transitional\n  `canceling` status becomes `canceled` after execution unwinds.\n- `POST /v1/jobs/{id}/ack` releases the server result only after the phone has\n  cached it and the watch confirms presentation. The ID/hash remain as a\n  deduplication tombstone.\n\nJobs are stored as private JSON files beside session state, under `jobs/`.\nUnretrieved results have no expiry by default. `--job-retention 168h` expires\nterminal jobs seven days after completion, whether retrieved or not; cleanup\nruns every minute and during lookups/submissions. The finite retention setting\nalso bounds tombstone lifetime and therefore the duplicate-submission guarantee.\nRunning jobs are never removed by retention. On restart, unfinished jobs become\nfailed with an explicit restart message; completed results remain retrievable.\nCancellation does not roll back prior changes.\n\nWork in the same conversation is serialized. Up to 32 agent jobs may be active\non the server, with 24 unviewed requests in the phone/watch notification list.\nRetrieved results remain cached on the phone. Failed/canceled entries can be\ndismissed. Restoring the original endpoint is required to check a job after\nchanging servers, so a new server token is never sent to an old endpoint.\n\nThe streaming `/v1/agent` endpoint is used by the standalone client and demo\nprotocol. The watch uses the job routes. Reverse proxies must route\n`/v1/jobs/` as well; a shorter proxy timeout only ends the completion wait, not\nthe work.\n\n## Internet-facing deployment\n\nKeep the Go listener on `127.0.0.1` when a reverse proxy runs on the same host. Terminate TLS at that proxy, disable response buffering for `/v1/agent`, permit WebSocket upgrades if using WSS, and forward `Authorization`. The service already sends `Cache-Control: no-store` and `X-Accel-Buffering: no`.\n\nDo not expose an unencrypted bearer token over the public internet. The service is designed for one trusted operator's Codex account; it is not a multi-tenant authorization or billing boundary.\n\n## Useful flags\n\nRun `pebble-agent-server -h` for the complete set. Common options include:\n\n```text\n--listen 127.0.0.1:8787\n--model gpt-5.6-luna\n--effort xhigh\n--connect-timeout 5s\n--turn-timeout 0\n--job-retention 0\n--state /absolute/path/sessions.json\n--workspace /absolute/path/empty-workspace\n--log-level debug|info|warn|error\n--log-file /absolute/path/server.log\n```\n\nThe workspace is an otherwise empty directory by default. It becomes the writable root only when workspace writes are selected in phone settings. Read-only and workspace-write modes allow reads outside that root; no-user-files mode restricts reads to minimal runtime paths.\n\n## Dashboard status\n\nThe authenticated `GET /v1/status` endpoint reads Codex app-server telemetry on\ndemand. `remainingPercent` is the lowest remaining percentage across the primary\nand secondary windows of `rateLimitsByLimitId[\"codex\"]` from\n`account/rateLimits/read`. It is quota remaining, not context-window capacity.\nMissing quota data is `null`, including accounts without reported limits.\n\n`activeThreads` counts loaded threads whose current status is `active`, using\n`thread/loaded/list` and metadata-only `thread/read` calls. It covers the connected\napp-server instance, including its threads outside Agent. The state is `working`\nwhen any thread is active, `idle` otherwise, and `error` for a thread system error.\nUnavailable status/counts remain unknown. The endpoint has a 15-second deadline.\n\nThe phone fetches at startup and at most once per minute using the existing watch\ntick; unchanged telemetry sends no additional watch packet. Dashboard rendering\nkeeps its existing passive minute limit. The header shows battery charge, a brain\nwith quota remaining, and small sleeping/thinking pictographs with the active\nthread count. Unknown values display dashes and a question face. The pictographs\nare drawn directly because the watch system font does not supply emoji glyphs.\n\nProtocol reference: [Codex app-server](https://learn.chatgpt.com/docs/app-server).\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -473,15 +487,15 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-12T22:35:26.935305933Z"
+      "modified_at": "2026-09-13T00:31:13.954764738Z"
     },
     {
       "id": "01a091eb-4965-7451-8490-4bb90faa9ae5",
       "slug": "reference/docs/testing",
-      "version": 14,
+      "version": 15,
       "doc_type": "reference",
       "title": "docs/testing.md",
-      "content": "# Testing before hardware\n\nThe project has a useful pre-hardware test boundary. Parser, model, transport, phone bridge, backend fixture, configuration, watch compilation, most interaction logic, persistence, and wakeup behavior can be checked locally. Microphone quality, physical touch behavior, Bluetooth/phone integration, and real power timing still need devices.\n\n## Repeatable automated checks\n\nRun:\n\n```sh\nnpm test\nnpm run build:watch\n```\n\n`npm test` currently includes:\n\n- 47 JavaScript tests covering PAM at every chunk boundary, byte and hierarchy limits, all layouts/elements, patches/removals, UTF-8 AppMessage splitting, queue retry/staleness, HTTP and WebSocket cancellation/timeouts, settings, weather, the capability registry, writer output, onboarding, native dashboard preservation, and dictation input through the full PebbleKit-to-agent-to-render bridge.\n- Native C tests built with `-Wall -Wextra -Werror`, AddressSanitizer, and UndefinedBehaviorSanitizer. These cover metadata parsing and escaping, strict signed 32-bit bounds, bounded copies, and duration parsing/formatting.\n- Four integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.\n- Go tests covering strict request/output PAM handling, output at arbitrary model-delta boundaries, invalid-model containment, persisted conversation threads, Codex RPC initialization and fallback order, real loopback HTTP and downstream WebSocket requests, and app-server stdio, WebSocket, and WebSocket-over-Unix-socket transports.\n\nThe watch build compiles and links the same sources for both target platforms. At the last run it used about 31 KiB of each platform's 128 KiB RAM budget, leaving about 100 KiB for heap.\n\n## Emulator checks completed\n\n### Emery (rectangular)\n\n- Streamed dynamic screens containing every visible element type, then patched, appended, selected, scrolled, and removed content.\n- Exercised list, grid, card, progress, form, choice, modal, action-bar, status-bar, and symbolic-image rendering.\n- Opened a native number field, changed it using the declared step, confirmed it, and observed the semantic input sent to PebbleKit JS.\n- Started, paused, resumed, reset, replaced, and persisted timers/stopwatches. A timer exited in the background and relaunched the app at expiry. Replacing a timer no longer lets the old wakeup finish the new timer.\n- Scheduled a reminder, relaunched through its wakeup, acknowledged it, and verified its completion state.\n- Held Select through the app-wide long-click recognizer and entered the system dictation UI. The SDK simulator exercised the failure callback; successful transcription-to-agent delivery is covered by the phone-bridge test but remains a device check.\n- Repeated malformed and boundary-value render traffic without an app fault. App shutdown reported no retained heap allocation.\n\n### Gabbro (round/touch target)\n\n- Streamed a two-column grid and custom action rail on the round display.\n- Verified round-safe title/content insets and fully visible Up, Select, and Down symbols.\n- Replayed the dynamic render stress sequence without a native fault.\n- Compiled the touch-service code under `PBL_TOUCH`. The installed SDK's emulator had touch disabled at runtime, so taps, drags, hotspots, and swipes are not claimed as emulator passes.\n\n## Still requires hardware (and a paired phone)\n\n### Timer crash regression\n\nA physical Emery crash after dictation returned `duration=5s` was captured with\n`pebble logs --phone` (the default phone connection needs no IP). In the affected\nbuild, PC `0x5778` is inside newlib `strtol`, loading `_impure_ptr` through an\nabsolute address. That implementation is not safe in the relocated watchapp.\nDuration and reminder timestamp parsing now use the bounded native integer\nparser. Native sanitizer tests cover suffixes, signed limits, and overflow;\ncheck both watch ELF symbol tables for absence of `strtol` and `_impure_ptr`.\nHardware verification: dictate “Set a timer for 5 seconds”, then verify the\ncountdown and completion without an app fault while watch logging is attached.\n\n### Remaining device checks\n\nThe native scheduler suite now runs the real capability host and scheduler with\nmocked clock, persistence, wakeup and UI APIs under ASan/UBSan. It covers\nconcurrent timer/alarm expiry, repeated alerts, individual acknowledgment,\nsnooze, pause/resume, close/reopen recovery, capacity, failed storage/wakeups,\ncorrupt records, and stopwatch dashboard updates. Watch builds reject newlib\nstate symbols (`_impure_ptr`, `_ctype_`, etc.) that are unsafe in relocated\nwatchapps. Host sanitizer success alone cannot detect that class of bug.\n\nEmulator checks on Emery and Gabbro show simultaneous timer/alarm notifications,\nindependent acknowledgment, and an ongoing timer in the dashboard. The fixture\nuses the production scheduler and UI with seeded local commands.\n\nHardware acceptance for the dashboard update: create two timers and an alarm;\nBack to the dashboard and verify the running rows; cancel one timer with X;\nverify completion navigates to Notifications, repeated buzzing, independent\nacknowledgment and snooze. Close/reopen with active work and compare remaining\ntime. Assign a Quick Launch button and verify automatic dictation, while menu\nand wakeup launches show the dashboard. These hardware checks remain pending\nuntil exercised on the updated app.\n\n- A successful real microphone/dictation session, including cancellation, noisy speech, Unicode transcription, and permission/connectivity failures.\n- Physical tap targeting, drag scrolling, every swipe direction, action-rail taps, touch-disabled fallback, and edge behavior on both touch displays.\n- Bluetooth disconnect/reconnect, Android and iOS background behavior, configuration through the real phone app, HTTP buffering differences, WebSocket reconnects, authorization, and geolocation permission flows.\n- Haptic feel, reminder audibility/visibility, real wakeup accuracy across sleep/reboot/time-zone changes, and timer/reminder coexistence with other apps.\n- Battery use, long-running stopwatch drift, memory behavior over many conversations, and sunlight/low-light readability.\n\nDo not treat emulator wakeup timing, simulated dictation, or mouse-based touch as a substitute for the corresponding hardware checks.\n\nConcurrent-alert regressions cover reused model IDs, delivery retries before and\nafter relaunch, migration of existing dashboard records, a 10-second timer\nexpiring while a 60-second timer is open, and alarm expiry over dashboard,\nremote response, stopwatch, and timer screens. Notification focus changes\npreserve outstanding capability commands while suppressing late render traffic.\n\n\n### Pixel dashboard regression\n\nThe generated resource bundle builds on Emery and Gabbro. The JS bridge suite\ncovers New Chat resetting/persisting a session before its dictation acknowledgment,\ncanceling old responses, keeping subsequent normal dictation in that session,\nand routing Weather locally without a model request. Native scheduler tests cover\nall five dashboard action bindings, the Calendar placeholder, persistent todo addition,\narchive/restore, counts, storage failure, capacity and text limits, opening and\nrefreshing the separate Notifications list, returning home, and concurrent expiry.\n\nBoth Emery and Gabbro dashboards were visually checked with the generated assets\nand fully visible cards. On Emery, Calendar,\nNotifications (with existing due timers/reminders), and Todos open via buttons.\nReal microphone transcription, physical touch, phone geolocation, and New Chat's\nend-to-end device handshake remain hardware checks.\n\nIf the phone simulator reports a successful installation but leaves the app menu\nempty, the SDK's packet installer works through `pebble repl --emulator emery`:\n\n```python\nfrom libpebble2.services.install import AppInstaller\nAppInstaller(pebble, 'build/pebble-agent.pbw').install()\n```\n\nNotification progress regression checks 0%, 25%, paused stability, resumed 50%,\n100% completion, removal after acknowledgment/cancellation, and seven-day duration\nbounds. The native scheduler sends explicit timer/alarm kind and elapsed percentage\nmetadata. The SDK radial primitive defines zero at 12 o’clock and clockwise growth;\nempty models draw no notification icons or labels.\n\n### Failure delivery regression\n\nRegression coverage replays the unquoted multiword screen title at every chunk\nsplit, verifies strict request parsing and rejection of ambiguous repairs, and\nchecks terminal error lines after a header or partial screen. Bridge tests ensure\nthat the original failure reason reaches the watch with the response-begin ID,\nis not replaced by “no screen,” does not emit success/idle notifications, and\nallows a subsequent request to succeed. Native response-state tests cover errors\nbefore any screen, stale IDs, terminal failure, pre-handshake timeout, and retry.\n\nTodo and failure regressions also cover local voice parsing with preserved case/Unicode and HTTP 0/401/503 explanations without HTML parser errors. Hardware checks: drag long todo text both ways, scroll a long checklist, hold Talk to open the menu, tap outside to dismiss, and dictate through both conversation options.\n\nThe revised dashboard and conversation overlay were visually checked on Emery and Gabbro. Emery button checks confirmed Back dismisses the overlay, Down opens Todos, and Up opens Notifications. Screenshots are in `docs/screenshots/`.\n\nTime-bar tests verify Todos and Calendar flags and absence of an Add item row. Weather tests cover summary values, day/night/precipitation icons, background refresh isolation, cache writes, timeouts, and retaining a new summary across dashboard navigation. `dashboard-weather-emery.png` uses an injected synthetic 58F moon forecast for layout verification, not live weather.\n\n### Interactive PAM controls\n\nRegression coverage includes local action construction and bounds, range snapping,\nclockwise/counterclockwise dial seam handling, generated dictation fallback,\ncustom answers bypassing regexes with screen context, server validation of skill\nexamples, and skill installation into a temporary state directory. Slider/dial\nscreens were rendered using an isolated emulator fixture; the slider confirmation\nopened a native five-minute timer without an agent request, then the synthetic\ntimer was canceled. See `pam-slider-emery.png` and `pam-dial-emery.png`. Physical\nslider/dial gestures and microphone answers still need hardware checks.\n\n## Background requests\n\n`internal/jobs` tests connection cancellation without worker cancellation,\nexplicit cancellation, duplicate submission, durable retrieval acknowledgements,\nrestart recovery, and retention. HTTP tests check authentication and job routes.\n`tests/jobs.js` covers the single bounded wait, no continued polling, manual\nrefresh/cancel, durable IDs, ambiguous-submission retries, and stale responses.\nThe bridge tests verify completion buzz messages without unsolicited rendering,\nmanual PAM retrieval, conversation context, stable capability invocation IDs,\nand acknowledgement only after watch presentation. Native tests cover job rows,\nstatus checks, cancel/dismiss actions, and watch persistence.\n\nOpening Notifications is covered by native tests for immediate Checking labels,\nfailed-check fallback, and no refresh loop during list rebuilds. JS tests cover\nall ongoing jobs, exclusion of terminal/retrieved jobs, overlapping pane opens,\ntransient checking state, and row-only bridge updates without unsolicited\nrendering or vibration.\n\n## Touchscreen arming\n\nThe native `touch_guard_test` exercises same-target double taps, one-use arming,\nexpiry, target changes, tap-then-hold and tap-then-drag, unarmed hold/drag rejection,\nmenu targets, screen/input resets, edge retargeting, and clock wrap. The watch\nhandler gates touchdown, movement and liftoff before any mutation or hold timer;\nphysical click handlers do not use the gate. Both Emery and Gabbro SDK builds\ncompile the touch integration. Physical touchscreen behavior still requires a\nhardware smoke test.\n\n## Minute refresh efficiency regression\n\nThe native suite checks the passive paint deadline (including clock wrap),\nimmediate user refresh, one idle host callback per minute, no separate stopwatch\ncallback, accurate elapsed values on interaction, unchanged-job write suppression,\nand one-shot job-check timeout behavior. Existing schedule tests retain exact\nshort deadlines, repeated alerts, wakeup failure fallback, and persistence.\nPhone tests cover fresh weather reuse, duplicate packet suppression, stale-cache\nfetching, and invalidation after unit changes. The full npm suite and both watch\nbuilds pass. Emery screenshots confirm dashboard and Todos clock rendering and\nphysical-button navigation; the emulator was shut down with `pebble kill`.\nPhysical display timing and battery savings still require hardware.\n\n## Notes, collection preference, and unlock ripple\n\nThe native sanitizer suite covers two-tap checkbox completion, note add/edit,\nexact-match ambiguity, stable IDs across edits/relaunches, capacity, write failure,\noperation replay, persisted tile preference, and archived todo identity migration.\nRipple tests cover half-width travel and reflected points at rectangular edges\nand the circular bezel, including grazing contacts. Phone tests cover note voice\nregexes, preserved text, and bypassing both agent and timer interpretation. Go PAM\ntests accept the note add/edit/list commands. The full suite passes (80 phone\ntests, seven integration tests, native cases, and all Go packages), and both watch\nbuilds pass. The PAM skill validator also passes.\n\nAn Emery fixture rendered the full note, Edit note action, and remembered Notes\ndashboard tile; screenshots were inspected and the emulator shut down. The SDK\nemulator does not provide validated touchscreen/dictation coverage: confirm on\nhardware that the first checkbox tap only ripples, the second archives, the next\ncontact stops the ripple immediately, guarded holds open the collection menu,\nand Edit note dictation replaces only the selected note.\n\n## Phone-owned Notes and ripple preference\n\nNotes storage tests now exercise the phone repository: complete Unicode bodies,\nsummary-only list pages, content pagination with lossless reconstruction, stable\nIDs and operation replay, and failed writes preserving prior data. Bridge tests\ncover on-demand list/read, quiet completion, echoed request tokens, migration\nacknowledgments only after successful storage, and the disabled ripple preference.\nNative tests verify list/read/page/edit requests write no note bodies, and legacy\nrecords remain until the matching migration acknowledgment. Settings-page tests\ncover default-on hydration and saving the ripple toggle as false.\n\nThe full suite passes: 82 phone tests, native sanitizer cases, seven integration\ntests and all Go packages. Both watch builds, the settings-site build, and the\nPAM skill validator pass. Emery transferred the existing fixture note to the\nphone and displayed its fetched summary and selected content page. The emulator\nwas stopped with `pebble kill`. Real touch/dictation feel remains a hardware check.\n",
+      "content": "Source: `docs/testing.md`\n\n# Testing before hardware\n\nThe project has a useful pre-hardware test boundary. Parser, model, transport, phone bridge, backend fixture, configuration, watch compilation, most interaction logic, persistence, and wakeup behavior can be checked locally. Microphone quality, physical touch behavior, Bluetooth/phone integration, and real power timing still need devices.\n\n## Repeatable automated checks\n\nRun:\n\n```sh\nnpm test\nnpm run build:watch\n```\n\n`npm test` currently includes:\n\n- 47 JavaScript tests covering PAM at every chunk boundary, byte and hierarchy limits, all layouts/elements, patches/removals, UTF-8 AppMessage splitting, queue retry/staleness, HTTP and WebSocket cancellation/timeouts, settings, weather, the capability registry, writer output, onboarding, native dashboard preservation, and dictation input through the full PebbleKit-to-agent-to-render bridge.\n- Native C tests built with `-Wall -Wextra -Werror`, AddressSanitizer, and UndefinedBehaviorSanitizer. These cover metadata parsing and escaping, strict signed 32-bit bounds, bounded copies, and duration parsing/formatting.\n- Four integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.\n- Go tests covering strict request/output PAM handling, output at arbitrary model-delta boundaries, invalid-model containment, persisted conversation threads, Codex RPC initialization and fallback order, real loopback HTTP and downstream WebSocket requests, and app-server stdio, WebSocket, and WebSocket-over-Unix-socket transports.\n\nThe watch build compiles and links the same sources for both target platforms. At the last run it used about 31 KiB of each platform's 128 KiB RAM budget, leaving about 100 KiB for heap.\n\n## Emulator checks completed\n\n### Emery (rectangular)\n\n- Streamed dynamic screens containing every visible element type, then patched, appended, selected, scrolled, and removed content.\n- Exercised list, grid, card, progress, form, choice, modal, action-bar, status-bar, and symbolic-image rendering.\n- Opened a native number field, changed it using the declared step, confirmed it, and observed the semantic input sent to PebbleKit JS.\n- Started, paused, resumed, reset, replaced, and persisted timers/stopwatches. A timer exited in the background and relaunched the app at expiry. Replacing a timer no longer lets the old wakeup finish the new timer.\n- Scheduled a reminder, relaunched through its wakeup, acknowledged it, and verified its completion state.\n- Held Select through the app-wide long-click recognizer and entered the system dictation UI. The SDK simulator exercised the failure callback; successful transcription-to-agent delivery is covered by the phone-bridge test but remains a device check.\n- Repeated malformed and boundary-value render traffic without an app fault. App shutdown reported no retained heap allocation.\n\n### Gabbro (round/touch target)\n\n- Streamed a two-column grid and custom action rail on the round display.\n- Verified round-safe title/content insets and fully visible Up, Select, and Down symbols.\n- Replayed the dynamic render stress sequence without a native fault.\n- Compiled the touch-service code under `PBL_TOUCH`. The installed SDK's emulator had touch disabled at runtime, so taps, drags, hotspots, and swipes are not claimed as emulator passes.\n\n## Still requires hardware (and a paired phone)\n\n### Timer crash regression\n\nA physical Emery crash after dictation returned `duration=5s` was captured with\n`pebble logs --phone` (the default phone connection needs no IP). In the affected\nbuild, PC `0x5778` is inside newlib `strtol`, loading `_impure_ptr` through an\nabsolute address. That implementation is not safe in the relocated watchapp.\nDuration and reminder timestamp parsing now use the bounded native integer\nparser. Native sanitizer tests cover suffixes, signed limits, and overflow;\ncheck both watch ELF symbol tables for absence of `strtol` and `_impure_ptr`.\nHardware verification: dictate “Set a timer for 5 seconds”, then verify the\ncountdown and completion without an app fault while watch logging is attached.\n\n### Remaining device checks\n\nThe native scheduler suite now runs the real capability host and scheduler with\nmocked clock, persistence, wakeup and UI APIs under ASan/UBSan. It covers\nconcurrent timer/alarm expiry, repeated alerts, individual acknowledgment,\nsnooze, pause/resume, close/reopen recovery, capacity, failed storage/wakeups,\ncorrupt records, and stopwatch dashboard updates. Watch builds reject newlib\nstate symbols (`_impure_ptr`, `_ctype_`, etc.) that are unsafe in relocated\nwatchapps. Host sanitizer success alone cannot detect that class of bug.\n\nEmulator checks on Emery and Gabbro show simultaneous timer/alarm notifications,\nindependent acknowledgment, and an ongoing timer in the dashboard. The fixture\nuses the production scheduler and UI with seeded local commands.\n\nHardware acceptance for the dashboard update: create two timers and an alarm;\nBack to the dashboard and verify the running rows; cancel one timer with X;\nverify completion navigates to Notifications, repeated buzzing, independent\nacknowledgment and snooze. Close/reopen with active work and compare remaining\ntime. Assign a Quick Launch button and verify automatic dictation, while menu\nand wakeup launches show the dashboard. These hardware checks remain pending\nuntil exercised on the updated app.\n\n- A successful real microphone/dictation session, including cancellation, noisy speech, Unicode transcription, and permission/connectivity failures.\n- Physical tap targeting, drag scrolling, every swipe direction, action-rail taps, touch-disabled fallback, and edge behavior on both touch displays.\n- Bluetooth disconnect/reconnect, Android and iOS background behavior, configuration through the real phone app, HTTP buffering differences, WebSocket reconnects, authorization, and geolocation permission flows.\n- Haptic feel, reminder audibility/visibility, real wakeup accuracy across sleep/reboot/time-zone changes, and timer/reminder coexistence with other apps.\n- Battery use, long-running stopwatch drift, memory behavior over many conversations, and sunlight/low-light readability.\n\nDo not treat emulator wakeup timing, simulated dictation, or mouse-based touch as a substitute for the corresponding hardware checks.\n\nConcurrent-alert regressions cover reused model IDs, delivery retries before and\nafter relaunch, a 10-second timer\nexpiring while a 60-second timer is open, and alarm expiry over dashboard,\nremote response, stopwatch, and timer screens. Notification focus changes\npreserve outstanding capability commands while suppressing late render traffic.\n\n\n### Pixel dashboard regression\n\nThe generated resource bundle builds on Emery and Gabbro. The JS bridge suite\ncovers New Chat resetting/persisting a session before its dictation acknowledgment,\ncanceling old responses, keeping subsequent normal dictation in that session,\nand routing Weather locally without a model request. Native scheduler tests cover\nall five dashboard action bindings, the Calendar placeholder, persistent todo addition,\narchive/restore, counts, storage failure, capacity and text limits, opening and\nrefreshing the separate Notifications list, returning home, and concurrent expiry.\n\nBoth Emery and Gabbro dashboards were visually checked with the generated assets\nand fully visible cards. On Emery, Calendar,\nNotifications (with existing due timers/reminders), and Todos open via buttons.\nReal microphone transcription, physical touch, phone geolocation, and New Chat's\nend-to-end device handshake remain hardware checks.\n\nIf the phone simulator reports a successful installation but leaves the app menu\nempty, the SDK's packet installer works through `pebble repl --emulator emery`:\n\n```python\nfrom libpebble2.services.install import AppInstaller\nAppInstaller(pebble, 'build/pebble-agent.pbw').install()\n```\n\nNotification progress regression checks 0%, 25%, paused stability, resumed 50%,\n100% completion, removal after acknowledgment/cancellation, and seven-day duration\nbounds. The native scheduler sends explicit timer/alarm kind and elapsed percentage\nmetadata. The SDK radial primitive defines zero at 12 o’clock and clockwise growth;\nempty models draw no notification icons or labels.\n\n### Failure delivery regression\n\nRegression coverage replays the unquoted multiword screen title at every chunk\nsplit, verifies strict request parsing and rejection of ambiguous repairs, and\nchecks terminal error lines after a header or partial screen. Bridge tests ensure\nthat the original failure reason reaches the watch with the response-begin ID,\nis not replaced by “no screen,” does not emit success/idle notifications, and\nallows a subsequent request to succeed. Native response-state tests cover errors\nbefore any screen, stale IDs, terminal failure, pre-handshake timeout, and retry.\n\nTodo and failure regressions also cover local voice parsing with preserved case/Unicode and HTTP 0/401/503 explanations without HTML parser errors. Hardware checks: drag long todo text both ways, scroll a long checklist, hold Talk to open the menu, tap outside to dismiss, and dictate through both conversation options.\n\nThe revised dashboard and conversation overlay were visually checked on Emery and Gabbro. Emery button checks confirmed Back dismisses the overlay, Down opens Todos, and Up opens Notifications. Screenshots are in `docs/screenshots/`.\n\nTime-bar tests verify Todos and Calendar flags and absence of an Add item row. Weather tests cover summary values, day/night/precipitation icons, background refresh isolation, cache writes, timeouts, and retaining a new summary across dashboard navigation. `dashboard-weather-emery.png` uses an injected synthetic 58F moon forecast for layout verification, not live weather.\n\n### Interactive PAM controls\n\nRegression coverage includes local action construction and bounds, range snapping,\nclockwise/counterclockwise dial seam handling, generated dictation fallback,\ncustom answers bypassing regexes with screen context, server validation of skill\nexamples, and skill installation into a temporary state directory. Slider/dial\nscreens were rendered using an isolated emulator fixture; the slider confirmation\nopened a native five-minute timer without an agent request, then the synthetic\ntimer was canceled. See `pam-slider-emery.png` and `pam-dial-emery.png`. Physical\nslider/dial gestures and microphone answers still need hardware checks.\n\n## Background requests\n\n`internal/jobs` tests connection cancellation without worker cancellation,\nexplicit cancellation, duplicate submission, durable retrieval acknowledgements,\nrestart recovery, and retention. HTTP tests check authentication and job routes.\n`tests/jobs.js` covers the single bounded wait, no continued polling, manual\nrefresh/cancel, durable IDs, ambiguous-submission retries, and stale responses.\nThe bridge tests verify completion buzz messages without unsolicited rendering,\nmanual PAM retrieval, conversation context, stable capability invocation IDs,\nand acknowledgement only after watch presentation. Native tests cover job rows,\nstatus checks, cancel/dismiss actions, and watch persistence.\n\nOpening Notifications is covered by native tests for immediate Checking labels,\nfailed-check fallback, and no refresh loop during list rebuilds. JS tests cover\nall ongoing jobs, exclusion of terminal/retrieved jobs, overlapping pane opens,\ntransient checking state, and row-only bridge updates without unsolicited\nrendering or vibration.\n\n## Touchscreen arming\n\nThe native `touch_guard_test` exercises same-target double taps, one-use arming,\nexpiry, target changes, tap-then-hold and tap-then-drag, unarmed hold/drag rejection,\nmenu targets, screen/input resets, edge retargeting, and clock wrap. The watch\nhandler gates touchdown, movement and liftoff before any mutation or hold timer;\nphysical click handlers do not use the gate. Both Emery and Gabbro SDK builds\ncompile the touch integration. Physical touchscreen behavior still requires a\nhardware smoke test.\n\n## Minute refresh efficiency regression\n\nThe native suite checks the passive paint deadline (including clock wrap),\nimmediate user refresh, one idle host callback per minute, no separate stopwatch\ncallback, accurate elapsed values on interaction, unchanged-job write suppression,\nand one-shot job-check timeout behavior. Existing schedule tests retain exact\nshort deadlines, repeated alerts, wakeup failure fallback, and persistence.\nPhone tests cover fresh weather reuse, duplicate packet suppression, stale-cache\nfetching, and invalidation after unit changes. The full npm suite and both watch\nbuilds pass. Emery screenshots confirm dashboard and Todos clock rendering and\nphysical-button navigation; the emulator was shut down with `pebble kill`.\nPhysical display timing and battery savings still require hardware.\n\n## Notes, collection preference, and unlock ripple\n\nThe native sanitizer suite covers two-tap checkbox completion, note add/edit,\nexact-match ambiguity, stable IDs across edits/relaunches, capacity, write failure,\noperation replay, persisted tile preference, and archived todo identities.\nRipple tests cover half-width travel and reflected points at rectangular edges\nand the circular bezel, including grazing contacts. Phone tests cover note voice\nregexes, preserved text, and bypassing both agent and timer interpretation. Go PAM\ntests accept the note add/edit/list commands. The full suite passes (80 phone\ntests, seven integration tests, native cases, and all Go packages), and both watch\nbuilds pass. The PAM skill validator also passes.\n\nAn Emery fixture rendered the full note, Edit note action, and remembered Notes\ndashboard tile; screenshots were inspected and the emulator shut down. The SDK\nemulator does not provide validated touchscreen/dictation coverage: confirm on\nhardware that the first checkbox tap only ripples, the second archives, the next\ncontact stops the ripple immediately, guarded holds open the collection menu,\nand Edit note dictation replaces only the selected note.\n\n## Phone-owned Notes and ripple preference\n\nNotes storage tests now exercise the phone repository: complete Unicode bodies,\nsummary-only list pages, content pagination with lossless reconstruction, stable\nIDs and operation replay, and failed writes preserving prior data. Bridge tests\ncover on-demand list/read, quiet completion, echoed request tokens, and the\ndisabled ripple preference. Native tests verify list/read/page/edit requests write\nno note bodies. Settings-page tests cover default-on hydration and saving the\nripple toggle as false.\n\n## Dashboard telemetry and compatibility removal\n\nThe pre-alpha app reads only current storage/protocol formats. Watch-to-phone\nNotes migration, earlier schedule conversions, missing to-do ID backfilling, the\none-time wakeup upgrade, and old-watch onboarding have been removed.\n\nStatus tests cover the current multi-bucket quota API, paginated active-thread\ncounting without loading conversation turns, unavailable data, bearer auth,\nmethod checks, once-per-minute requests, and stale endpoint response rejection.\nThe full suite includes 83 phone tests, native sanitizer cases, seven integration\ntests, and all Go packages. Emulator screenshots verify dashboard layout; real\ntouch and dictation remain hardware checks.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -491,7 +505,7 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-13T00:11:33.726213195Z"
+      "modified_at": "2026-09-13T00:31:13.954764738Z"
     },
     {
       "id": "01a091eb-4971-78b2-b568-152e2036ab39",
@@ -531,6 +545,634 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a0982c-e52a-7e33-bd4f-e7e82fca7f52",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Document current-format storage and dashboard telemetry",
+      "created_at": "2026-09-13T00:31:13.954764738Z",
+      "changes": [
+        {
+          "document_id": "01a09821-cef7-7e43-8121-72fb3db279db",
+          "slug": "issues/dashboard-telemetry-no-compat",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "614d8a675ccc62f26abea6962da2269546b545bf697cf48ac7f1521dab5a6b64",
+          "doc_type": "task",
+          "title": "Remove compatibility paths and refresh dashboard telemetry"
+        },
+        {
+          "document_id": "01a09805-4759-7923-a05c-5f27bab32e2d",
+          "slug": "reference/docs/collections",
+          "change_type": "modified",
+          "previous_commit_id": "01a0981a-e351-7cd0-8708-8ba9d7fe95b1",
+          "previous_version": 2,
+          "new_version": 3,
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 3,
+              "new_start": 1,
+              "new_count": 5,
+              "lines": [
+                {
+                  "op": "add",
+                  "content": "Source: `docs/collections.md`"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "# Notes and To Do"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "## Current behavior"
+                }
+              ]
+            },
+            {
+              "old_start": 46,
+              "old_count": 10,
+              "new_start": 48,
+              "new_count": 8,
+              "context": "## Phone storage and on-demand loading",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Edits replace the full note on the phone, preserving its ID. The store commits"
+                },
+                {
+                  "op": "context",
+                  "content": "records and replay keys together before reporting success. Failed writes leave"
+                },
+                {
+                  "op": "delete",
+                  "content": "previous records intact. Existing watch notes transfer one at a time at phone"
+                },
+                {
+                  "op": "delete",
+                  "content": "startup or on opening Notes. A watch record is deleted only after a matching"
+                },
+                {
+                  "op": "delete",
+                  "content": "phone acknowledgment of durable storage; interruptions retry safely. Legacy"
+                },
+                {
+                  "op": "delete",
+                  "content": "records awaiting acknowledgment are the only remaining notes on watch storage."
+                },
+                {
+                  "op": "add",
+                  "content": "previous records intact. Notes use phone storage only; there is no watch-to-phone"
+                },
+                {
+                  "op": "add",
+                  "content": "migration or reader for earlier watch note formats."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "The watch retains the selected collection preference and note count in the UI,"
+                },
+                {
+                  "op": "context",
+                  "content": "not the phone's note database. Opening a collection requires a connected phone;"
+                }
+              ]
+            },
+            {
+              "old_start": 86,
+              "old_count": 9,
+              "new_start": 86,
+              "new_count": 8,
+              "context": "## Planned sync boundary — not implemented",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "bodies; the watch should request bounded pages/previews and selected bodies,"
+                },
+                {
+                  "op": "context",
+                  "content": "rather than truncating and uploading a long remote note as its replacement."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "delete",
+                  "content": "Add versioned sync metadata (or sidecar records) for revisions, pending changes,"
+                },
+                {
+                  "op": "delete",
+                  "content": "provider mappings, and deletion tombstones. Preserve existing records during that"
+                },
+                {
+                  "op": "delete",
+                  "content": "migration. To-do archive means completed, not deleted; map it to provider task"
+                },
+                {
+                  "op": "add",
+                  "content": "Add sync metadata for revisions, pending changes, provider mappings, and"
+                },
+                {
+                  "op": "add",
+                  "content": "deletion tombstones. To-do archive means completed, not deleted; map it to provider task"
+                },
+                {
+                  "op": "context",
+                  "content": "completion and restore semantics. A future note deletion requires a tombstone."
+                },
+                {
+                  "op": "context",
+                  "content": "Concurrent edits need an explicit conflict policy, such as retaining both"
+                },
+                {
+                  "op": "context",
+                  "content": "versions for resolution, rather than overwriting according to device clock time."
+                }
+              ]
+            }
+          ],
+          "content_hash": "afc64b4b34f5640eeae2695f8894515ede3a91ebf8952e3eee34e38c6c874968",
+          "previous_hash": "9333a7fdee324de615dfb45d88cf5d35870eb7764086872a029c440761e59261",
+          "doc_type": "reference",
+          "title": "docs/collections.md"
+        },
+        {
+          "document_id": "01a091eb-4958-7731-a829-5a501e760d31",
+          "slug": "reference/docs/server",
+          "change_type": "modified",
+          "previous_commit_id": "01a097c2-e463-7301-849f-850e27747187",
+          "previous_version": 5,
+          "new_version": 6,
+          "hunks": [
+            {
+              "old_start": 169,
+              "old_count": 8,
+              "new_start": 169,
+              "new_count": 8,
+              "context": "## Persistent request jobs",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "dismissed. Restoring the original endpoint is required to check a job after"
+                },
+                {
+                  "op": "context",
+                  "content": "changing servers, so a new server token is never sent to an old endpoint."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "delete",
+                  "content": "The legacy streaming `/v1/agent` endpoint remains available for compatible"
+                },
+                {
+                  "op": "delete",
+                  "content": "clients. The updated watch uses the job routes. Reverse proxies must route"
+                },
+                {
+                  "op": "add",
+                  "content": "The streaming `/v1/agent` endpoint is used by the standalone client and demo"
+                },
+                {
+                  "op": "add",
+                  "content": "protocol. The watch uses the job routes. Reverse proxies must route"
+                },
+                {
+                  "op": "context",
+                  "content": "`/v1/jobs/` as well; a shorter proxy timeout only ends the completion wait, not"
+                },
+                {
+                  "op": "context",
+                  "content": "the work."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                }
+              ]
+            },
+            {
+              "old_start": 198,
+              "old_count": 3,
+              "new_start": 198,
+              "new_count": 26,
+              "context": "## Useful flags",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "```"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "The workspace is an otherwise empty directory by default. It becomes the writable root only when workspace writes are selected in phone settings. Read-only and workspace-write modes allow reads outside that root; no-user-files mode restricts reads to minimal runtime paths."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "## Dashboard status"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "The authenticated `GET /v1/status` endpoint reads Codex app-server telemetry on"
+                },
+                {
+                  "op": "add",
+                  "content": "demand. `remainingPercent` is the lowest remaining percentage across the primary"
+                },
+                {
+                  "op": "add",
+                  "content": "and secondary windows of `rateLimitsByLimitId[\"codex\"]` from"
+                },
+                {
+                  "op": "add",
+                  "content": "`account/rateLimits/read`. It is quota remaining, not context-window capacity."
+                },
+                {
+                  "op": "add",
+                  "content": "Missing quota data is `null`, including accounts without reported limits."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "`activeThreads` counts loaded threads whose current status is `active`, using"
+                },
+                {
+                  "op": "add",
+                  "content": "`thread/loaded/list` and metadata-only `thread/read` calls. It covers the connected"
+                },
+                {
+                  "op": "add",
+                  "content": "app-server instance, including its threads outside Agent. The state is `working`"
+                },
+                {
+                  "op": "add",
+                  "content": "when any thread is active, `idle` otherwise, and `error` for a thread system error."
+                },
+                {
+                  "op": "add",
+                  "content": "Unavailable status/counts remain unknown. The endpoint has a 15-second deadline."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "The phone fetches at startup and at most once per minute using the existing watch"
+                },
+                {
+                  "op": "add",
+                  "content": "tick; unchanged telemetry sends no additional watch packet. Dashboard rendering"
+                },
+                {
+                  "op": "add",
+                  "content": "keeps its existing passive minute limit. The header shows battery charge, a brain"
+                },
+                {
+                  "op": "add",
+                  "content": "with quota remaining, and small sleeping/thinking pictographs with the active"
+                },
+                {
+                  "op": "add",
+                  "content": "thread count. Unknown values display dashes and a question face. The pictographs"
+                },
+                {
+                  "op": "add",
+                  "content": "are drawn directly because the watch system font does not supply emoji glyphs."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Protocol reference: [Codex app-server](https://learn.chatgpt.com/docs/app-server)."
+                }
+              ]
+            }
+          ],
+          "content_hash": "4a865fdba1d3761f26135973212829acbb225cac1ef428668f182a14f430fa5c",
+          "previous_hash": "3a5b421ec4de1ec1be958b496672b4a4a901d243eb24d3e3f49ebaebfa11ca5f",
+          "doc_type": "reference",
+          "title": "docs/server.md"
+        },
+        {
+          "document_id": "01a091eb-4965-7451-8490-4bb90faa9ae5",
+          "slug": "reference/docs/testing",
+          "change_type": "modified",
+          "previous_commit_id": "01a0981a-e351-7cd0-8708-8ba9d7fe95b1",
+          "previous_version": 14,
+          "new_version": 15,
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 3,
+              "new_start": 1,
+              "new_count": 5,
+              "lines": [
+                {
+                  "op": "add",
+                  "content": "Source: `docs/testing.md`"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "# Testing before hardware"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "The project has a useful pre-hardware test boundary. Parser, model, transport, phone bridge, backend fixture, configuration, watch compilation, most interaction logic, persistence, and wakeup behavior can be checked locally. Microphone quality, physical touch behavior, Bluetooth/phone integration, and real power timing still need devices."
+                }
+              ]
+            },
+            {
+              "old_start": 84,
+              "old_count": 7,
+              "new_start": 86,
+              "new_count": 7,
+              "context": "### Remaining device checks",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "Do not treat emulator wakeup timing, simulated dictation, or mouse-based touch as a substitute for the corresponding hardware checks."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Concurrent-alert regressions cover reused model IDs, delivery retries before and"
+                },
+                {
+                  "op": "delete",
+                  "content": "after relaunch, migration of existing dashboard records, a 10-second timer"
+                },
+                {
+                  "op": "add",
+                  "content": "after relaunch, a 10-second timer"
+                },
+                {
+                  "op": "context",
+                  "content": "expiring while a 60-second timer is open, and alarm expiry over dashboard,"
+                },
+                {
+                  "op": "context",
+                  "content": "remote response, stopwatch, and timer screens. Notification focus changes"
+                },
+                {
+                  "op": "context",
+                  "content": "preserve outstanding capability commands while suppressing late render traffic."
+                }
+              ]
+            },
+            {
+              "old_start": 192,
+              "old_count": 7,
+              "new_start": 194,
+              "new_count": 7,
+              "context": "## Notes, collection preference, and unlock ripple",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "The native sanitizer suite covers two-tap checkbox completion, note add/edit,"
+                },
+                {
+                  "op": "context",
+                  "content": "exact-match ambiguity, stable IDs across edits/relaunches, capacity, write failure,"
+                },
+                {
+                  "op": "delete",
+                  "content": "operation replay, persisted tile preference, and archived todo identity migration."
+                },
+                {
+                  "op": "add",
+                  "content": "operation replay, persisted tile preference, and archived todo identities."
+                },
+                {
+                  "op": "context",
+                  "content": "Ripple tests cover half-width travel and reflected points at rectangular edges"
+                },
+                {
+                  "op": "context",
+                  "content": "and the circular bezel, including grazing contacts. Phone tests cover note voice"
+                },
+                {
+                  "op": "context",
+                  "content": "regexes, preserved text, and bypassing both agent and timer interpretation. Go PAM"
+                }
+              ]
+            },
+            {
+              "old_start": 212,
+              "old_count": 11,
+              "new_start": 214,
+              "new_count": 10,
+              "context": "## Phone-owned Notes and ripple preference",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "Notes storage tests now exercise the phone repository: complete Unicode bodies,"
+                },
+                {
+                  "op": "context",
+                  "content": "summary-only list pages, content pagination with lossless reconstruction, stable"
+                },
+                {
+                  "op": "context",
+                  "content": "IDs and operation replay, and failed writes preserving prior data. Bridge tests"
+                },
+                {
+                  "op": "delete",
+                  "content": "cover on-demand list/read, quiet completion, echoed request tokens, migration"
+                },
+                {
+                  "op": "delete",
+                  "content": "acknowledgments only after successful storage, and the disabled ripple preference."
+                },
+                {
+                  "op": "delete",
+                  "content": "Native tests verify list/read/page/edit requests write no note bodies, and legacy"
+                },
+                {
+                  "op": "delete",
+                  "content": "records remain until the matching migration acknowledgment. Settings-page tests"
+                },
+                {
+                  "op": "delete",
+                  "content": "cover default-on hydration and saving the ripple toggle as false."
+                },
+                {
+                  "op": "add",
+                  "content": "cover on-demand list/read, quiet completion, echoed request tokens, and the"
+                },
+                {
+                  "op": "add",
+                  "content": "disabled ripple preference. Native tests verify list/read/page/edit requests write"
+                },
+                {
+                  "op": "add",
+                  "content": "no note bodies. Settings-page tests cover default-on hydration and saving the"
+                },
+                {
+                  "op": "add",
+                  "content": "ripple toggle as false."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "The full suite passes: 82 phone tests, native sanitizer cases, seven integration"
+                },
+                {
+                  "op": "context",
+                  "content": "tests and all Go packages. Both watch builds, the settings-site build, and the"
+                }
+              ]
+            },
+            {
+              "old_start": 218,
+              "old_count": 8,
+              "new_start": 219,
+              "new_count": 15,
+              "context": "## Phone-owned Notes and ripple preference",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "records remain until the matching migration acknowledgment. Settings-page tests"
+                },
+                {
+                  "op": "context",
+                  "content": "cover default-on hydration and saving the ripple toggle as false."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "delete",
+                  "content": "The full suite passes: 82 phone tests, native sanitizer cases, seven integration"
+                },
+                {
+                  "op": "delete",
+                  "content": "tests and all Go packages. Both watch builds, the settings-site build, and the"
+                },
+                {
+                  "op": "delete",
+                  "content": "PAM skill validator pass. Emery transferred the existing fixture note to the"
+                },
+                {
+                  "op": "delete",
+                  "content": "phone and displayed its fetched summary and selected content page. The emulator"
+                },
+                {
+                  "op": "delete",
+                  "content": "was stopped with `pebble kill`. Real touch/dictation feel remains a hardware check."
+                },
+                {
+                  "op": "add",
+                  "content": "## Dashboard telemetry and compatibility removal"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "The pre-alpha app reads only current storage/protocol formats. Watch-to-phone"
+                },
+                {
+                  "op": "add",
+                  "content": "Notes migration, earlier schedule conversions, missing to-do ID backfilling, the"
+                },
+                {
+                  "op": "add",
+                  "content": "one-time wakeup upgrade, and old-watch onboarding have been removed."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Status tests cover the current multi-bucket quota API, paginated active-thread"
+                },
+                {
+                  "op": "add",
+                  "content": "counting without loading conversation turns, unavailable data, bearer auth,"
+                },
+                {
+                  "op": "add",
+                  "content": "method checks, once-per-minute requests, and stale endpoint response rejection."
+                },
+                {
+                  "op": "add",
+                  "content": "The full suite includes 83 phone tests, native sanitizer cases, seven integration"
+                },
+                {
+                  "op": "add",
+                  "content": "tests, and all Go packages. Emulator screenshots verify dashboard layout; real"
+                },
+                {
+                  "op": "add",
+                  "content": "touch and dictation remain hardware checks."
+                }
+              ]
+            }
+          ],
+          "content_hash": "64bc4180b2b3f0c504b68503694a4998b360c78deed7ef3e1c54820084b7f7d2",
+          "previous_hash": "1c87757aa6b2e0b9b12190a64017067e54f2d753c3d16d331255ea6ea3376220",
+          "doc_type": "reference",
+          "title": "docs/testing.md"
+        }
+      ]
+    },
     {
       "id": "01a0981a-e351-7cd0-8708-8ba9d7fe95b1",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

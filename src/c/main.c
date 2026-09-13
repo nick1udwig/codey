@@ -356,7 +356,7 @@ static void prv_capability_event(const char *type, const char *id, const char *a
                                  const char *value, void *context) {
   (void)context;
   char token[16] = "";
-  if (!strcmp(type,"note") && strcmp(action,"migrate")) {
+  if (!strcmp(type,"note")) {
     prv_begin_request();
     s_note_sequence = s_note_sequence == INT32_MAX ? 1 : s_note_sequence + 1;
     s_note_token = s_note_sequence;
@@ -472,6 +472,10 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
     AgentCapabilityCommand c={.type="note",.command=operation,.id=prv_tuple_string(iter,MESSAGE_KEY_ElementId),.value=prv_tuple_string(iter,MESSAGE_KEY_Value)};
     agent_capabilities_handle_command(s_capabilities,&c);return;
   }
+  if (!strcmp(type,"bridge") && !strcmp(operation,"codex-status")) {
+    int32_t remaining=-1;agent_protocol_parse_int32(prv_tuple_string(iter,MESSAGE_KEY_Value),NULL,&remaining);
+    agent_ui_set_codex_status(s_ui,remaining,prv_tuple_int(iter,MESSAGE_KEY_Index,-1),prv_tuple_string(iter,MESSAGE_KEY_Subtitle));return;
+  }
   if (!strcmp(type,"bridge") && !strcmp(operation,"preferences")) {
     agent_ui_set_tap_animation(s_ui,prv_tuple_int(iter,MESSAGE_KEY_Flags,1)!=0);return;
   }
@@ -569,7 +573,7 @@ static void prv_send_ready(void *context) {
   (void)context;
   s_ready_timer = NULL;
   prv_queue_message("ready", 0, "ready", "", "",
-                    "local-active", "");
+                    "", "");
 }
 
 static void prv_quick_launch(void *context) {

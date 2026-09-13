@@ -114,12 +114,7 @@ bool agent_todos_install(AgentCapabilities *host) {
   for (int i = 0; i < TODO_COUNT; ++i) {
     Todo item;
     if (persist_read_data(TODO_STORE + i, &item, sizeof(item)) == sizeof(item) && item.magic == TODO_MAGIC &&
-        item.state <= 2 && memchr(item.text, 0, sizeof(item.text)) && memchr(item.id, 0, sizeof(item.id))) {
-      if (item.state && !item.id[0]) {
-        Todo migrated = item;
-        if (record_identity(migrated.id, sizeof(migrated.id)) &&
-            persist_write_data(TODO_STORE + i, &migrated, sizeof(migrated)) == sizeof(migrated)) item = migrated;
-      }
+        item.state <= 2 && (!item.state || item.id[0]) && memchr(item.text, 0, sizeof(item.text)) && memchr(item.id, 0, sizeof(item.id))) {
       t->items[i] = item;
     }
   }

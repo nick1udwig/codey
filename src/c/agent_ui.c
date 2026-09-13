@@ -77,6 +77,8 @@ struct AgentUi {
   uint8_t menu_count, menu_selected, menu_step;
   struct { char title[48]; char action[AGENT_UI_ACTION_LENGTH]; } menu_items[4];
   Layer *status_bar_layer;
+  int codex_remaining, codex_active;
+  char codex_state[12];
   RefreshPolicy refresh_policy;
   AppTimer *refresh_timer;
   uint32_t input_until;
@@ -370,6 +372,7 @@ static GRect prv_dashboard_bounds(AgentUi *ui) {
 
 static GRect prv_dashboard_frame(AgentUi *ui, const char *id) {
   GRect board = prv_dashboard_bounds(ui);
+  board.origin.y += 21; board.size.h -= 21;
   int16_t gap = 3, left = (board.size.w - gap) * 53 / 100;
   int16_t right = board.size.w - left - gap, x = board.origin.x, y = board.origin.y;
   int16_t calendar = (board.size.h - gap) * 66 / 100;
@@ -838,7 +841,50 @@ static void prv_weather_icon(AgentUi *ui, GContext *ctx, const char *icon, int16
   }
 }
 
+// Small hand-drawn pictographs avoid relying on missing emoji font glyphs.
+static void prv_dashboard_telemetry(AgentUi *ui,GContext *ctx) {
+  GRect b=prv_dashboard_bounds(ui);int x=b.origin.x+3,y=b.origin.y+3;
+  graphics_context_set_stroke_color(ctx,GColorWhite);graphics_context_set_fill_color(ctx,GColorWhite);
+  BatteryChargeState battery=battery_state_service_peek();
+  graphics_draw_rect(ctx,GRect(x,y+4,11,7));graphics_fill_rect(ctx,GRect(x+11,y+6,2,3),0,GCornerNone);
+  graphics_fill_rect(ctx,GRect(x+2,y+6,7*battery.charge_percent/100,3),0,GCornerNone);
+  char text[16];snprintf(text,sizeof(text),"%d%%",battery.charge_percent);
+  prv_draw_text(ctx,text,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),GRect(x+15,y-3,35,18),GTextAlignmentLeft,GColorWhite,GTextOverflowModeTrailingEllipsis);
+  x=b.origin.x+b.size.w-97;
+  // Scalloped brain silhouette and short folds remain readable at 14 pixels.
+  graphics_context_set_fill_color(ctx,PBL_IF_COLOR_ELSE(GColorMelon,GColorWhite));
+  graphics_fill_circle(ctx,GPoint(x+4,y+4),3);
+  graphics_fill_circle(ctx,GPoint(x+10,y+4),3);
+  graphics_fill_circle(ctx,GPoint(x+3,y+8),3);
+  graphics_fill_circle(ctx,GPoint(x+11,y+8),3);
+  graphics_fill_circle(ctx,GPoint(x+5,y+10),3);
+  graphics_fill_circle(ctx,GPoint(x+9,y+10),3);
+  graphics_context_set_stroke_color(ctx,GColorBlack);
+  graphics_draw_line(ctx,GPoint(x+7,y+2),GPoint(x+7,y+12));
+  graphics_draw_line(ctx,GPoint(x+2,y+6),GPoint(x+4,y+7));
+  graphics_draw_line(ctx,GPoint(x+10,y+7),GPoint(x+12,y+6));
+  if(ui->codex_remaining<0)snprintf(text,sizeof(text),"--%%");else snprintf(text,sizeof(text),"%d%%",ui->codex_remaining);
+  prv_draw_text(ctx,text,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),GRect(x+17,y-3,34,18),GTextAlignmentLeft,GColorWhite,GTextOverflowModeTrailingEllipsis);
+  int face=x+60;graphics_context_set_fill_color(ctx,PBL_IF_COLOR_ELSE(GColorYellow,GColorWhite));graphics_fill_circle(ctx,GPoint(face,y+7),7);
+  graphics_context_set_stroke_color(ctx,GColorBlack);
+  if(!strcmp(ui->codex_state,"idle")) {
+    graphics_draw_line(ctx,GPoint(face-4,y+6),GPoint(face-1,y+6));graphics_draw_line(ctx,GPoint(face+1,y+6),GPoint(face+4,y+6));
+    prv_pixel_text(ctx,"Z",face+5,y-1,1,1,GColorWhite);
+  } else if(!strcmp(ui->codex_state,"working")) {
+    graphics_draw_pixel(ctx,GPoint(face-3,y+5));graphics_draw_pixel(ctx,GPoint(face+3,y+5));
+    graphics_draw_line(ctx,GPoint(face-4,y+2),GPoint(face-1,y+3));graphics_draw_line(ctx,GPoint(face,y+10),GPoint(face+5,y+8));
+  } else {
+    graphics_draw_line(ctx,GPoint(face-2,y+4),GPoint(face+2,y+4));
+    graphics_draw_line(ctx,GPoint(face+2,y+4),GPoint(face+2,y+6));
+    graphics_draw_line(ctx,GPoint(face+2,y+6),GPoint(face,y+8));
+    graphics_draw_pixel(ctx,GPoint(face,y+10));
+  }
+  if(ui->codex_active<0)snprintf(text,sizeof(text),"-");else snprintf(text,sizeof(text),"%d",ui->codex_active);
+  prv_draw_text(ctx,text,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),GRect(face+10,y-3,23,18),GTextAlignmentLeft,GColorWhite,GTextOverflowModeTrailingEllipsis);
+}
+
 static void prv_draw_dashboard(AgentUi *ui, GContext *ctx) {
+  prv_dashboard_telemetry(ui,ctx);
   time_t now = time(NULL);
   struct tm *local = localtime(&now);
   char clock_text[12] = "--:--", day[12] = "", date[16] = "", period[8] = "";
@@ -859,15 +905,13 @@ static void prv_draw_dashboard(AgentUi *ui, GContext *ctx) {
     bool blue = strcmp(e->id, "dictate") == 0 || strcmp(e->id, "new-chat") == 0;
     prv_dashboard_card(ctx, f, blue, ui->selected_element == i);
     if (strcmp(e->id, "calendar") == 0) {
-      int scale = (w - 8) / ((int)strlen(clock_text) * 6 - 1);
-      scale = AGENT_MAX(1, AGENT_MIN(3, scale));
-      int clock_width = ((int)strlen(clock_text) * 6 - 1) * scale;
-      prv_pixel_text(ctx, clock_text, x + (w - clock_width) / 2, y + 16, scale, h < 130 ? 6 : 8, GColorBlack);
-      prv_pixel_text(ctx, period, x + w - 18, y + (h < 130 ? 63 : 77), 1, 1, GColorBlack);
-      int16_t date_y = y + h - 38;
-      prv_dashboard_icon(ui, ctx, 0, x + 7, date_y);
-      prv_pixel_text(ctx, day, x + 35, date_y + 2, 1, 1, GColorBlack);
-      prv_pixel_text(ctx, date, x + 35, date_y + 15, 1, 1, GColorBlack);
+      int scale = AGENT_MAX(1, AGENT_MIN(3,(w-8)/((int)strlen(clock_text)*6-1)));
+      int clock_width=((int)strlen(clock_text)*6-1)*scale;
+      int clock_height=42;
+      prv_pixel_text(ctx,clock_text,x+(w-clock_width)/2,y+(h-clock_height)/2-3,scale,6,GColorBlack);
+      prv_pixel_text(ctx,period,x+w-19,y+(h+clock_height)/2-3,1,1,GColorBlack);
+      char date_line[32];snprintf(date_line,sizeof(date_line),"%s %s",day,date);
+      prv_draw_text(ctx,date_line,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),GRect(x+3,y+h-23,w-6,19),GTextAlignmentCenter,GColorBlack,GTextOverflowModeTrailingEllipsis);
     } else if (strcmp(e->id, "dashboard-summary") == 0) {
       prv_pixel_text(ctx, "NOTIFICATIONS", x + (w - 77) / 2, y + 7, 1, 1, GColorBlack);
       AgentUiElement *items[AGENT_UI_MAX_ELEMENTS];
@@ -934,12 +978,23 @@ static void prv_draw_dashboard(AgentUi *ui, GContext *ctx) {
       prv_pixel_text(ctx, "AGENT", x + 32, y + h / 2 + 3, 1, 1, GColorWhite);
 
     } else if (strcmp(e->id, "weather") == 0) {
-      char icon[24]; agent_protocol_meta_get(e->meta, "icon", icon, sizeof(icon));
-      prv_weather_icon(ui, ctx, icon, x + 6, y + 7);
-      const char *temperature = e->value[0] ? e->value : "--";
-      int scale = strlen(temperature) <= 4 ? 2 : 1;
-      prv_pixel_text(ctx, temperature, x + 35, y + 12, scale, 2, GColorBlack);
-      prv_pixel_text(ctx, e->subtitle[0] ? e->subtitle : "L -- H --", x + 6, y + h - 14, 1, 1, GColorBlack);
+      char icon[24],low[12]="--",high[12]="--",label[20];
+      agent_protocol_meta_get(e->meta,"icon",icon,sizeof(icon));
+      const char *range=e->subtitle;
+      if(!strncmp(range,"L ",2)) {
+        const char *split=strstr(range+2," H ");
+        if(split){size_t n=AGENT_MIN((size_t)(split-range-2),sizeof(low)-1);memcpy(low,range+2,n);low[n]=0;agent_protocol_copy(high,sizeof(high),split+3);}
+      }
+      snprintf(label,sizeof(label),"H %s",high);
+      prv_draw_text(ctx,label,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),GRect(x+3,y+1,w-6,17),GTextAlignmentCenter,GColorBlack,GTextOverflowModeTrailingEllipsis);
+      const char *temperature=e->value[0]?e->value:"--";
+      int scale=strlen(temperature)<=4?2:1;
+      int combined=26+((int)strlen(temperature)*6-1)*scale;
+      int left=x+(w-combined)/2;
+      prv_weather_icon(ui,ctx,icon,left,y+(h-24)/2);
+      prv_pixel_text(ctx,temperature,left+26,y+(h-21)/2,scale,3,GColorBlack);
+      snprintf(label,sizeof(label),"L %s",low);
+      prv_draw_text(ctx,label,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),GRect(x+3,y+h-19,w-6,17),GTextAlignmentCenter,GColorBlack,GTextOverflowModeTrailingEllipsis);
     } else if (strcmp(e->id, "todos") == 0) {
       bool notes = strcmp(e->action, "local.notes") == 0;
       if (notes) {
@@ -1889,6 +1944,7 @@ AgentUi *agent_ui_create(AgentUiEventHandler event_handler, AgentUiDictationHand
   ui->event_handler = event_handler;
   ui->dictation_handler = dictation_handler;
   ui->context = context;
+  ui->codex_remaining = ui->codex_active = -1;
   ui->selected_element = -1;
   ui->editing_element = -1;
   ui->window = window_create();
@@ -2121,4 +2177,12 @@ void agent_ui_set_tap_animation(AgentUi *ui, bool enabled) {
 #else
   (void)ui;
 #endif
+}
+
+void agent_ui_set_codex_status(AgentUi *ui,int remaining,int active,const char *state){
+  if(!ui)return;
+  remaining=remaining<0?-1:AGENT_MIN(100,remaining);active=active<0?-1:active;
+  if(ui->codex_remaining==remaining && ui->codex_active==active && !strcmp(ui->codex_state,state))return;
+  ui->codex_remaining=remaining;ui->codex_active=active;agent_protocol_copy(ui->codex_state,sizeof(ui->codex_state),state);
+  if(!strcmp(ui->screen_id,"dashboard"))prv_refresh(ui);
 }

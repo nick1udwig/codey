@@ -3,31 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Legacy records are read only for acknowledged transfer to the phone.
-#define NOTE_STORE 4400
-#define NOTE_MAGIC 0x4e4f5431
-typedef struct {
-  uint32_t magic, invocation;
-  char id[32], text[180];
-} LegacyNote;
-typedef struct {
-  AgentCapabilities *host;
-  int count;
-  int migration_slot;
-} Notes;
-static void migrate(Notes *s) {
-  for (int i = 0; i < 24; i++) {
-    LegacyNote n;
-    if (persist_read_data(NOTE_STORE + i, &n, sizeof(n)) == sizeof(n) &&
-        n.magic == NOTE_MAGIC && n.id[0] && memchr(n.id, 0, sizeof(n.id)) &&
-        memchr(n.text, 0, sizeof(n.text))) {
-      s->migration_slot = i;
-      agent_capabilities_emit(s->host, "note", n.id, "migrate", n.text);
-      return;
-    }
-  }
-  s->migration_slot = -1;
-}
+typedef struct { AgentCapabilities *host; int count; } Notes;
 static void request(Notes *s, const char *id, const char *action,
                     const char *value) {
   agent_capabilities_set_collection(s->host, true);
@@ -39,7 +15,6 @@ static void request(Notes *s, const char *id, const char *action,
   agent_capability_add_element(ui, "item", "retry", "Reload notes", "", "",
                                "local.notes", "", 0);
   agent_ui_end(ui);
-  migrate(s);
   agent_capabilities_emit(s->host, "note", id, action, value);
 }
 static bool command(AgentCapabilities *host, const AgentCapabilityCommand *c,
@@ -54,26 +29,11 @@ static bool command(AgentCapabilities *host, const AgentCapabilityCommand *c,
     request(s, c->id, "edit", c->value);
     return true;
   }
-  if (!strcmp(c->command, "ready")) {
-    migrate(s);
-    return true;
-  }
   if (!strcmp(c->command, "count")) {
     int32_t count = 0;
     agent_protocol_parse_int32(c->value, NULL, &count);
     s->count = count;
     agent_capabilities_refresh_dashboard(s->host);
-    return true;
-  }
-  if (!strcmp(c->command, "migrated") && s->migration_slot >= 0) {
-    LegacyNote n;
-    int key = NOTE_STORE + s->migration_slot;
-    if (persist_read_data(key, &n, sizeof(n)) == sizeof(n) &&
-        memchr(n.id, 0, sizeof(n.id)) && !strcmp(n.id, c->id)) {
-      persist_delete(key);
-      if (!persist_exists(key))
-        migrate(s);
-    }
     return true;
   }
   return false;
@@ -121,7 +81,6 @@ bool agent_notes_install(AgentCapabilities *host) {
     return false;
   s->host = host;
   s->count = -1;
-  s->migration_slot = -1;
   if (!agent_capabilities_register(
           host, "note",
           (AgentCapabilityModule){.command = command,

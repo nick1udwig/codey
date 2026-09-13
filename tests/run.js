@@ -849,13 +849,40 @@ function loadPkjsHarness(options) {
   var handlers = {};
   var sent = [];
   var opened = [];
+  var statusRequests = [];
   var storageData = options.storageData || {};
   var modulePath = require.resolve("../src/pkjs/index");
   global.localStorage = {
     getItem: function(key) { return storageData[key] == null ? null : storageData[key]; },
     setItem: function(key, value) { storageData[key] = String(value); }
   };
-  if (options.XMLHttpRequest) { global.XMLHttpRequest = options.XMLHttpRequest; }
+  if (options.XMLHttpRequest) {
+    // Keep telemetry requests separate from each feature's network fixtures.
+    global.XMLHttpRequest = function() {};
+    global.XMLHttpRequest.prototype.open = function(method, url, async) {
+      if (/\/v1\/status$/.test(url)) {
+        this.url = url; statusRequests.push(this);
+        this.setRequestHeader = function() {};
+        this.send = function() {};
+        return;
+      }
+      var xhr = new options.XMLHttpRequest();
+      xhr.open(method, url, async);
+      var self = this;
+      this.setRequestHeader = function(k,v) { xhr.setRequestHeader(k,v); };
+      this.abort = function() { if(xhr.abort) xhr.abort(); };
+      this.send = function(body) {
+        Object.keys(self).forEach(function(k) { if(k !== "send" && k !== "abort" && k !== "setRequestHeader") xhr[k] = self[k]; });
+        ["onload","onerror","ontimeout","onreadystatechange","onprogress"].forEach(function(k) {
+          if(typeof self[k] === "function") xhr[k] = function() {
+            ["status","responseText","readyState"].forEach(function(v) { self[v] = xhr[v]; });
+            self[k]();
+          };
+        });
+        xhr.send(body);
+      };
+    };
+  }
   if (options.WebSocket) { global.WebSocket = options.WebSocket; }
   global.Pebble = {
     addEventListener: function(name, handler) { handlers[name] = handler; },
@@ -872,6 +899,7 @@ function loadPkjsHarness(options) {
   require(modulePath);
   return {
     handlers: handlers,
+    statusRequests: statusRequests,
     sent: sent,
     opened: opened,
     storageData: storageData,
@@ -896,28 +924,16 @@ function jobReply(h, xhr, source, status, open) {
   return job.id;
 }
 
-test("PebbleKit bridge renders onboarding and round-trips configuration", function() {
-  var harness = loadPkjsHarness();
-  try {
-    harness.handlers.appmessage({ payload: { 0: "ready", 8: "" } });
-    assert.deepStrictEqual(harness.sent.map(function(message) { return message[Watch.Key.operation]; }),
-                           ["begin", "add", "add", "add", "end"]);
-    assert.strictEqual(harness.sent[0][Watch.Key.kind], "list");
-    assert.strictEqual(harness.sent[0][Watch.Key.title], "Pebble Agent");
-    harness.handlers.showConfiguration();
-    assert.strictEqual(harness.opened.length, 1);
-    assert.ok(harness.opened[0].indexOf(Settings.CONFIG_URL) === 0);
-    harness.handlers.webviewclosed({ response: encodeURIComponent(JSON.stringify({
-      endpoint: "https://agent.test", token: "t", units: "metric",
-      locationLabel: "Here", timeoutSeconds: 30
-    })) });
-    assert.match(harness.storageData[Settings.STORAGE_KEY], /https:\/\/agent\.test/);
-    assert.ok(harness.sent.some(function(message) {
-      return message[Watch.Key.title] === "Agent connected";
-    }));
-  } finally {
-    harness.cleanup();
-  }
+test("PebbleKit bridge keeps native dashboard and round-trips configuration", function() {
+  var harness=loadPkjsHarness();
+  try{
+    harness.handlers.appmessage({payload:{0:"ready"}});
+    assert.ok(!harness.sent.some(function(m){return m[0]==="render";}));
+    harness.handlers.showConfiguration();assert.strictEqual(harness.opened.length,1);
+    harness.handlers.webviewclosed({response:JSON.stringify({endpoint:"https://agent.test",token:"t",units:"metric"})});
+    assert.match(harness.storageData[Settings.STORAGE_KEY],/agent.test/);
+    assert.ok(harness.sent.some(function(m){return m[0]==="bridge" && /Agent connected/.test(m[8]);}));
+  }finally{harness.cleanup();}
 });
 
 test("new-session settings preserve old jobs and persist a fresh conversation", function() {
@@ -934,7 +950,7 @@ test("new-session settings preserve old jobs and persist a fresh conversation", 
   var fresh;
   function query() { h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "look up this app" } }); }
   try {
-    h.handlers.appmessage({ payload: { 0: "ready", 8: "local-active" } });
+    h.handlers.appmessage({ payload: { 0: "ready" } });
     h.handlers.webviewclosed({ response: encodeURIComponent(JSON.stringify(config)) });
     assert.strictEqual(storage["pebble-agent.session.v1"], "old-session");
     query();
@@ -1086,6 +1102,17 @@ test("Job submission timeout preserves an unconfirmed ID and a useful error", fu
   }finally{h.cleanup();}
 });
 
+test("Codex dashboard status throttles, reports missing data, and ignores old endpoints", function() {
+ var Status=require("../src/common/dashboard-status"),requests=[],updates=[],settings={endpoint:"https://one.test/v1/agent",token:"secret"};
+ function XHR(){requests.push(this);}XHR.prototype.open=function(method,url){this.url=url;};XHR.prototype.setRequestHeader=function(k,v){this.auth=v;};XHR.prototype.send=function(){};
+ var status=new Status({settings:function(){return settings;},XMLHttpRequest:XHR,update:function(d){updates.push(d);}});
+ status.refresh();status.refresh();assert.strictEqual(requests.length,1);assert.strictEqual(requests[0].url,"https://one.test/v1/status");assert.strictEqual(requests[0].auth,"Bearer secret");
+ settings={endpoint:"https://two.test",token:"new"};status.refresh();assert.strictEqual(requests.length,2);
+ requests[0].status=200;requests[0].responseText=JSON.stringify({remainingPercent:99,activeThreads:0,state:"idle"});requests[0].onload();assert.strictEqual(updates[updates.length-1].state,"unknown");
+ requests[1].status=200;requests[1].responseText=JSON.stringify({remainingPercent:42,activeThreads:3,state:"working"});requests[1].onload();assert.strictEqual(updates[updates.length-1].activeThreads,3);
+ status.refresh();assert.strictEqual(requests.length,2);status.last=Date.now()-61000;status.refresh();requests[2].ontimeout();assert.strictEqual(updates[updates.length-1].remainingPercent,null);
+});
+
 test("phone notes persist full bodies and send only requested summaries or pages", function() {
   var Notes=require("../src/common/notes"), raw={}, fail=false;
   var storage={getItem:function(k){return raw[k]||null;},setItem:function(k,v){if(fail)throw new Error("full");raw[k]=v;}};
@@ -1104,26 +1131,19 @@ test("phone notes persist full bodies and send only requested summaries or pages
   assert.strictEqual(parse(store.render("",0)).filter(function(n){return n.attrs.action==="local.note.open";}).length,8);
   assert.strictEqual(parse(store.render("",1)).filter(function(n){return n.attrs.action==="local.note.open";}).length,3);
 });
-test("phone notes requests, migration acknowledgement and ripple preference stay local", function() {
+test("phone notes requests and ripple preference stay local", function() {
   var storage={}, h=loadPkjsHarness({storageData:storage,XMLHttpRequest:function(){throw new Error("must stay local");}});
   try {
-    h.handlers.appmessage({payload:{0:"capability_event",2:"note",4:"legacy",9:"migrate",8:"Legacy content"}});
-    assert.ok(h.sent.some(function(m){return m[0]==="notes" && m[2]==="migrated" && m[4]==="legacy";}));
-    h.sent.length=0;
-    var set=global.localStorage.setItem;
-    global.localStorage.setItem=function(){throw new Error("Phone storage full");};
-    h.handlers.appmessage({payload:{0:"capability_event",2:"note",4:"unsaved",9:"migrate",8:"Do not acknowledge"}});
-    assert.ok(!h.sent.some(function(m){return m[2]==="migrated";}));
-    global.localStorage.setItem=set;
+    new (require("../src/common/notes").Store)(global.localStorage).mutate({command:"add",id:"note-1",value:"Note content"});
     h.handlers.appmessage({payload:{0:"capability_event",2:"note",9:"list",8:"0",10:"42"}});
     assert.ok(h.sent.some(function(m){return m[0]==="answer"&&m[2]==="begin"&&m[12]===42;}));
     assert.ok(h.sent.some(function(m){return m[0]==="answer"&&m[2]==="complete"&&m[11]===0;}));
-    assert.ok(h.sent.some(function(m){return m[0]==="render" && m[6]==="Legacy content";}));
+    assert.ok(h.sent.some(function(m){return m[0]==="render" && m[6]==="Note content";}));
     assert.ok(!h.sent.some(function(m){return m[0]==="render" && /^body-/.test(m[4]||"");}));
     h.sent.length=0;
-    h.handlers.appmessage({payload:{0:"capability_event",2:"note",4:"legacy",9:"read",8:"0"}});
-    assert.ok(h.sent.some(function(m){return m[0]==="render" && m[8]==="Legacy content";}));
-    h.handlers.appmessage({payload:{0:"ready",8:"local-active"}});
+    h.handlers.appmessage({payload:{0:"capability_event",2:"note",4:"note-1",9:"read",8:"0"}});
+    assert.ok(h.sent.some(function(m){return m[0]==="render" && m[8]==="Note content";}));
+    h.handlers.appmessage({payload:{0:"ready"}});
     h.handlers.webviewclosed({response:JSON.stringify({tapAnimation:false})});
     assert.ok(h.sent.some(function(m){return m[0]==="bridge"&&m[2]==="preferences"&&m[11]===0;}));
     assert.strictEqual(JSON.parse(storage[Settings.STORAGE_KEY]).tapAnimation,false);
@@ -1271,7 +1291,7 @@ test("background weather updates only the tile and caches the forecast", functio
   } } };
   var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
   try {
-    h.handlers.appmessage({ payload: { 0: "ready", 8: "local-active" } });
+    h.handlers.appmessage({ payload: { 0: "ready" } });
     assert.strictEqual(requests.length, 1);
     requests[0].status = 200;
     requests[0].responseText = JSON.stringify({ current: { temperature_2m: 12, weather_code: 0, is_day: 0 },
@@ -1325,11 +1345,11 @@ test("Native dashboard survives bridge startup, configuration, and local notific
   function FakeXHR() { requests += 1; }
   var harness = loadPkjsHarness({ XMLHttpRequest: FakeXHR });
   try {
-    harness.handlers.appmessage({ payload: { 0: "ready", 8: "local-active" } });
+    harness.handlers.appmessage({ payload: { 0: "ready" } });
     assert.strictEqual(harness.sent.length, 6);
-    assert.strictEqual(harness.sent[0][Watch.Key.messageType], "job");
-    assert.strictEqual(harness.sent[2][Watch.Key.operation], "weather");
-    assert.strictEqual(harness.sent[1][Watch.Key.messageType], "bridge");
+    assert.ok(harness.sent.some(function(m) {return m[0] === "job";}));
+    assert.ok(harness.sent.some(function(m) {return m[2] === "weather";}));
+    assert.ok(harness.sent.some(function(m) {return m[2] === "codex-status" && m[8] === "-1";}));
     ["timer.finished", "reminder.acknowledged", "stopwatch.reset"].forEach(function(action) {
       harness.handlers.appmessage({ payload: { 0: "capability_event", 9: action } });
     });

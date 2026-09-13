@@ -8,6 +8,7 @@ var JobModule = require("../common/jobs");
 var Settings = require("../common/settings");
 var Capabilities = require("../common/capabilities");
 var Weather = require("../common/weather");
+var DashboardStatus = require("../common/dashboard-status");
 var Notes = require("../common/notes");
 var notes = new Notes.Store(localStorage);
 var LocalDictation = require("../common/local-dictation");
@@ -20,7 +21,7 @@ var activeRequestId = 0;
 var activePipeline = null;
 var currentScreen = { id: "", layout: "", selected: "" };
 var watchInfo = {};
-var nativeDashboard = false;
+var watchReady = false;
 var failedDeliveries = {};
 var sessionId = loadSessionId();
 var commandSequence = loadCommandSequence();
@@ -109,6 +110,16 @@ function sendControl(operation, requestId) {
   watchQueue.enqueue(message);
 }
 
+var lastDashboardStatus="";
+var dashboardStatus=new DashboardStatus({
+ settings:function(){return settings;},XMLHttpRequest:typeof XMLHttpRequest!=="undefined"?XMLHttpRequest:null,
+ update:function(status){
+  var signature=JSON.stringify(status);if(signature===lastDashboardStatus)return;lastDashboardStatus=signature;
+  var m={};m[Key.messageType]="bridge";m[Key.operation]="codex-status";
+  m[Key.value]=status.remainingPercent===null?"-1":String(status.remainingPercent);
+  m[Key.index]=status.activeThreads===null?-1:status.activeThreads;m[Key.subtitle]=status.state;watchQueue.enqueue(m);
+ }
+});
 function sendPreferences() {
   var m={};m[Key.messageType]="bridge";m[Key.operation]="preferences";
   m[Key.flags]=settings.tapAnimation?1:0;watchQueue.enqueue(m);
@@ -119,11 +130,6 @@ function sendNoteMessage(command,id,value) {
 }
 function sendNoteCount() { sendNoteMessage("count","",notes.count()); }
 function handleNoteRequest(action,id,value,token) {
-  if(action==="migrate") {
-    try { notes.mutate({command:"add",id:id,value:value},"migration:"+id);sendNoteMessage("migrated",id,"");sendNoteCount(); }
-    catch(error){log("Note migration pending",error.message);}
-    return;
-  }
   var requestId=nextRequestId();
   if(activeRequestId)watchQueue.clearRequest(activeRequestId);
   activeRequestId=requestId;
@@ -182,7 +188,7 @@ function saveWeather(summary) {
   sendWeather(summary);
 }
 function refreshWeather() {
-  if (!nativeDashboard || weatherBusy) { return; }
+  if (!watchReady || weatherBusy) { return; }
   try {
     var cached = JSON.parse(localStorage.getItem(weatherCacheKey) || "null");
     sendWeather(cached && Date.now() - cached.updated < 60 * 60 * 1000 ? cached : null);
@@ -439,27 +445,6 @@ function openJob(id, cancel) {
   if (cancel) { jobManager.cancel(id, callback); } else { jobManager.check(id, callback); }
 }
 
-function onboardingPam() {
-  var configured = !!settings.endpoint;
-  var source = "pam version=1\n";
-  source += "screen id=home layout=list title=\"Pebble Agent\" status=true\n";
-  source += "  item id=talk title=\"Hold Select to talk\" subtitle=\"Dictation is always available\"\n";
-  if (configured) {
-    source += "  item id=ready title=\"Agent connected\" subtitle=\"Ask for anything, a timer, or weather\"\n";
-  } else {
-    source += "  item id=setup title=\"Configure endpoint\" subtitle=\"Open this app's settings on your phone\"\n";
-  }
-  source += "  item id=formats title=\"Dynamic screens\" subtitle=\"Lists, grids, cards, forms, and more\"\n";
-  source += "done\n";
-  return source;
-}
-
-function renderOnboarding() {
-  var pipeline = createPipeline(0);
-  pipeline.parser.push(onboardingPam());
-  pipeline.parser.finish();
-}
-
 function handleWatchMessage(event) {
   var payload = event && event.payload || {};
   var type = String(read(payload, Key.messageType, "MessageType") || "");
@@ -470,20 +455,18 @@ function handleWatchMessage(event) {
   var requestId = Number(read(payload, Key.requestId, "RequestId") || 0);
 
   if (type === "ready") {
-    nativeDashboard = value === "local-active";
+    watchReady = true;
     lastWeatherMessage = "";
-    if (nativeDashboard) {
-      sendJob({}, false, "reset");
-      jobManager.entries.forEach(function(job) { if (!job.opened) { sendJob(job, false); } });
-    }
-    if (nativeDashboard) { sendConnection(); refreshWeather(); sendPreferences();
-      try { sendNoteCount();sendNoteMessage("ready","",""); } catch(error){log("Notes unavailable",error.message);}
-    }
-    if (value !== "local-active") {
-      renderOnboarding();
-    }
+    lastDashboardStatus="";dashboardStatus.last=null;dashboardStatus.refresh();
+    sendJob({}, false, "reset");
+    jobManager.entries.forEach(function(job) { if (!job.opened) { sendJob(job, false); } });
+    sendConnection();
+    refreshWeather();
+    sendPreferences();
+    try { sendNoteCount(); } catch(error) { log("Notes unavailable", error.message); }
     return;
   }
+  if (type === "capability_event" && operation === "status") {dashboardStatus.refresh();return;}
   if (type === "capability_event" && operation === "note") { handleNoteRequest(action,element,value,Number(read(payload,Key.meta,"Meta"))||0);return; }
   if (type === "capability_event" && operation === "job") {
     if (action === "refresh") { jobManager.refreshAll(); return; }
@@ -585,6 +568,5 @@ Pebble.addEventListener("webviewclosed", function(event) {
   }
   settings = Settings.save(updated);
   if (updated.newSession) { startNewSession(); }
-  if (nativeDashboard) { sendConnection(); refreshWeather(); sendPreferences(); }
-  else { renderOnboarding(); }
+  if (watchReady) { sendConnection(); refreshWeather(); sendPreferences(); dashboardStatus.refresh(); }
 });

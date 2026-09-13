@@ -39,6 +39,7 @@ func New(config Config) *Server {
 	server.mux.HandleFunc("/healthz", server.health)
 	server.mux.HandleFunc("/v1/jobs/", server.job)
 	server.mux.HandleFunc("/v1/models", server.models)
+	server.mux.HandleFunc("/v1/status", server.status)
 	server.mux.HandleFunc("/v1/agent", server.agent)
 	server.mux.HandleFunc("/", server.root)
 	return server
