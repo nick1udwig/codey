@@ -840,26 +840,30 @@ static void prv_weather_icon(AgentUi *ui, GContext *ctx, const char *icon, int16
   }
 }
 
-static void prv_dashboard_percent(GContext *ctx, const char *text, int x, int y) {
-  prv_pixel_text(ctx,text,x,y,1,1,GColorBlack);
+static void prv_dashboard_percent(GContext *ctx, const char *text, int x, int y, GColor color) {
+  prv_pixel_text(ctx,text,x,y,1,1,color);
   // The pixel font has digits but no percent glyph.
   x += ((int)strlen(text)-1)*6;
-  graphics_context_set_stroke_color(ctx,GColorBlack);
+  graphics_context_set_stroke_color(ctx,color);
   graphics_draw_rect(ctx,GRect(x,y,2,2));
   graphics_draw_line(ctx,GPoint(x+4,y),GPoint(x,y+6));
   graphics_draw_rect(ctx,GRect(x+3,y+5,2,2));
 }
 
 // Small hand-drawn pictographs avoid relying on missing emoji font glyphs.
-static void prv_dashboard_telemetry(AgentUi *ui,GContext *ctx,GRect b) {
+static void prv_dashboard_battery(GContext *ctx,GRect b) {
   int x=b.origin.x+5,y=b.origin.y+6;
   graphics_context_set_stroke_color(ctx,GColorBlack);graphics_context_set_fill_color(ctx,GColorBlack);
   BatteryChargeState battery=battery_state_service_peek();
   graphics_draw_rect(ctx,GRect(x,y+4,11,7));graphics_fill_rect(ctx,GRect(x+11,y+6,2,3),0,GCornerNone);
   graphics_fill_rect(ctx,GRect(x+2,y+6,7*battery.charge_percent/100,3),0,GCornerNone);
   char text[16];snprintf(text,sizeof(text),"%d%%",battery.charge_percent);
-  prv_dashboard_percent(ctx,text,x+15,y+4);
-  x=b.origin.x+b.size.w-45;
+  prv_dashboard_percent(ctx,text,x+15,y+4,GColorBlack);
+}
+
+static void prv_dashboard_quota(AgentUi *ui,GContext *ctx,GRect b) {
+  int x=b.origin.x+(b.size.w-40)/2,y=b.origin.y+b.size.h-22;
+  char text[16];
   // Scalloped brain silhouette and short folds remain readable at 14 pixels.
   graphics_context_set_fill_color(ctx,PBL_IF_COLOR_ELSE(GColorMelon,GColorWhite));
   graphics_fill_circle(ctx,GPoint(x+4,y+4),3);
@@ -873,11 +877,11 @@ static void prv_dashboard_telemetry(AgentUi *ui,GContext *ctx,GRect b) {
   graphics_draw_line(ctx,GPoint(x+2,y+6),GPoint(x+4,y+7));
   graphics_draw_line(ctx,GPoint(x+10,y+7),GPoint(x+12,y+6));
   if(ui->codex_remaining<0)snprintf(text,sizeof(text),"--%%");else snprintf(text,sizeof(text),"%d%%",ui->codex_remaining);
-  prv_dashboard_percent(ctx,text,x+16,y+4);
+  prv_dashboard_percent(ctx,text,x+16,y+4,GColorWhite);
 }
 
 static void prv_dashboard_threads(AgentUi *ui,GContext *ctx,GRect b) {
-  int face=b.origin.x+b.size.w/2-12,y=b.origin.y+18;
+  int face=b.origin.x+b.size.w-33,y=b.origin.y+6;
   char text[16];
   graphics_context_set_fill_color(ctx,PBL_IF_COLOR_ELSE(GColorYellow,GColorWhite));graphics_fill_circle(ctx,GPoint(face,y+7),7);
   graphics_context_set_stroke_color(ctx,GColorBlack);
@@ -894,7 +898,7 @@ static void prv_dashboard_threads(AgentUi *ui,GContext *ctx,GRect b) {
     graphics_draw_pixel(ctx,GPoint(face,y+10));
   }
   if(ui->codex_active<0)snprintf(text,sizeof(text),"-");else snprintf(text,sizeof(text),"%d",ui->codex_active);
-  prv_draw_text(ctx,text,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),GRect(face+10,y-3,30,18),GTextAlignmentLeft,GColorBlack,GTextOverflowModeTrailingEllipsis);
+  prv_draw_text(ctx,text,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),GRect(face+10,y-3,20,18),GTextAlignmentLeft,GColorBlack,GTextOverflowModeTrailingEllipsis);
 }
 
 static void prv_draw_dashboard(AgentUi *ui, GContext *ctx) {
@@ -918,7 +922,8 @@ static void prv_draw_dashboard(AgentUi *ui, GContext *ctx) {
     bool blue = strcmp(e->id, "dictate") == 0 || strcmp(e->id, "new-chat") == 0;
     prv_dashboard_card(ctx, f, blue, ui->selected_element == i);
     if (strcmp(e->id, "calendar") == 0) {
-      prv_dashboard_telemetry(ui,ctx,f);
+      prv_dashboard_battery(ctx,f);
+      prv_dashboard_threads(ui,ctx,f);
       int scale = AGENT_MAX(1, AGENT_MIN(3,(w-8)/((int)strlen(clock_text)*6-1)));
       int clock_width=((int)strlen(clock_text)*6-1)*scale;
       int clock_height=42;
@@ -928,7 +933,6 @@ static void prv_draw_dashboard(AgentUi *ui, GContext *ctx) {
       prv_draw_text(ctx,date_line,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),GRect(x+3,y+h-23,w-6,19),GTextAlignmentCenter,GColorBlack,GTextOverflowModeTrailingEllipsis);
     } else if (strcmp(e->id, "dashboard-summary") == 0) {
       prv_pixel_text(ctx, "NOTIFICATIONS", x + (w - 77) / 2, y + 7, 1, 1, GColorBlack);
-      prv_dashboard_threads(ui,ctx,f);
       AgentUiElement *items[AGENT_UI_MAX_ELEMENTS];
       int count = 0;
       for (uint8_t j = 0; j < ui->element_count; ++j) {
@@ -936,17 +940,17 @@ static void prv_draw_dashboard(AgentUi *ui, GContext *ctx) {
         if (item->used && (strncmp(item->id, "schedule-", 9) == 0 ||
             strcmp(item->id, "dashboard-stopwatch") == 0 || strcmp(item->action, "local.job.open") == 0)) { items[count++] = item; }
       }
-      // Reserve enough height for each icon and label below thread status.
+      // Reserve enough height for each icon and label below the title.
       // Additional records remain available in the complete Notifications list.
-      int capacity = h - 40 >= 68 ? 4 : 2;
+      int capacity = h - 20 >= 68 ? 4 : 2;
       int shown = AGENT_MIN(count, capacity);
       int columns = count == 1 ? 1 : 2;
       int rows = shown <= 2 ? 1 : 2;
-      int row_height = (h - 40) / rows;
+      int row_height = (h - 20) / rows;
       for (int item = 0; item < shown; ++item) {
         int cell_width = (w - 6) / columns;
         int16_t cx = x + 3 + cell_width * (item % columns) + cell_width / 2;
-        int16_t cy = y + 38 + (item / columns) * row_height;
+        int16_t cy = y + 18 + (item / columns) * row_height;
         if (count > capacity && item == capacity - 1) {
           char more[20];
           snprintf(more, sizeof(more), "%d MORE", count - capacity + 1);
@@ -989,9 +993,10 @@ static void prv_draw_dashboard(AgentUi *ui, GContext *ctx) {
                        cy + diameter + 2, 1, 1, GColorBlack);
       }
     } else if (strcmp(e->id, "dictate") == 0) {
-      prv_dashboard_icon(ui, ctx, 2, x + 5, y + (h - 24) / 2);
-      prv_pixel_text(ctx, "TALK TO", x + 32, y + h / 2 - 10, 1, 1, GColorWhite);
-      prv_pixel_text(ctx, "AGENT", x + 32, y + h / 2 + 3, 1, 1, GColorWhite);
+      prv_dashboard_icon(ui, ctx, 2, x + 5, y + (h - 24) / 2 - 9);
+      prv_pixel_text(ctx, "TALK TO", x + 32, y + h / 2 - 19, 1, 1, GColorWhite);
+      prv_pixel_text(ctx, "AGENT", x + 32, y + h / 2 - 6, 1, 1, GColorWhite);
+      prv_dashboard_quota(ui,ctx,f);
 
     } else if (strcmp(e->id, "weather") == 0) {
       char icon[24],low[12]="--",high[12]="--",label[20];

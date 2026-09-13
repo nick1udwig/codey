@@ -213,9 +213,9 @@ Unavailable status/counts remain unknown. The endpoint has a 15-second deadline.
 
 The phone fetches at startup and at most once per minute using the existing watch
 tick; unchanged telemetry sends no additional watch packet. Dashboard rendering
-keeps its existing passive minute limit. The time button shows battery charge and a brain with quota remaining along
-its top edge. Notifications shows the sleeping/thinking pictograph and active
-thread count below its title. There is no separate dashboard status bar. Unknown values display dashes and a question face. The pictographs
+keeps its existing passive minute limit. The time button shows battery charge at the top left and the sleeping/thinking
+pictograph with active thread count at the top right. The brain and quota
+remaining sit below the text in the Talk to Agent button. There is no separate dashboard status bar. Unknown values display dashes and a question face. The pictographs
 are drawn directly because the watch system font does not supply emoji glyphs.
 
 Protocol reference: [Codex app-server](https://learn.chatgpt.com/docs/app-server).
