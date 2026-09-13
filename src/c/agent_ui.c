@@ -1,6 +1,7 @@
 #include "agent_ui.h"
 #include "range_control.h"
 #include "touch_guard.h"
+#include "scroll_gesture.h"
 #include "ripple.h"
 #include "refresh_policy.h"
 
@@ -114,6 +115,7 @@ struct AgentUi {
 #if defined(PBL_TOUCH)
   bool tap_animation;
   TouchGuard touch_guard;
+  ScrollGesture scroll_gesture;
   Layer *ripple_layer;
   AppTimer *ripple_timer;
   GPoint ripple_origin;
@@ -148,6 +150,7 @@ static void prv_reset_touch_guard(AgentUi *ui) {
 #if defined(PBL_TOUCH)
   prv_stop_ripple(ui);
   touch_guard_reset(&ui->touch_guard);
+  ui->scroll_gesture = (ScrollGesture){0};
   ui->touch_down = false;
   if (ui->hold_timer) { app_timer_cancel(ui->hold_timer); ui->hold_timer = NULL; }
 #else
@@ -938,7 +941,7 @@ static void prv_draw_dashboard(AgentUi *ui, GContext *ctx) {
       for (uint8_t j = 0; j < ui->element_count; ++j) {
         AgentUiElement *item = &ui->elements[j];
         if (item->used && (strncmp(item->id, "schedule-", 9) == 0 ||
-            strcmp(item->id, "dashboard-stopwatch") == 0 || strcmp(item->action, "local.job.open") == 0)) { items[count++] = item; }
+            strcmp(item->id, "dashboard-stopwatch") == 0 || strcmp(item->action, "local.job.open") == 0 || strcmp(item->action, "local.tour") == 0)) { items[count++] = item; }
       }
       // Reserve enough height for each icon and label below the title.
       // Additional records remain available in the complete Notifications list.
@@ -1299,9 +1302,15 @@ static void prv_move_selection(AgentUi *ui, int direction) {
     index += direction > 0 ? 1 : -1;
   }
   if (index < 0 || index >= ui->element_count) {
-    if (ui->selected_element < 0) {
-      prv_scroll(ui, direction > 0 ? -42 : 42, true);
-    }
+    prv_scroll(ui, direction > 0 ? -42 : 42, true);
+    return;
+  }
+  // Read the content between actions instead of jumping over it.
+  GPoint offset = scroll_layer_get_content_offset(ui->scroll_layer);
+  GRect frame = ui->elements[index].frame;
+  if ((direction > 0 && frame.origin.y >= -offset.y + ui->viewport_height) ||
+      (direction < 0 && frame.origin.y + frame.size.h <= -offset.y)) {
+    prv_scroll(ui, direction > 0 ? -42 : 42, true);
     return;
   }
   ui->selected_element = index;
@@ -1397,17 +1406,6 @@ static void prv_handle_input(AgentUi *ui, const char *input) {
     if (strcmp(input, "up") == 0) { prv_emit(ui, input, NULL, "local.dashboard.notifications", ""); return; }
     if (strcmp(input, "down") == 0) { prv_emit(ui, input, NULL, "local.todos", ""); return; }
     if (strcmp(input, "select") == 0) { prv_emit(ui, input, NULL, "local.dictate", ""); return; }
-  }
-  // Read long failure details and phone-loaded note pages before their actions.
-  bool reading_note = !strcmp(ui->screen_id,"note-detail") && ui->selected_element >= 0 &&
-                      !strcmp(ui->elements[ui->selected_element].action,"local.note.edit");
-  if ((strcmp(ui->screen_id, "request-error") == 0 && ui->selected_element == 1) || reading_note) {
-    GPoint offset = scroll_layer_get_content_offset(ui->scroll_layer);
-    AgentUiElement *retry = &ui->elements[ui->selected_element];
-    if (strcmp(input, "up") == 0 && offset.y < 0) { prv_scroll(ui, 42, true); return; }
-    if (strcmp(input, "down") == 0 && retry->frame.origin.y + retry->frame.size.h > -offset.y + ui->viewport_height) {
-      prv_scroll(ui, -42, true); return;
-    }
   }
   AgentUiElement *binding = prv_find_binding(ui, input);
   if (binding) {
@@ -1725,8 +1723,30 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
   int dx;
   int dy;
   if (!ui || !event) { return; }
-  // Gate the complete gesture before any scrolling, field changes, selection,
-  // activation, or long-press timer can run.
+  // Reading drags bypass arming, but never activate a control or swipe binding.
+  if (event->type == TouchEvent_Touchdown) {
+    AgentUiElement *hit = prv_hit_test(ui, event->x, event->y);
+    GRect viewport = layer_get_frame(scroll_layer_get_layer(ui->scroll_layer));
+    GPoint point = GPoint(event->x, event->y);
+    bool eligible = !ui->menu_count && strcmp(ui->screen_id, "dashboard") &&
+                    ui->content_height > ui->viewport_height &&
+                    grect_contains_point(&viewport, &point) &&
+                    !prv_hotspot(ui, event->x, event->y) && !prv_control_kind(hit);
+    scroll_gesture_down(&ui->scroll_gesture, eligible, event->x, event->y);
+  } else if (event->type == TouchEvent_PositionUpdate) {
+    int delta;
+    if (scroll_gesture_move(&ui->scroll_gesture, event->x, event->y, &delta)) {
+      prv_cancel_hold(ui);
+      touch_guard_reset(&ui->touch_guard);
+      ui->touch_down = false;
+      prv_scroll(ui, delta, false);
+      return;
+    }
+  } else if (event->type == TouchEvent_Liftoff && scroll_gesture_up(&ui->scroll_gesture)) {
+    prv_reset_touch_guard(ui);
+    return;
+  }
+  // Other gestures still require an arming tap.
   if (event->type == TouchEvent_Touchdown) { prv_stop_ripple(ui); prv_input(ui); }
   bool allowed = false;
   switch (event->type) {
@@ -1797,7 +1817,7 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
         break;
       }
       dy = event->y - ui->touch_last_y;
-      if (dy) { prv_scroll(ui, dy, false); }
+      if (dy && !ui->scroll_gesture.eligible) { prv_scroll(ui, dy, false); }
       ui->touch_last_y = event->y;
       break;
     case TouchEvent_Liftoff:

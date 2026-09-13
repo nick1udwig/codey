@@ -1,7 +1,35 @@
 {
   "version": 1,
-  "created_at": "2026-09-13T01:55:11.411749653+00:00",
+  "created_at": "2026-09-13T04:22:32.649868812+00:00",
   "documents": [
+    {
+      "id": "01a09900-a432-7840-9f5e-663d0da68b7b",
+      "slug": "issues/direct-document-scrolling",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Shorten welcome tour and make document scrolling direct",
+      "content": "Context: the first-start help was too long and double-tap arming made document scrolling frustrating; a selected footer action could also trap Up/Down navigation. Acceptance: tour covers screen controls, asking the agent, then hidden long-press menus in three short paragraphs. Vertical drags on scrollable content work on first contact without activating rows or swipe bindings; menus, hotspots and adjustable controls retain arming. Explicit button bindings keep priority, offscreen next controls are approached by scrolling, and selection boundaries fall back to scrolling. Validation: native gesture tests cover slop, deltas, reversal, release consumption and excluded surfaces; all native tests and both Pebble target builds pass.",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-13T04:22:32.463133891Z",
+      "modified_at": "2026-09-13T04:22:32.463133891Z"
+    },
+    {
+      "id": "01a098d2-4711-75f2-8c3d-06d790b38ed6",
+      "slug": "issues/release-installer-and-welcome-tour",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Release service binaries, user installer, app help and welcome tour",
+      "content": "Context: user requested release automation, a one-line system-aware installer with opt-in user systemd setup, concise skill help and first-start onboarding. Acceptance: published releases attach Linux amd64/386/ARMv7/ARM64 and Darwin ARM64 binaries with checksums and installer; service setup requires terminal consent and never sudo; decline/unavailable manager prints manual instructions; watch tour appears in Notifications until persistently dismissed; app overview and follow-up details reach both file-enabled and embedded skill paths. Validation: JS/native/integration/Go suites, native tour persistence and write failure tests, installer platform/checksum/consent mocks, all five cross-builds and both watch target builds.",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-13T03:31:54.078490354Z",
+      "modified_at": "2026-09-13T03:31:54.078490354Z"
+    },
     {
       "id": "01a09878-0e16-7061-934e-ca2b30743076",
       "slug": "issues/pam-normalization-fast-path",
@@ -547,10 +575,10 @@
     {
       "id": "01a091eb-4958-7731-a829-5a501e760d31",
       "slug": "reference/docs/server",
-      "version": 8,
+      "version": 9,
       "doc_type": "reference",
       "title": "docs/server.md",
-      "content": "Source: `docs/server.md`\n\n# Codex-backed agent server\n\n`pebble-agent-server` is the real self-hosted PAM endpoint. It accepts a watch request over streaming HTTP or the `pam.v1` WebSocket subprotocol, runs the corresponding conversation turn through Codex app-server, validates the model's PAM one complete line at a time, and streams those lines to the phone.\n\n## Prerequisites\n\n- Go 1.24 or newer to build the binary.\n- A current Codex CLI on `PATH`.\n- A working Codex CLI login on the same operating-system account that runs the service.\n- A TLS reverse proxy, VPN, or trusted private network through which the paired phone can reach the service.\n\nBuild and start it:\n\n```sh\ngo build -o build/pebble-agent-server ./cmd/pebble-agent-server\nexport PEBBLE_AGENT_TOKEN=\"replace-with-a-long-random-secret\"\n./build/pebble-agent-server --listen 0.0.0.0:8787\n```\n\nSet the watchapp endpoint to `http://SERVER:8787/v1/agent` and enter the same token. `POST /` is also accepted, but `/v1/agent` is the stable endpoint. `GET /healthz` reports process health.\n\nThe server refuses a non-loopback listener when `PEBBLE_AGENT_TOKEN` is empty. `--allow-unauthenticated-public` exists for tightly controlled development environments, but it is deliberately explicit. The bearer token is read from an environment variable rather than a command-line value so it is not exposed in a process listing.\n\n## Codex configuration\n\nDefaults:\n\n```text\nmodel:  gpt-5.6-luna\neffort: xhigh\nfast:   on\n```\n\nSet them when the process starts:\n\n```sh\n./build/pebble-agent-server \\\n  --model gpt-5.6-luna \\\n  --effort xhigh\n```\n\nThe corresponding environment variables are `PEBBLE_AGENT_MODEL` and `PEBBLE_AGENT_EFFORT`. These values are server defaults. Phone settings can override the model and effort for each request.\n\nThe phone settings provide model and effort selection plus web search (disabled,\ncached, live), filesystem access (runtime files only, read-only, workspace\nwrites), command execution, command network access, and automatic approval\nreview. Phone settings default to Luna / xhigh, fast mode, and live web search. Commands,\nuser-file access, command network access, and auto-review remain off. Older callers\nwithout a backend node retain disabled web search. Missing fast_mode defaults on. Permission settings do not affect local timers, alarms,\ndictation, phone weather, or the transport connection to Codex.\n\n`GET /v1/models` uses the same bearer authentication and returns the installed\nCodex `model/list` catalog, including supported reasoning efforts and server\ndefaults. It supports cross-origin requests from the static settings page using\nan explicit Authorization header and no cookies. A custom model with blank\neffort uses that model's advertised default; blank model and effort use server\ndefaults. Unsupported selections produce an error rather than silently changing\nmodels. The phone bridge preloads model choices before opening settings, including for\nlocal HTTP/WS endpoints. The page also has a refresh button; browser refresh may\nbe blocked as mixed content for HTTP endpoints. In that case, save the endpoint\nand reopen settings to load through the phone bridge.\n\nFast mode is sent as the allowlisted `fast_mode=true|false` backend attribute.\nEach turn requests `serviceTierForTurn=fast` or `default`, so turning it off does\nnot inherit a previous fast tier. Fast mode changes preserve the conversation.\nCodex maps fast to priority processing; model/account availability still applies.\nExisting saved preferences are preserved when defaults change.\n\nPermission options are allowlisted PAM `backend` attributes, excluded from the\nmodel-facing document. They resolve to a thread-local named Codex permission\nprofile. No user files grants only the platform's minimal runtime paths; read-only\nallows file reads; workspace-write additionally grants writes under `--workspace`.\nCommand execution and network access are independent. Shells inherit only core\nenvironment variables. Project instruction files and memory injection are disabled.\nInherited MCP servers, plugins, and app tools are disabled because their privileges\nare not controlled by the local command sandbox.\n\nAuto-review off means `approvalPolicy=never` and `approvalsReviewer=user`: operations\nrequiring additional permission are denied. Auto-review on means `on-request` and\n`auto_review`: Codex may review and approve exceptions beyond the selected baseline.\nIt is not blanket approval. Unexpected interactive client requests are rejected;\nthere is no manual approval UI on the watch. Managed server restrictions remain\nin force and can reject requested settings.\n\nPermission profiles are isolated by session, workspace, and permission settings.\nChanging permissions uses a separate conversation; returning to a previous profile\nresumes its conversation. Model/effort changes keep the same conversation.\nLegacy threads without a recorded permission profile are not reused. Each turn\ninherits the resolved thread permissions; it must not re-send the thread-local\nprofile name, which app-server otherwise resolves against global disk config.\n\nThis implementation was verified with Codex CLI 0.153.2 and its generated app-server\nschema. Named permissions use the experimental API handshake; unsupported servers\nfail explicitly. See the official [app-server documentation](https://learn.chatgpt.com/docs/app-server)\nand [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).\n\n\n## App-server transport selection\n\nEach connection attempt follows this order:\n\n1. Discover the running daemon with `codex app-server daemon version` and connect to its reported Unix socket using WebSocket-over-Unix-socket. `--app-server-unix /absolute/path.sock` skips discovery.\n2. Start and retain a managed `codex app-server --stdio` child process.\n3. Connect to `--app-server-url`, which defaults to `ws://127.0.0.1:4222`.\n\nUse `PEBBLE_AGENT_CODEX` to select another Codex executable, `PEBBLE_AGENT_APP_SERVER_UNIX` for an explicit socket, and `PEBBLE_AGENT_APP_SERVER_URL` for the fallback URL. If a remote WebSocket app-server requires a bearer token, put it in `CODEX_APP_SERVER_TOKEN` or change the variable name with `--app-server-token-env`.\n\nEvery transport performs the required `initialize` request and `initialized` notification. A dropped long-lived connection is re-resolved in the same order on the next request. A connection attempt has a five-second per-transport timeout by default.\n\nEvery JSON protocol message sent to or received from Codex app-server is logged at `info` with `direction=to_app_server` or `direction=from_app_server`, the selected transport, and the complete raw payload. This includes dictated prompts, model output deltas, thread metadata, errors, and any server requests or client responses. Phone endpoint bearer credentials are consumed at the HTTP/WebSocket boundary and are never forwarded in the model-facing PAM document.\n\n## Logs and rotation\n\nStart runtime debugging with:\n\n```text\n~/.pebble-agent/server.log\n```\n\nThe server mirrors its structured stderr output into that file. Before a complete log record would take the active file past 10 MiB (10,485,760 bytes), it rotates the file. It retains five backups: `server.log.1` is newest and `server.log.5` is oldest. A single record larger than 10 MiB remains intact. The active log is created with mode `0600`, and a newly created `.pebble-agent` directory is private to the current user.\n\nSet `PEBBLE_AGENT_LOG_FILE` or use `--log-file /absolute/path` to choose a different file. Use `--log-file -` to log only to stderr. The payloads are intentionally not content-redacted, so protect the active file and every backup as sensitive conversation data.\n\nThese logs prove what crossed the Go server/Codex boundary. If they show a completed, valid PAM response but the watchapp exits, collect Pebble watch logs next: that failure is downstream in the phone bridge, AppMessage delivery, or native watch process.\n\n## Conversations and streaming\n\nThe PAM `request.session` value and permission profile map to a persisted Codex thread. The default state file is the user cache directory's `pebble-agent/sessions.json`, written with mode `0600`; use `--state /absolute/path.json` to move it. Restarting either service resumes the thread. If Codex no longer has a persisted thread, the mapping is discarded and a new one is created.\n\nOnly final-answer agent-message deltas are forwarded. Commentary is ignored. Output is limited to 128 KiB, 2,048 bytes per line, 96 PAM nodes, eight indentation levels, and 48 screen elements. Layouts, element kinds, bindings, patches, removals, and built-in capability commands are allowlisted before each line is flushed. Invalid output becomes a valid root PAM `error` instead of arbitrary bytes reaching the watch. A missing final `done` is supplied for an otherwise valid screen.\n\nAgent execution is unlimited by default (`--turn-timeout 0`). A positive duration\nsets an execution deadline independent of the phone notification window.\n\n## Persistent request jobs\n\nThe phone generates and saves a 30-character hexadecimal ID before submitting\nPAM to `POST /v1/jobs/{id}`. The server persists the accepted job before replying\nwith JSON. Repeating the ID and identical request returns that job; a different\nrequest using the same ID receives HTTP 409. All job routes use the same bearer\nauthentication as `/v1/agent`.\n\n- `GET /v1/jobs/{id}` returns status and a completed PAM result, if available.\n- `GET /v1/jobs/{id}?wait=45` waits once for completion, bounded to 120 seconds.\n  Disconnecting this GET never cancels the job. The phone uses one wait and\n  makes no further automatic polls after it expires. Opening Notifications\n  explicitly refreshes all ongoing jobs once; overlapping checks for the same\n  job are coalesced. This batch never opens result screens or buzzes.\n- `POST /v1/jobs/{id}/cancel` explicitly cancels the work. The transitional\n  `canceling` status becomes `canceled` after execution unwinds.\n- `POST /v1/jobs/{id}/ack` releases the server result only after the phone has\n  cached it and the watch confirms presentation. The ID/hash remain as a\n  deduplication tombstone.\n\nJobs are stored as private JSON files beside session state, under `jobs/`.\nUnretrieved results have no expiry by default. `--job-retention 168h` expires\nterminal jobs seven days after completion, whether retrieved or not; cleanup\nruns every minute and during lookups/submissions. The finite retention setting\nalso bounds tombstone lifetime and therefore the duplicate-submission guarantee.\nRunning jobs are never removed by retention. On restart, unfinished jobs become\nfailed with an explicit restart message; completed results remain retrievable.\nCancellation does not roll back prior changes.\n\nWork in the same conversation is serialized. Up to 32 agent jobs may be active\non the server, with 24 unviewed requests in the phone/watch notification list.\nRetrieved results remain cached on the phone. Failed/canceled entries can be\ndismissed. Restoring the original endpoint is required to check a job after\nchanging servers, so a new server token is never sent to an old endpoint.\n\nThe streaming `/v1/agent` endpoint is used by the standalone client and demo\nprotocol. The watch uses the job routes. Reverse proxies must route\n`/v1/jobs/` as well; a shorter proxy timeout only ends the completion wait, not\nthe work.\n\n## Internet-facing deployment\n\nKeep the Go listener on `127.0.0.1` when a reverse proxy runs on the same host. Terminate TLS at that proxy, disable response buffering for `/v1/agent`, permit WebSocket upgrades if using WSS, and forward `Authorization`. The service already sends `Cache-Control: no-store` and `X-Accel-Buffering: no`.\n\nDo not expose an unencrypted bearer token over the public internet. The service is designed for one trusted operator's Codex account; it is not a multi-tenant authorization or billing boundary.\n\n## Useful flags\n\nRun `pebble-agent-server -h` for the complete set. Common options include:\n\n```text\n--listen 127.0.0.1:8787\n--model gpt-5.6-luna\n--effort xhigh\n--connect-timeout 5s\n--turn-timeout 0\n--job-retention 0\n--state /absolute/path/sessions.json\n--workspace /absolute/path/empty-workspace\n--log-level debug|info|warn|error\n--log-file /absolute/path/server.log\n```\n\nThe workspace is an otherwise empty directory by default. It becomes the writable root only when workspace writes are selected in phone settings. Read-only and workspace-write modes allow reads outside that root; no-user-files mode restricts reads to minimal runtime paths.\n\n## Dashboard status\n\nThe authenticated `GET /v1/status` endpoint reads Codex app-server telemetry on\ndemand. `remainingPercent` is the lowest remaining percentage across the primary\nand secondary windows of `rateLimitsByLimitId[\"codex\"]` from\n`account/rateLimits/read`. It is quota remaining, not context-window capacity.\nMissing quota data is `null`, including accounts without reported limits.\n\n`activeThreads` counts loaded threads whose current status is `active`, using\n`thread/loaded/list` and metadata-only `thread/read` calls. It covers the connected\napp-server instance, including its threads outside Agent. The state is `working`\nwhen any thread is active, `idle` otherwise, and `error` for a thread system error.\nUnavailable status/counts remain unknown. The endpoint has a 15-second deadline.\n\nThe phone fetches at startup and at most once per minute using the existing watch\ntick; unchanged telemetry sends no additional watch packet. Dashboard rendering\nkeeps its existing passive minute limit. The time button shows battery charge at the top left and the sleeping/thinking\npictograph with active thread count at the top right. The brain and quota\nremaining sit below the text in the Talk to Agent button. There is no separate dashboard status bar. Unknown values display dashes and a question face. The pictographs\nare drawn directly because the watch system font does not supply emoji glyphs.\n\nProtocol reference: [Codex app-server](https://learn.chatgpt.com/docs/app-server).\n",
+      "content": "# Codex-backed agent server\n\n`pebble-agent-server` is the real self-hosted PAM endpoint. It accepts a watch request over streaming HTTP or the `pam.v1` WebSocket subprotocol, runs the corresponding conversation turn through Codex app-server, validates the model's PAM one complete line at a time, and streams those lines to the phone.\n\n## Release installation\n\nSee the [one-line installer](../README.md#run-the-agent-service) for prebuilt\nLinux and Apple Silicon binaries. Go is only needed for source builds.\nPublishing a GitHub release triggers `.github/workflows/release-server.yml`,\nwhich tests the service, cross-compiles five targets and attaches binaries,\n`SHA256SUMS`, and `install.sh`. Release asset uploads require mutable releases;\nrepositories enforcing immutable releases need to attach assets before publishing.\n\nThe installer offers a systemd **user** unit on Linux and otherwise prints manual\ninstructions. It never uses sudo or enables lingering. Configure a reverse proxy\nor VPN to reach the default loopback listener from the phone. Use\n`systemctl --user edit pebble-agent.service` to customize the unit. Stop and disable\nit with `systemctl --user disable --now pebble-agent.service`.\n\n## Prerequisites\n\n- Go 1.24 or newer to build the binary.\n- A current Codex CLI on `PATH`.\n- A working Codex CLI login on the same operating-system account that runs the service.\n- A TLS reverse proxy, VPN, or trusted private network through which the paired phone can reach the service.\n\nBuild and start it:\n\n```sh\ngo build -o build/pebble-agent-server ./cmd/pebble-agent-server\nexport PEBBLE_AGENT_TOKEN=\"replace-with-a-long-random-secret\"\n./build/pebble-agent-server --listen 0.0.0.0:8787\n```\n\nSet the watchapp endpoint to `http://SERVER:8787/v1/agent` and enter the same token. `POST /` is also accepted, but `/v1/agent` is the stable endpoint. `GET /healthz` reports process health.\n\nThe server refuses a non-loopback listener when `PEBBLE_AGENT_TOKEN` is empty. `--allow-unauthenticated-public` exists for tightly controlled development environments, but it is deliberately explicit. The bearer token is read from an environment variable rather than a command-line value so it is not exposed in a process listing.\n\n## Codex configuration\n\nDefaults:\n\n```text\nmodel:  gpt-5.6-luna\neffort: xhigh\nfast:   on\n```\n\nSet them when the process starts:\n\n```sh\n./build/pebble-agent-server \\\n  --model gpt-5.6-luna \\\n  --effort xhigh\n```\n\nThe corresponding environment variables are `PEBBLE_AGENT_MODEL` and `PEBBLE_AGENT_EFFORT`. These values are server defaults. Phone settings can override the model and effort for each request.\n\nThe phone settings provide model and effort selection plus web search (disabled,\ncached, live), filesystem access (runtime files only, read-only, workspace\nwrites), command execution, command network access, and automatic approval\nreview. Phone settings default to Luna / xhigh, fast mode, and live web search. Commands,\nuser-file access, command network access, and auto-review remain off. Older callers\nwithout a backend node retain disabled web search. Missing fast_mode defaults on. Permission settings do not affect local timers, alarms,\ndictation, phone weather, or the transport connection to Codex.\n\n`GET /v1/models` uses the same bearer authentication and returns the installed\nCodex `model/list` catalog, including supported reasoning efforts and server\ndefaults. It supports cross-origin requests from the static settings page using\nan explicit Authorization header and no cookies. A custom model with blank\neffort uses that model's advertised default; blank model and effort use server\ndefaults. Unsupported selections produce an error rather than silently changing\nmodels. The phone bridge preloads model choices before opening settings, including for\nlocal HTTP/WS endpoints. The page also has a refresh button; browser refresh may\nbe blocked as mixed content for HTTP endpoints. In that case, save the endpoint\nand reopen settings to load through the phone bridge.\n\nFast mode is sent as the allowlisted `fast_mode=true|false` backend attribute.\nEach turn requests `serviceTierForTurn=fast` or `default`, so turning it off does\nnot inherit a previous fast tier. Fast mode changes preserve the conversation.\nCodex maps fast to priority processing; model/account availability still applies.\nExisting saved preferences are preserved when defaults change.\n\nPermission options are allowlisted PAM `backend` attributes, excluded from the\nmodel-facing document. They resolve to a thread-local named Codex permission\nprofile. No user files grants only the platform's minimal runtime paths; read-only\nallows file reads; workspace-write additionally grants writes under `--workspace`.\nCommand execution and network access are independent. Shells inherit only core\nenvironment variables. Project instruction files and memory injection are disabled.\nInherited MCP servers, plugins, and app tools are disabled because their privileges\nare not controlled by the local command sandbox.\n\nAuto-review off means `approvalPolicy=never` and `approvalsReviewer=user`: operations\nrequiring additional permission are denied. Auto-review on means `on-request` and\n`auto_review`: Codex may review and approve exceptions beyond the selected baseline.\nIt is not blanket approval. Unexpected interactive client requests are rejected;\nthere is no manual approval UI on the watch. Managed server restrictions remain\nin force and can reject requested settings.\n\nPermission profiles are isolated by session, workspace, and permission settings.\nChanging permissions uses a separate conversation; returning to a previous profile\nresumes its conversation. Model/effort changes keep the same conversation.\nLegacy threads without a recorded permission profile are not reused. Each turn\ninherits the resolved thread permissions; it must not re-send the thread-local\nprofile name, which app-server otherwise resolves against global disk config.\n\nThis implementation was verified with Codex CLI 0.153.2 and its generated app-server\nschema. Named permissions use the experimental API handshake; unsupported servers\nfail explicitly. See the official [app-server documentation](https://learn.chatgpt.com/docs/app-server)\nand [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).\n\n\n## App-server transport selection\n\nEach connection attempt follows this order:\n\n1. Discover the running daemon with `codex app-server daemon version` and connect to its reported Unix socket using WebSocket-over-Unix-socket. `--app-server-unix /absolute/path.sock` skips discovery.\n2. Start and retain a managed `codex app-server --stdio` child process.\n3. Connect to `--app-server-url`, which defaults to `ws://127.0.0.1:4222`.\n\nUse `PEBBLE_AGENT_CODEX` to select another Codex executable, `PEBBLE_AGENT_APP_SERVER_UNIX` for an explicit socket, and `PEBBLE_AGENT_APP_SERVER_URL` for the fallback URL. If a remote WebSocket app-server requires a bearer token, put it in `CODEX_APP_SERVER_TOKEN` or change the variable name with `--app-server-token-env`.\n\nEvery transport performs the required `initialize` request and `initialized` notification. A dropped long-lived connection is re-resolved in the same order on the next request. A connection attempt has a five-second per-transport timeout by default.\n\nEvery JSON protocol message sent to or received from Codex app-server is logged at `info` with `direction=to_app_server` or `direction=from_app_server`, the selected transport, and the complete raw payload. This includes dictated prompts, model output deltas, thread metadata, errors, and any server requests or client responses. Phone endpoint bearer credentials are consumed at the HTTP/WebSocket boundary and are never forwarded in the model-facing PAM document.\n\n## Logs and rotation\n\nStart runtime debugging with:\n\n```text\n~/.pebble-agent/server.log\n```\n\nThe server mirrors its structured stderr output into that file. Before a complete log record would take the active file past 10 MiB (10,485,760 bytes), it rotates the file. It retains five backups: `server.log.1` is newest and `server.log.5` is oldest. A single record larger than 10 MiB remains intact. The active log is created with mode `0600`, and a newly created `.pebble-agent` directory is private to the current user.\n\nSet `PEBBLE_AGENT_LOG_FILE` or use `--log-file /absolute/path` to choose a different file. Use `--log-file -` to log only to stderr. The payloads are intentionally not content-redacted, so protect the active file and every backup as sensitive conversation data.\n\nThese logs prove what crossed the Go server/Codex boundary. If they show a completed, valid PAM response but the watchapp exits, collect Pebble watch logs next: that failure is downstream in the phone bridge, AppMessage delivery, or native watch process.\n\n## Conversations and streaming\n\nThe PAM `request.session` value and permission profile map to a persisted Codex thread. The default state file is the user cache directory's `pebble-agent/sessions.json`, written with mode `0600`; use `--state /absolute/path.json` to move it. Restarting either service resumes the thread. If Codex no longer has a persisted thread, the mapping is discarded and a new one is created.\n\nOnly final-answer agent-message deltas are forwarded. Commentary is ignored. Output is limited to 128 KiB, 2,048 bytes per line, 96 PAM nodes, eight indentation levels, and 48 screen elements. Layouts, element kinds, bindings, patches, removals, and built-in capability commands are allowlisted before each line is flushed. Invalid output becomes a valid root PAM `error` instead of arbitrary bytes reaching the watch. A missing final `done` is supplied for an otherwise valid screen.\n\nAgent execution is unlimited by default (`--turn-timeout 0`). A positive duration\nsets an execution deadline independent of the phone notification window.\n\n## Persistent request jobs\n\nThe phone generates and saves a 30-character hexadecimal ID before submitting\nPAM to `POST /v1/jobs/{id}`. The server persists the accepted job before replying\nwith JSON. Repeating the ID and identical request returns that job; a different\nrequest using the same ID receives HTTP 409. All job routes use the same bearer\nauthentication as `/v1/agent`.\n\n- `GET /v1/jobs/{id}` returns status and a completed PAM result, if available.\n- `GET /v1/jobs/{id}?wait=45` waits once for completion, bounded to 120 seconds.\n  Disconnecting this GET never cancels the job. The phone uses one wait and\n  makes no further automatic polls after it expires. Opening Notifications\n  explicitly refreshes all ongoing jobs once; overlapping checks for the same\n  job are coalesced. This batch never opens result screens or buzzes.\n- `POST /v1/jobs/{id}/cancel` explicitly cancels the work. The transitional\n  `canceling` status becomes `canceled` after execution unwinds.\n- `POST /v1/jobs/{id}/ack` releases the server result only after the phone has\n  cached it and the watch confirms presentation. The ID/hash remain as a\n  deduplication tombstone.\n\nJobs are stored as private JSON files beside session state, under `jobs/`.\nUnretrieved results have no expiry by default. `--job-retention 168h` expires\nterminal jobs seven days after completion, whether retrieved or not; cleanup\nruns every minute and during lookups/submissions. The finite retention setting\nalso bounds tombstone lifetime and therefore the duplicate-submission guarantee.\nRunning jobs are never removed by retention. On restart, unfinished jobs become\nfailed with an explicit restart message; completed results remain retrievable.\nCancellation does not roll back prior changes.\n\nWork in the same conversation is serialized. Up to 32 agent jobs may be active\non the server, with 24 unviewed requests in the phone/watch notification list.\nRetrieved results remain cached on the phone. Failed/canceled entries can be\ndismissed. Restoring the original endpoint is required to check a job after\nchanging servers, so a new server token is never sent to an old endpoint.\n\nThe streaming `/v1/agent` endpoint is used by the standalone client and demo\nprotocol. The watch uses the job routes. Reverse proxies must route\n`/v1/jobs/` as well; a shorter proxy timeout only ends the completion wait, not\nthe work.\n\n## Internet-facing deployment\n\nKeep the Go listener on `127.0.0.1` when a reverse proxy runs on the same host. Terminate TLS at that proxy, disable response buffering for `/v1/agent`, permit WebSocket upgrades if using WSS, and forward `Authorization`. The service already sends `Cache-Control: no-store` and `X-Accel-Buffering: no`.\n\nDo not expose an unencrypted bearer token over the public internet. The service is designed for one trusted operator's Codex account; it is not a multi-tenant authorization or billing boundary.\n\n## Useful flags\n\nRun `pebble-agent-server -h` for the complete set. Common options include:\n\n```text\n--listen 127.0.0.1:8787\n--model gpt-5.6-luna\n--effort xhigh\n--connect-timeout 5s\n--turn-timeout 0\n--job-retention 0\n--state /absolute/path/sessions.json\n--workspace /absolute/path/empty-workspace\n--log-level debug|info|warn|error\n--log-file /absolute/path/server.log\n```\n\nThe workspace is an otherwise empty directory by default. It becomes the writable root only when workspace writes are selected in phone settings. Read-only and workspace-write modes allow reads outside that root; no-user-files mode restricts reads to minimal runtime paths.\n\n## Dashboard status\n\nThe authenticated `GET /v1/status` endpoint reads Codex app-server telemetry on\ndemand. `remainingPercent` is the lowest remaining percentage across the primary\nand secondary windows of `rateLimitsByLimitId[\"codex\"]` from\n`account/rateLimits/read`. It is quota remaining, not context-window capacity.\nMissing quota data is `null`, including accounts without reported limits.\n\n`activeThreads` counts loaded threads whose current status is `active`, using\n`thread/loaded/list` and metadata-only `thread/read` calls. It covers the connected\napp-server instance, including its threads outside Agent. The state is `working`\nwhen any thread is active, `idle` otherwise, and `error` for a thread system error.\nUnavailable status/counts remain unknown. The endpoint has a 15-second deadline.\n\nThe phone fetches at startup and at most once per minute using the existing watch\ntick; unchanged telemetry sends no additional watch packet. Dashboard rendering\nkeeps its existing passive minute limit. The time button shows battery charge at the top left and the sleeping/thinking\npictograph with active thread count at the top right. The brain and quota\nremaining sit below the text in the Talk to Agent button. There is no separate dashboard status bar. Unknown values display dashes and a question face. The pictographs\nare drawn directly because the watch system font does not supply emoji glyphs.\n\nProtocol reference: [Codex app-server](https://learn.chatgpt.com/docs/app-server).\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -560,7 +588,7 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-13T01:25:00.056358798Z"
+      "modified_at": "2026-09-13T03:31:54.078490354Z"
     },
     {
       "id": "01a091eb-4965-7451-8490-4bb90faa9ae5",
@@ -601,10 +629,10 @@
     {
       "id": "01a091eb-4925-72e2-a4c7-6c4fc5b284e8",
       "slug": "reference/readme",
-      "version": 17,
+      "version": 19,
       "doc_type": "reference",
       "title": "README.md",
-      "content": "# Pebble Agent\n\nPebble Agent puts a voice-driven agent on your Pebble. Tap Talk to Agent (or press Select on the dashboard), say what you need, and the agent chooses a watch-friendly screen for its answer: a list, grid, card, form, progress view, or another supported layout.\n\nThe app is built for Repebble and currently supports:\n\n- Pebble Time 2 (`emery`)\n- Pebble Round 2 (`gabbro`)\n\nOther Pebble models are not included in this build.\n\n## What you need\n\n- A supported watch paired with the Pebble mobile app.\n- The Pebble Agent `.pbw` watchapp.\n- An internet connection on the paired phone.\n- A computer or server that can run the bundled Go agent service and the authenticated Codex CLI.\n- A URL the paired phone can use to reach that service, plus its bearer token.\n\nPebble Agent includes the watch client and a self-hosted agent service. The service uses your local Codex login; it is not a hosted account or public relay.\n\n## Run the agent service\n\nInstall and sign in to the Codex CLI, install Go 1.24 or newer, then build the service from this repository:\n\n```sh\ngo build -o build/pebble-agent-server ./cmd/pebble-agent-server\nexport PEBBLE_AGENT_TOKEN=\"replace-with-a-long-random-secret\"\n./build/pebble-agent-server --listen 0.0.0.0:8787\n```\n\nThe server uses `gpt-5.6-luna` with `xhigh` reasoning by default. Configure either at startup with `--model` and `--effort`, or the `PEBBLE_AGENT_MODEL` and `PEBBLE_AGENT_EFFORT` environment variables.\n\nIt first looks for the running Codex app-server daemon over its Unix socket. If none is available, it starts `codex app-server --stdio`; a configured app-server WebSocket is the final fallback. The service exits at startup if no transport can initialize.\n\nThe phone endpoint is:\n\n```text\nhttp://YOUR-SERVER:8787/v1/agent\n```\n\nUse the same `PEBBLE_AGENT_TOKEN` value in the app settings. Plain HTTP is suitable only on a trusted private network for development. For internet access, put the service behind an HTTPS/WSS reverse proxy and keep the Go listener on loopback. See [Server setup](docs/server.md) for connection, security, persistence, and deployment options.\n\n## Install and connect\n\n1. Install the Pebble Agent `.pbw` with your paired Pebble mobile app.\n2. Find **Agent** in the phone app's watchapp list and open its settings using the gear icon.\n3. Enter your server's `/v1/agent` endpoint. `https://` and `wss://` are recommended; a trusted local network may also use `http://` or `ws://`.\n4. Enter the server's bearer token, choose weather units and a completion notification window, then tap **Save & close**.\n5. Launch **Agent** on the watch. The home screen should say **Agent connected**.\n\nSettings default to GPT-5.6 Luna, extra-high reasoning effort, fast mode, and live\nweb search. The Fast mode toggle requests priority processing and can be turned\noff for standard speed. Explicitly saved preferences are preserved. Use **Load available\nmodels** to fetch the server's supported choices. Permissions control web search,\nuser-file access, command execution, command networking, and auto-review. Filesystem, command, network, and auto-review\npermissions start off. Auto-review can approve exceptions to the selected baseline;\nwhen off, additional-permission requests are denied. Changing permissions uses a\nseparate conversation. See [backend settings](docs/server.md#codex-configuration).\n\nThe gear icon is supplied by the Pebble mobile app. The settings page requires internet access when it opens.\n\nTo start fresh, check **Start new conversation when I save** in phone settings\nand save. The next query opens a new agent thread with no previous conversation\ncontext. Existing conversations are retained. This is a one-time action;\nordinary settings saves continue the current conversation.\n\n## Use the app\n\nTap Talk to Agent, then speak normally. The phone first matches\ncommon commands locally, using normalized speech and regular expressions inspired\nby Bibble. Only unmatched dictation is sent to the configured Codex agent.\n**Thinking** can appear briefly while the phone processes the transcription.\n\nLocal examples: “start a five-minute timer,” “set a timer for one hour and thirty\nminutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up\ntomorrow at seven am,” “remind me in an hour to check the oven,” “pause the\nstopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”\nThese commands need no agent endpoint; weather still uses the phone's location\nand weather service. Each new timer gets its own delivery identity.\n\nClock alarms use the phone's local timezone. AM/PM, noon/midnight, or 24-hour\nHH:MM notation is required; without a date they mean the next occurrence.\nAmbiguous times (“set an alarm for seven”), recurring alarms, commands targeting\nan individual timer, and requests with additional instructions fall back to\nCodex unchanged. Matching is for complete phrases, never just a command buried\ninside a longer sentence. Relative durations support 1 second through 7 days.\n\nThe dashboard uses generated pixel icons, a bitmap font, stepped white panels,\nand a blue agent button inspired by the reference design. On the dashboard, Up\nopens Notifications, Down opens Todos, and Select starts dictation. Touch taps\nopen each section:\n\n- **Clock / Calendar:** opens a calendar placeholder with the current time. The public SDK cannot directly open the system Timeline; it is accessible from the watchface.\n- **Weather:** shows current temperature, daily low/high, and a condition icon (including sun/moon and cloudy day/night variants). It refreshes through the phone on startup and every 15 minutes; cached readings older than an hour are discarded on refresh. Tapping opens the full forecast without an agent request. Location permission and connectivity are required; missing readings show dashes.\n- **Notifications:** stays empty until items exist, then shows their labels. Timer rings fill clockwise from 12 o’clock as elapsed time increases, freezing when paused and filling completely at completion. Up to four entries fit; additional entries are indicated by a “MORE” count. Select opens the complete live list of timers, alarms, reminders, and stopwatch controls.\n- **Talk to Agent:** dictates into the current conversation.\n- **Todos:** shows the undone count and opens a persistent checklist with the current time at the top. Tap a checkbox or press Select to archive an item; archived items can be restored. Swipe vertically or use Up/Down to navigate. Drag item text horizontally, or hold Up/Down to pan the selected item left/right. Add items by talking to Agent: “make a to-do to buy milk,” “set a task to call José,” or “create a todo to book tickets.” The bare prefix also works: “to-do send a birthday card to John.” Complete phrases are matched locally with regexes.\n\nTouchscreen controls require an arming tap before each gesture: tap twice to\nactivate a control, or tap then hold/drag/swipe on the same target. The arming\ntap expires after 1.5 seconds and is consumed by one gesture. An unarmed hold\nor drag does nothing. Menus and screen changes clear the arm; physical buttons\nkeep their existing behavior.\n\nTap then hold Talk to Agent (or hold Select on the dashboard) to open an animated menu\nwith **Talk to Agent** and **New Chat**. The dashboard stays visible behind it;\ntap twice outside or press Back to dismiss. New Chat resets the conversation before\nstarting dictation and reports an unavailable phone after eight seconds. On\nother screens, hold Select to dictate into the current conversation.\n\nTodos and their archive persist on the watch (32 items total, up to 179 UTF-8\nbytes each). Local lists work offline; weather and voice require the phone.\nAgent requests immediately animate into **Notifications**. A completed response\nbuzzes during the configured notification window (45 seconds by default), without\nreplacing the current screen. After that window there is no automatic polling.\nOpening Notifications immediately marks ongoing requests as **Checking** and\nrefreshes them once. Tap a request to refresh its status; finished requests open their PAM response,\nand ongoing requests offer **Cancel request**. Connection failures keep the job\navailable for another check. Canceling does not undo work already performed.\n\nThe server keeps running when the phone disconnects and saves completed results\nuntil the phone confirms retrieval. `--job-retention 0` (the default) retains\nunreceived results indefinitely; use `--job-retention 168h` for seven days.\nThere is no execution deadline by default; `--turn-timeout` sets an optional one.\nRestarting the server preserves finished results and marks unfinished work as\ninterrupted; it does not automatically repeat potentially destructive work.\n\nThe generated PNGs and font are in `resources/images/`; regenerate them with\n`python3 scripts/generate_dashboard_icons.py`. The generator includes concrete\npixel patterns supplied by a Luna subagent.\n\nNotes shares the To Do tile: tap, then hold the tile to choose **Notes** or\n**To Do**. The last collection opened stays on the dashboard. Say “make a note\nCall Jane,” “note: Call Jane,” or “edit a note Call Jane to Call John.” Open a\nnote and select **Edit note** to dictate its replacement directly. Notes live on the phone: opening the list loads summaries, and opening a note\nloads its contents in pages. The watch keeps only the displayed page in memory. See\n[collections and future sync design](docs/collections.md).\n\nThe arming tap now shows a brief expanding ripple with edge reflection. The\nnext touch stops it immediately. Disable the effect with **First-tap ripple\nanimation** in phone settings; checkbox completion still requires two taps.\n\nBack returns to the dashboard\nwithout stopping anything; Back from the dashboard exits the app. On a timer,\nthe X (Down) cancels only that timer, Select pauses/resumes it, and the arrow\n(Up) returns home.\n\nYou can have four timers and four alarms/reminders at once. Finished alerts\nreturn you to Notifications and buzz every three seconds until acknowledged or\nsnoozed. Open a finished entry and press Select to acknowledge, or Down to\nsnooze ten minutes. Acknowledging one leaves other notifications active.\nIf you close Agent with an unacknowledged alert, it requests a wakeup to remind\nyou again in a minute. Pebble only lets the app vibrate while running; if the\nsystem refuses a wakeup, Agent displays “keep Agent open” instead of silently\npromising a background alert.\n\nAssign Agent to a button in the watch's Quick Launch settings. Launching with\nthat shortcut opens dictation automatically; opening Agent from the app menu\nshows the dashboard, and a scheduled wakeup shows notifications.\n\nThe agent can choose the controls and presentation that fit each response:\n\n- Up and Down usually move through or scroll the current screen.\n- Short Select activates the selected item.\n- Back returns to the dashboard; from the dashboard it exits the app.\n- Taps, hotspots, and swipes may be available when the screen defines them.\n- Long Select is always reserved for new dictation and cannot be replaced by the agent.\n\nDepending on the configured agent, you can ask for things such as “start a ten-minute timer,” “show my stopwatch,” “what is the weather?”, or “remind me in two hours.” Timers, stopwatches, and reminders run on the watch; current-location weather is fetched by the phone.\n\n## Troubleshooting\n\n**A request is still working.** Open Notifications and tap it to fetch current status. The 45-second completion notification window does not stop the agent. Check the server log for job acceptance/completion and agent activity. Unconfirmed delivery means the phone has not received an acknowledgement; checking can safely retry the same job ID. Upgrade both the server and watch app for the job API.\n\n**Where are the server logs?** Start debugging with `~/.pebble-agent/server.log`. The server also writes the same records to stderr. It rotates the file at 10 MiB and retains five backups, from `server.log.1` (newest) through `server.log.5` (oldest). Set `PEBBLE_AGENT_LOG_FILE` or pass `--log-file /absolute/path` to move it; pass `--log-file -` for stderr only.\n\n**The home screen says Configure endpoint.** Open Agent's gear icon in the paired phone app, save a valid endpoint, then reopen the watchapp if needed.\n\n**Dictation reports Voice unavailable, Voice disabled, or Voice connection failed.** Check microphone/voice permissions and the phone/watch connection, then retry. Voice recognition depends on the system dictation service.\n\n**Weather cannot get a location.** Allow location access for the Pebble mobile app and make sure the phone has network access.\n\n**The settings page will not open.** Confirm the phone is online. The hosted page is [nick1udwig.github.io/pebble-agent/config/](https://nick1udwig.github.io/pebble-agent/config/).\n\n## Privacy and security\n\nDictated text and watch interactions are sent to the endpoint you configure, then to Codex through the self-hosted service. The server logs every JSON message to and from Codex app-server, including prompts and model responses, in `~/.pebble-agent/server.log`, so that file and its rotated backups must be treated as sensitive conversation data. The bearer token is kept in the Pebble phone runtime's local storage and sent only to the endpoint authentication boundary. When current-location weather is requested, the phone sends coordinates to Open-Meteo. Use an endpoint you trust and prefer HTTPS or WSS.\n\nFor source builds, backend integration, PAM, library APIs, extension points, and testing, see [DEVS.md](DEVS.md).\n\nPAM forms can offer concrete timer/reminder choices that execute on the watch,\nplus sliders and winding dials for adjustable durations. Dragging adjusts the\nvalue; confirmation starts the timer/reminder. Each form offers **Dictate answer**\nfor custom speech sent back to the agent. Advanced authoring guidance is packaged\nas [pam-ui](internal/agent/skills/pam-ui/SKILL.md) and installed beside server\nstate on startup; restart the updated server to activate the new guidance.\n",
+      "content": "# Pebble Agent\n\nPebble Agent puts a voice-driven agent on your Pebble. Tap Talk to Agent (or press Select on the dashboard), say what you need, and the agent chooses a watch-friendly screen for its answer: a list, grid, card, form, progress view, or another supported layout.\n\nThe app is built for Repebble and currently supports:\n\n- Pebble Time 2 (`emery`)\n- Pebble Round 2 (`gabbro`)\n\nOther Pebble models are not included in this build.\n\n## What you need\n\n- A supported watch paired with the Pebble mobile app.\n- The Pebble Agent `.pbw` watchapp.\n- An internet connection on the paired phone.\n- A computer or server that can run the bundled Go agent service and the authenticated Codex CLI.\n- A URL the paired phone can use to reach that service, plus its bearer token.\n\nPebble Agent includes the watch client and a self-hosted agent service. The service uses your local Codex login; it is not a hosted account or public relay.\n\n## Run the agent service\n\nInstall and sign in to the Codex CLI, then download the latest release:\n\n```sh\ncurl -fsSL https://github.com/nick1udwig/pebble-agent/releases/latest/download/install.sh | bash\n```\n\nThe installer verifies the binary's SHA-256 checksum and installs it in\n`~/.local/bin`. Releases include Linux x86-64, x86 (32-bit), ARMv7 and ARM64,\nplus macOS Apple Silicon. On Linux it asks through your terminal before creating\nand starting a **systemd user service**, without sudo. The service listens on\nloopback and saves a generated token in `~/.config/pebble-agent/environment`\n(or under `$XDG_CONFIG_HOME`). It starts with your user manager, normally at login.\nOn macOS, without a user systemd manager, or if you decline, it prints manual\nstartup instructions. Noninteractive installs do not enable a service.\nSet `PEBBLE_AGENT_VERSION=vX.Y.Z` for the installer to select a specific release.\nCodex must be installed and signed in under the same user account.\n\nTo build from source, install Go 1.24 or newer:\n\n\n```sh\ngo build -o build/pebble-agent-server ./cmd/pebble-agent-server\nexport PEBBLE_AGENT_TOKEN=\"replace-with-a-long-random-secret\"\n./build/pebble-agent-server --listen 0.0.0.0:8787\n```\n\nThe server uses `gpt-5.6-luna` with `xhigh` reasoning by default. Configure either at startup with `--model` and `--effort`, or the `PEBBLE_AGENT_MODEL` and `PEBBLE_AGENT_EFFORT` environment variables.\n\nIt first looks for the running Codex app-server daemon over its Unix socket. If none is available, it starts `codex app-server --stdio`; a configured app-server WebSocket is the final fallback. The service exits at startup if no transport can initialize.\n\nThe phone endpoint is:\n\n```text\nhttp://YOUR-SERVER:8787/v1/agent\n```\n\nUse the same `PEBBLE_AGENT_TOKEN` value in the app settings. Plain HTTP is suitable only on a trusted private network for development. For internet access, put the service behind an HTTPS/WSS reverse proxy and keep the Go listener on loopback. See [Server setup](docs/server.md) for connection, security, persistence, and deployment options.\n\n## Install and connect\n\n1. Install the Pebble Agent `.pbw` with your paired Pebble mobile app.\n2. Find **Agent** in the phone app's watchapp list and open its settings using the gear icon.\n3. Enter your server's `/v1/agent` endpoint. `https://` and `wss://` are recommended; a trusted local network may also use `http://` or `ws://`.\n4. Enter the server's bearer token, choose weather units and a completion notification window, then tap **Save & close**.\n5. Launch **Agent** on the watch. The home screen should say **Agent connected**.\n\nSettings default to GPT-5.6 Luna, extra-high reasoning effort, fast mode, and live\nweb search. The Fast mode toggle requests priority processing and can be turned\noff for standard speed. Explicitly saved preferences are preserved. Use **Load available\nmodels** to fetch the server's supported choices. Permissions control web search,\nuser-file access, command execution, command networking, and auto-review. Filesystem, command, network, and auto-review\npermissions start off. Auto-review can approve exceptions to the selected baseline;\nwhen off, additional-permission requests are denied. Changing permissions uses a\nseparate conversation. See [backend settings](docs/server.md#codex-configuration).\n\nThe gear icon is supplied by the Pebble mobile app. The settings page requires internet access when it opens.\n\nTo start fresh, check **Start new conversation when I save** in phone settings\nand save. The next query opens a new agent thread with no previous conversation\ncontext. Existing conversations are retained. This is a one-time action;\nordinary settings saves continue the current conversation.\n\n## Use the app\n\nTap Talk to Agent, then speak normally. The phone first matches\ncommon commands locally, using normalized speech and regular expressions inspired\nby Bibble. Only unmatched dictation is sent to the configured Codex agent.\n**Thinking** can appear briefly while the phone processes the transcription.\n\nLocal examples: “start a five-minute timer,” “set a timer for one hour and thirty\nminutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up\ntomorrow at seven am,” “remind me in an hour to check the oven,” “pause the\nstopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”\nThese commands need no agent endpoint; weather still uses the phone's location\nand weather service. Each new timer gets its own delivery identity.\n\nClock alarms use the phone's local timezone. AM/PM, noon/midnight, or 24-hour\nHH:MM notation is required; without a date they mean the next occurrence.\nAmbiguous times (“set an alarm for seven”), recurring alarms, commands targeting\nan individual timer, and requests with additional instructions fall back to\nCodex unchanged. Matching is for complete phrases, never just a command buried\ninside a longer sentence. Relative durations support 1 second through 7 days.\n\nThe dashboard uses generated pixel icons, a bitmap font, stepped white panels,\nand a blue agent button inspired by the reference design. On the dashboard, Up\nopens Notifications, Down opens Todos, and Select starts dictation. Touch taps\nopen each section:\n\n- **Clock / Calendar:** opens a calendar placeholder with the current time. The public SDK cannot directly open the system Timeline; it is accessible from the watchface.\n- **Weather:** shows current temperature, daily low/high, and a condition icon (including sun/moon and cloudy day/night variants). It refreshes through the phone on startup and every 15 minutes; cached readings older than an hour are discarded on refresh. Tapping opens the full forecast without an agent request. Location permission and connectivity are required; missing readings show dashes.\n- **Notifications:** initially includes a **Welcome to Agent** tour, which stays until you select **Got it**. After dismissal it stays empty until items exist, then shows their labels. Timer rings fill clockwise from 12 o’clock as elapsed time increases, freezing when paused and filling completely at completion. Up to four entries fit; additional entries are indicated by a “MORE” count. Select opens the complete live list of timers, alarms, reminders, and stopwatch controls.\n- **Talk to Agent:** dictates into the current conversation.\n- **Todos:** shows the undone count and opens a persistent checklist with the current time at the top. Tap a checkbox or press Select to archive an item; archived items can be restored. Swipe vertically or use Up/Down to navigate. Drag item text horizontally, or hold Up/Down to pan the selected item left/right. Add items by talking to Agent: “make a to-do to buy milk,” “set a task to call José,” or “create a todo to book tickets.” The bare prefix also works: “to-do send a birthday card to John.” Complete phrases are matched locally with regexes.\n\nDrag scrollable text or lists directly to scroll; no arming tap is needed.\nUp/Down scroll when they have no assigned action or next control to select.\nOther touchscreen controls require an arming tap: tap twice to activate a\ncontrol, or tap then hold/drag/swipe on the same target. The arming\ntap expires after 1.5 seconds and is consumed by one gesture. An unarmed hold or control-adjusting drag does nothing. Menus and screen changes clear the arm; physical buttons\nkeep their existing behavior.\n\nTap then hold Talk to Agent (or hold Select on the dashboard) to open an animated menu\nwith **Talk to Agent** and **New Chat**. The dashboard stays visible behind it;\ntap twice outside or press Back to dismiss. New Chat resets the conversation before\nstarting dictation and reports an unavailable phone after eight seconds. On\nother screens, hold Select to dictate into the current conversation.\n\nTodos and their archive persist on the watch (32 items total, up to 179 UTF-8\nbytes each). Local lists work offline; weather and voice require the phone.\nAgent requests immediately animate into **Notifications**. A completed response\nbuzzes during the configured notification window (45 seconds by default), without\nreplacing the current screen. After that window there is no automatic polling.\nOpening Notifications immediately marks ongoing requests as **Checking** and\nrefreshes them once. Tap a request to refresh its status; finished requests open their PAM response,\nand ongoing requests offer **Cancel request**. Connection failures keep the job\navailable for another check. Canceling does not undo work already performed.\n\nThe server keeps running when the phone disconnects and saves completed results\nuntil the phone confirms retrieval. `--job-retention 0` (the default) retains\nunreceived results indefinitely; use `--job-retention 168h` for seven days.\nThere is no execution deadline by default; `--turn-timeout` sets an optional one.\nRestarting the server preserves finished results and marks unfinished work as\ninterrupted; it does not automatically repeat potentially destructive work.\n\nThe generated PNGs and font are in `resources/images/`; regenerate them with\n`python3 scripts/generate_dashboard_icons.py`. The generator includes concrete\npixel patterns supplied by a Luna subagent.\n\nNotes shares the To Do tile: tap, then hold the tile to choose **Notes** or\n**To Do**. The last collection opened stays on the dashboard. Say “make a note\nCall Jane,” “note: Call Jane,” or “edit a note Call Jane to Call John.” Open a\nnote and select **Edit note** to dictate its replacement directly. Notes live on the phone: opening the list loads summaries, and opening a note\nloads its contents in pages. The watch keeps only the displayed page in memory. See\n[collections and future sync design](docs/collections.md).\n\nThe arming tap now shows a brief expanding ripple with edge reflection. The\nnext touch stops it immediately. Disable the effect with **First-tap ripple\nanimation** in phone settings; checkbox completion still requires two taps.\n\nBack returns to the dashboard\nwithout stopping anything; Back from the dashboard exits the app. On a timer,\nthe X (Down) cancels only that timer, Select pauses/resumes it, and the arrow\n(Up) returns home.\n\nYou can have four timers and four alarms/reminders at once. Finished alerts\nreturn you to Notifications and buzz every three seconds until acknowledged or\nsnoozed. Open a finished entry and press Select to acknowledge, or Down to\nsnooze ten minutes. Acknowledging one leaves other notifications active.\nIf you close Agent with an unacknowledged alert, it requests a wakeup to remind\nyou again in a minute. Pebble only lets the app vibrate while running; if the\nsystem refuses a wakeup, Agent displays “keep Agent open” instead of silently\npromising a background alert.\n\nAssign Agent to a button in the watch's Quick Launch settings. Launching with\nthat shortcut opens dictation automatically; opening Agent from the app menu\nshows the dashboard, and a scheduled wakeup shows notifications.\n\nThe agent can choose the controls and presentation that fit each response:\n\n- Up and Down usually move through or scroll the current screen.\n- Short Select activates the selected item.\n- Back returns to the dashboard; from the dashboard it exits the app.\n- Taps, hotspots, and swipes may be available when the screen defines them.\n- Long Select is always reserved for new dictation and cannot be replaced by the agent.\n\nDepending on the configured agent, you can ask for things such as “start a ten-minute timer,” “show my stopwatch,” “what is the weather?”, or “remind me in two hours.” Timers, stopwatches, and reminders run on the watch; current-location weather is fetched by the phone.\n\n## Troubleshooting\n\n**A request is still working.** Open Notifications and tap it to fetch current status. The 45-second completion notification window does not stop the agent. Check the server log for job acceptance/completion and agent activity. Unconfirmed delivery means the phone has not received an acknowledgement; checking can safely retry the same job ID. Upgrade both the server and watch app for the job API.\n\n**Where are the server logs?** Start debugging with `~/.pebble-agent/server.log`. The server also writes the same records to stderr. It rotates the file at 10 MiB and retains five backups, from `server.log.1` (newest) through `server.log.5` (oldest). Set `PEBBLE_AGENT_LOG_FILE` or pass `--log-file /absolute/path` to move it; pass `--log-file -` for stderr only.\n\n**The home screen says Configure endpoint.** Open Agent's gear icon in the paired phone app, save a valid endpoint, then reopen the watchapp if needed.\n\n**Dictation reports Voice unavailable, Voice disabled, or Voice connection failed.** Check microphone/voice permissions and the phone/watch connection, then retry. Voice recognition depends on the system dictation service.\n\n**Weather cannot get a location.** Allow location access for the Pebble mobile app and make sure the phone has network access.\n\n**The settings page will not open.** Confirm the phone is online. The hosted page is [nick1udwig.github.io/pebble-agent/config/](https://nick1udwig.github.io/pebble-agent/config/).\n\n## Privacy and security\n\nDictated text and watch interactions are sent to the endpoint you configure, then to Codex through the self-hosted service. The server logs every JSON message to and from Codex app-server, including prompts and model responses, in `~/.pebble-agent/server.log`, so that file and its rotated backups must be treated as sensitive conversation data. The bearer token is kept in the Pebble phone runtime's local storage and sent only to the endpoint authentication boundary. When current-location weather is requested, the phone sends coordinates to Open-Meteo. Use an endpoint you trust and prefer HTTPS or WSS.\n\nFor source builds, backend integration, PAM, library APIs, extension points, and testing, see [DEVS.md](DEVS.md).\n\nPAM forms can offer concrete timer/reminder choices that execute on the watch,\nplus sliders and winding dials for adjustable durations. Dragging adjusts the\nvalue; confirmation starts the timer/reminder. Each form offers **Dictate answer**\nfor custom speech sent back to the agent. Advanced authoring guidance is packaged\nas [pam-ui](internal/agent/skills/pam-ui/SKILL.md) and installed beside server\nstate on startup; restart the updated server to activate the new guidance.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -614,10 +642,432 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-13T00:11:33.726213195Z"
+      "modified_at": "2026-09-13T04:22:32.463133891Z"
     }
   ],
   "commits": [
+    {
+      "id": "01a09900-a998-72f1-aaae-127e982b2c0b",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Document direct scrolling and concise welcome help",
+      "created_at": "2026-09-13T04:22:32.463133891Z",
+      "changes": [
+        {
+          "document_id": "01a09900-a432-7840-9f5e-663d0da68b7b",
+          "slug": "issues/direct-document-scrolling",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "0884e421ef4a8e96f7d4e37180ce109b61c729f14a9a701e8f878449e96a7feb",
+          "doc_type": "task",
+          "title": "Shorten welcome tour and make document scrolling direct"
+        },
+        {
+          "document_id": "01a091eb-4925-72e2-a4c7-6c4fc5b284e8",
+          "slug": "reference/readme",
+          "change_type": "modified",
+          "previous_commit_id": "01a098d2-4d49-7e13-8a09-f70ae155c20d",
+          "previous_version": 18,
+          "new_version": 19,
+          "hunks": [
+            {
+              "old_start": 115,
+              "old_count": 10,
+              "new_start": 115,
+              "new_count": 11,
+              "context": "## Use the app",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "- **Talk to Agent:** dictates into the current conversation."
+                },
+                {
+                  "op": "context",
+                  "content": "- **Todos:** shows the undone count and opens a persistent checklist with the current time at the top. Tap a checkbox or press Select to archive an item; archived items can be restored. Swipe vertically or use Up/Down to navigate. Drag item text horizontally, or hold Up/Down to pan the selected item left/right. Add items by talking to Agent: “make a to-do to buy milk,” “set a task to call José,” or “create a todo to book tickets.” The bare prefix also works: “to-do send a birthday card to John.” Complete phrases are matched locally with regexes."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "delete",
+                  "content": "Touchscreen controls require an arming tap before each gesture: tap twice to"
+                },
+                {
+                  "op": "delete",
+                  "content": "activate a control, or tap then hold/drag/swipe on the same target. The arming"
+                },
+                {
+                  "op": "delete",
+                  "content": "tap expires after 1.5 seconds and is consumed by one gesture. An unarmed hold"
+                },
+                {
+                  "op": "delete",
+                  "content": "or drag does nothing. Menus and screen changes clear the arm; physical buttons"
+                },
+                {
+                  "op": "add",
+                  "content": "Drag scrollable text or lists directly to scroll; no arming tap is needed."
+                },
+                {
+                  "op": "add",
+                  "content": "Up/Down scroll when they have no assigned action or next control to select."
+                },
+                {
+                  "op": "add",
+                  "content": "Other touchscreen controls require an arming tap: tap twice to activate a"
+                },
+                {
+                  "op": "add",
+                  "content": "control, or tap then hold/drag/swipe on the same target. The arming"
+                },
+                {
+                  "op": "add",
+                  "content": "tap expires after 1.5 seconds and is consumed by one gesture. An unarmed hold or control-adjusting drag does nothing. Menus and screen changes clear the arm; physical buttons"
+                },
+                {
+                  "op": "context",
+                  "content": "keep their existing behavior."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Tap then hold Talk to Agent (or hold Select on the dashboard) to open an animated menu"
+                }
+              ]
+            }
+          ],
+          "content_hash": "f93210b618cf9c1015487ad12b607614c4116dba16d039138a6830c38729225f",
+          "previous_hash": "b7f27c256e3ab66fc6ebacd293abc1891cf9b5a5b5bb7c2ce169ac9df51f6542",
+          "doc_type": "reference",
+          "title": "README.md"
+        }
+      ]
+    },
+    {
+      "id": "01a098d2-4d49-7e13-8a09-f70ae155c20d",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Document release installation and first-start app tour",
+      "created_at": "2026-09-13T03:31:54.078490354Z",
+      "changes": [
+        {
+          "document_id": "01a098d2-4711-75f2-8c3d-06d790b38ed6",
+          "slug": "issues/release-installer-and-welcome-tour",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "6e5ff28fd5fd222d081a0aa89951e8a51d80ea2a35adec1c71e4138faeb26c6b",
+          "doc_type": "task",
+          "title": "Release service binaries, user installer, app help and welcome tour"
+        },
+        {
+          "document_id": "01a091eb-4958-7731-a829-5a501e760d31",
+          "slug": "reference/docs/server",
+          "change_type": "modified",
+          "previous_commit_id": "01a0985e-1e7e-7633-bdd9-e9568649f1be",
+          "previous_version": 8,
+          "new_version": 9,
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 5,
+              "new_start": 1,
+              "new_count": 3,
+              "lines": [
+                {
+                  "op": "delete",
+                  "content": "Source: `docs/server.md`"
+                },
+                {
+                  "op": "delete",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "# Codex-backed agent server"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "`pebble-agent-server` is the real self-hosted PAM endpoint. It accepts a watch request over streaming HTTP or the `pam.v1` WebSocket subprotocol, runs the corresponding conversation turn through Codex app-server, validates the model's PAM one complete line at a time, and streams those lines to the phone."
+                }
+              ]
+            },
+            {
+              "old_start": 4,
+              "old_count": 6,
+              "new_start": 2,
+              "new_count": 21,
+              "context": "# Codex-backed agent server",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "`pebble-agent-server` is the real self-hosted PAM endpoint. It accepts a watch request over streaming HTTP or the `pam.v1` WebSocket subprotocol, runs the corresponding conversation turn through Codex app-server, validates the model's PAM one complete line at a time, and streams those lines to the phone."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "## Release installation"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "See the [one-line installer](../README.md#run-the-agent-service) for prebuilt"
+                },
+                {
+                  "op": "add",
+                  "content": "Linux and Apple Silicon binaries. Go is only needed for source builds."
+                },
+                {
+                  "op": "add",
+                  "content": "Publishing a GitHub release triggers `.github/workflows/release-server.yml`,"
+                },
+                {
+                  "op": "add",
+                  "content": "which tests the service, cross-compiles five targets and attaches binaries,"
+                },
+                {
+                  "op": "add",
+                  "content": "`SHA256SUMS`, and `install.sh`. Release asset uploads require mutable releases;"
+                },
+                {
+                  "op": "add",
+                  "content": "repositories enforcing immutable releases need to attach assets before publishing."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "The installer offers a systemd **user** unit on Linux and otherwise prints manual"
+                },
+                {
+                  "op": "add",
+                  "content": "instructions. It never uses sudo or enables lingering. Configure a reverse proxy"
+                },
+                {
+                  "op": "add",
+                  "content": "or VPN to reach the default loopback listener from the phone. Use"
+                },
+                {
+                  "op": "add",
+                  "content": "`systemctl --user edit pebble-agent.service` to customize the unit. Stop and disable"
+                },
+                {
+                  "op": "add",
+                  "content": "it with `systemctl --user disable --now pebble-agent.service`."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "## Prerequisites"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "- Go 1.24 or newer to build the binary."
+                }
+              ]
+            }
+          ],
+          "content_hash": "5eef28858aa7556bf984632d586ef9058b7e975dea8486232510e9edce0e625b",
+          "previous_hash": "32fbde857b4b0fc85227f6da30c34505918668428fd538ab2be314cd8943ff92",
+          "doc_type": "reference",
+          "title": "docs/server.md"
+        },
+        {
+          "document_id": "01a091eb-4925-72e2-a4c7-6c4fc5b284e8",
+          "slug": "reference/readme",
+          "change_type": "modified",
+          "previous_commit_id": "01a0981a-e351-7cd0-8708-8ba9d7fe95b1",
+          "previous_version": 17,
+          "new_version": 18,
+          "hunks": [
+            {
+              "old_start": 21,
+              "old_count": 7,
+              "new_start": 21,
+              "new_count": 25,
+              "context": "## Run the agent service",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "## Run the agent service"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "delete",
+                  "content": "Install and sign in to the Codex CLI, install Go 1.24 or newer, then build the service from this repository:"
+                },
+                {
+                  "op": "add",
+                  "content": "Install and sign in to the Codex CLI, then download the latest release:"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "```sh"
+                },
+                {
+                  "op": "add",
+                  "content": "curl -fsSL https://github.com/nick1udwig/pebble-agent/releases/latest/download/install.sh | bash"
+                },
+                {
+                  "op": "add",
+                  "content": "```"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "The installer verifies the binary's SHA-256 checksum and installs it in"
+                },
+                {
+                  "op": "add",
+                  "content": "`~/.local/bin`. Releases include Linux x86-64, x86 (32-bit), ARMv7 and ARM64,"
+                },
+                {
+                  "op": "add",
+                  "content": "plus macOS Apple Silicon. On Linux it asks through your terminal before creating"
+                },
+                {
+                  "op": "add",
+                  "content": "and starting a **systemd user service**, without sudo. The service listens on"
+                },
+                {
+                  "op": "add",
+                  "content": "loopback and saves a generated token in `~/.config/pebble-agent/environment`"
+                },
+                {
+                  "op": "add",
+                  "content": "(or under `$XDG_CONFIG_HOME`). It starts with your user manager, normally at login."
+                },
+                {
+                  "op": "add",
+                  "content": "On macOS, without a user systemd manager, or if you decline, it prints manual"
+                },
+                {
+                  "op": "add",
+                  "content": "startup instructions. Noninteractive installs do not enable a service."
+                },
+                {
+                  "op": "add",
+                  "content": "Set `PEBBLE_AGENT_VERSION=vX.Y.Z` for the installer to select a specific release."
+                },
+                {
+                  "op": "add",
+                  "content": "Codex must be installed and signed in under the same user account."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "To build from source, install Go 1.24 or newer:"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "```sh"
+                },
+                {
+                  "op": "context",
+                  "content": "go build -o build/pebble-agent-server ./cmd/pebble-agent-server"
+                }
+              ]
+            },
+            {
+              "old_start": 93,
+              "old_count": 7,
+              "new_start": 111,
+              "new_count": 7,
+              "context": "## Use the app",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "- **Clock / Calendar:** opens a calendar placeholder with the current time. The public SDK cannot directly open the system Timeline; it is accessible from the watchface."
+                },
+                {
+                  "op": "context",
+                  "content": "- **Weather:** shows current temperature, daily low/high, and a condition icon (including sun/moon and cloudy day/night variants). It refreshes through the phone on startup and every 15 minutes; cached readings older than an hour are discarded on refresh. Tapping opens the full forecast without an agent request. Location permission and connectivity are required; missing readings show dashes."
+                },
+                {
+                  "op": "delete",
+                  "content": "- **Notifications:** stays empty until items exist, then shows their labels. Timer rings fill clockwise from 12 o’clock as elapsed time increases, freezing when paused and filling completely at completion. Up to four entries fit; additional entries are indicated by a “MORE” count. Select opens the complete live list of timers, alarms, reminders, and stopwatch controls."
+                },
+                {
+                  "op": "add",
+                  "content": "- **Notifications:** initially includes a **Welcome to Agent** tour, which stays until you select **Got it**. After dismissal it stays empty until items exist, then shows their labels. Timer rings fill clockwise from 12 o’clock as elapsed time increases, freezing when paused and filling completely at completion. Up to four entries fit; additional entries are indicated by a “MORE” count. Select opens the complete live list of timers, alarms, reminders, and stopwatch controls."
+                },
+                {
+                  "op": "context",
+                  "content": "- **Talk to Agent:** dictates into the current conversation."
+                },
+                {
+                  "op": "context",
+                  "content": "- **Todos:** shows the undone count and opens a persistent checklist with the current time at the top. Tap a checkbox or press Select to archive an item; archived items can be restored. Swipe vertically or use Up/Down to navigate. Drag item text horizontally, or hold Up/Down to pan the selected item left/right. Add items by talking to Agent: “make a to-do to buy milk,” “set a task to call José,” or “create a todo to book tickets.” The bare prefix also works: “to-do send a birthday card to John.” Complete phrases are matched locally with regexes."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                }
+              ]
+            }
+          ],
+          "content_hash": "b7f27c256e3ab66fc6ebacd293abc1891cf9b5a5b5bb7c2ce169ac9df51f6542",
+          "previous_hash": "a5459a70f24bf3630700516579f1be70c97a6efdbddf06a504422950a0554c44",
+          "doc_type": "reference",
+          "title": "README.md"
+        }
+      ]
+    },
     {
       "id": "01a09879-c187-74f1-9668-8042bdcc8bec",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

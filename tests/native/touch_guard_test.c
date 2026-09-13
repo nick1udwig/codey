@@ -1,4 +1,5 @@
 #include "touch_guard.h"
+#include "scroll_gesture.h"
 #include <assert.h>
 #include <stdio.h>
 
@@ -7,6 +8,23 @@ static void tap(TouchGuard *g,int target,uint32_t at,bool allowed) {
   assert(touch_guard_up(g,target,20,20,at+50)==allowed);
 }
 int main(void) {
+  ScrollGesture scroll = {0};
+  int delta;
+  scroll_gesture_down(&scroll, true, 20, 100);
+  assert(!scroll_gesture_move(&scroll, 21, 95, &delta));
+  assert(scroll_gesture_move(&scroll, 21, 75, &delta) && delta == -25);
+  assert(scroll_gesture_move(&scroll, 21, 60, &delta) && delta == -15);
+  assert(scroll_gesture_move(&scroll, 20, 100, &delta) && delta == 40);
+  assert(scroll_gesture_up(&scroll)); // returning to the origin is still a drag
+  assert(!scroll_gesture_up(&scroll));
+  scroll_gesture_down(&scroll, true, 20, 100);
+  assert(!scroll_gesture_move(&scroll, 60, 101, &delta));
+  assert(!scroll_gesture_up(&scroll)); // horizontal actions still use the guard
+  scroll_gesture_down(&scroll, false, 20, 100);
+  assert(!scroll_gesture_move(&scroll, 20, 20, &delta));
+  assert(!scroll_gesture_up(&scroll)); // menus and adjustable controls are excluded
+  scroll_gesture_down(&scroll, true, 20, 100);
+  assert(!scroll_gesture_up(&scroll)); // a stationary tap does not become scrolling
   TouchGuard g={0};
   tap(&g,1,100,false);tap(&g,1,250,true); // weather opens only on the second tap
   tap(&g,1,400,false); // every interaction needs its own arming tap

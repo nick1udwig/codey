@@ -442,7 +442,34 @@ static void test_idle_cadence(void) {
   agent_capabilities_destroy(caps);
   advance(120); assert(timer_callbacks == 3);
 }
+static void test_welcome_tour(void) {
+  reset();
+  AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  assert(element("welcome") >= 0);
+  event(caps, "local.dashboard.notifications");
+  assert(element("welcome") >= 0);
+  event(caps, "local.tour");
+  assert(strcmp(ui.screen, "tour") == 0 && element("tour-dismiss") >= 0);
+  event(caps, "local.home");
+  agent_capabilities_destroy(caps);
+  caps = agent_capabilities_create(&ui, NULL, NULL);
+  assert(element("welcome") >= 0);
+  event(caps, "local.tour");
+  writes_fail = 1;
+  event(caps, "local.tour.dismiss");
+  assert(strcmp(ui.screen, "tour") == 0 && ui.status[0]);
+  writes_fail = 0;
+  event(caps, "local.tour.dismiss");
+  assert(element("welcome") < 0);
+  agent_capabilities_destroy(caps);
+  caps = agent_capabilities_create(&ui, NULL, NULL);
+  event(caps, "local.dashboard.notifications");
+  assert(element("welcome") < 0);
+  agent_capabilities_destroy(caps);
+}
+
 int main(void) {
+  test_welcome_tour();
    test_checkbox_double_tap(); test_notes(); test_idle_cadence();
   test_weather_summary(); test_todos(); test_dashboard_progress(); test_dashboard_destinations(); test_multiple_and_ack(); test_pause_cancel_restore(); test_failures_and_capacity(); test_stopwatch_dashboard();  test_explicit_replacement();
   test_reused_ids_and_screen_independent_expiry(); test_delivery_replay_after_relaunch();

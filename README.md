@@ -21,7 +21,25 @@ Pebble Agent includes the watch client and a self-hosted agent service. The serv
 
 ## Run the agent service
 
-Install and sign in to the Codex CLI, install Go 1.24 or newer, then build the service from this repository:
+Install and sign in to the Codex CLI, then download the latest release:
+
+```sh
+curl -fsSL https://github.com/nick1udwig/pebble-agent/releases/latest/download/install.sh | bash
+```
+
+The installer verifies the binary's SHA-256 checksum and installs it in
+`~/.local/bin`. Releases include Linux x86-64, x86 (32-bit), ARMv7 and ARM64,
+plus macOS Apple Silicon. On Linux it asks through your terminal before creating
+and starting a **systemd user service**, without sudo. The service listens on
+loopback and saves a generated token in `~/.config/pebble-agent/environment`
+(or under `$XDG_CONFIG_HOME`). It starts with your user manager, normally at login.
+On macOS, without a user systemd manager, or if you decline, it prints manual
+startup instructions. Noninteractive installs do not enable a service.
+Set `PEBBLE_AGENT_VERSION=vX.Y.Z` for the installer to select a specific release.
+Codex must be installed and signed in under the same user account.
+
+To build from source, install Go 1.24 or newer:
+
 
 ```sh
 go build -o build/pebble-agent-server ./cmd/pebble-agent-server
@@ -93,14 +111,15 @@ open each section:
 
 - **Clock / Calendar:** opens a calendar placeholder with the current time. The public SDK cannot directly open the system Timeline; it is accessible from the watchface.
 - **Weather:** shows current temperature, daily low/high, and a condition icon (including sun/moon and cloudy day/night variants). It refreshes through the phone on startup and every 15 minutes; cached readings older than an hour are discarded on refresh. Tapping opens the full forecast without an agent request. Location permission and connectivity are required; missing readings show dashes.
-- **Notifications:** stays empty until items exist, then shows their labels. Timer rings fill clockwise from 12 o’clock as elapsed time increases, freezing when paused and filling completely at completion. Up to four entries fit; additional entries are indicated by a “MORE” count. Select opens the complete live list of timers, alarms, reminders, and stopwatch controls.
+- **Notifications:** initially includes a **Welcome to Agent** tour, which stays until you select **Got it**. After dismissal it stays empty until items exist, then shows their labels. Timer rings fill clockwise from 12 o’clock as elapsed time increases, freezing when paused and filling completely at completion. Up to four entries fit; additional entries are indicated by a “MORE” count. Select opens the complete live list of timers, alarms, reminders, and stopwatch controls.
 - **Talk to Agent:** dictates into the current conversation.
 - **Todos:** shows the undone count and opens a persistent checklist with the current time at the top. Tap a checkbox or press Select to archive an item; archived items can be restored. Swipe vertically or use Up/Down to navigate. Drag item text horizontally, or hold Up/Down to pan the selected item left/right. Add items by talking to Agent: “make a to-do to buy milk,” “set a task to call José,” or “create a todo to book tickets.” The bare prefix also works: “to-do send a birthday card to John.” Complete phrases are matched locally with regexes.
 
-Touchscreen controls require an arming tap before each gesture: tap twice to
-activate a control, or tap then hold/drag/swipe on the same target. The arming
-tap expires after 1.5 seconds and is consumed by one gesture. An unarmed hold
-or drag does nothing. Menus and screen changes clear the arm; physical buttons
+Drag scrollable text or lists directly to scroll; no arming tap is needed.
+Up/Down scroll when they have no assigned action or next control to select.
+Other touchscreen controls require an arming tap: tap twice to activate a
+control, or tap then hold/drag/swipe on the same target. The arming
+tap expires after 1.5 seconds and is consumed by one gesture. An unarmed hold or control-adjusting drag does nothing. Menus and screen changes clear the arm; physical buttons
 keep their existing behavior.
 
 Tap then hold Talk to Agent (or hold Select on the dashboard) to open an animated menu

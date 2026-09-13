@@ -4,9 +4,11 @@
 #include "capabilities/internal.h"
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 #define COLLECTION_PREFERENCE_KEY 4399
+#define TOUR_DISMISSED_KEY 4398
 
 typedef struct {
   char name[AGENT_CAPABILITY_NAME_LENGTH];
@@ -32,6 +34,31 @@ struct AgentCapabilities {
 
 static AgentCapabilities *s_wakeup_capabilities;
 static void prv_show_notifications(AgentCapabilities *capabilities);
+
+static void prv_add_tour(AgentCapabilities *capabilities) {
+  if (persist_read_int(TOUR_DISMISSED_KEY) != 1) {
+    agent_capability_add_element(capabilities->ui, "item", "welcome", "Welcome to Agent",
+                                 "A quick tour", "", "local.tour", "dashboard_kind=job", 0);
+  }
+}
+
+static void prv_show_tour(AgentCapabilities *capabilities) {
+  static const char *pages[] = {
+    "Drag to scroll. Tap twice to activate. Up/Down scroll or move between controls. Back returns home.",
+    "Hold Select to ask the agent. Try: what can this app do? Ask follow-ups for details.",
+    "On home, hold Select for New Chat. Tap, then hold Talk or the Notes/To Do tile to open its menu."
+  };
+  capabilities->navigation_revision += 1;
+  agent_capabilities_set_active(capabilities, "tour", true);
+  agent_ui_begin(capabilities->ui, "tour", "list", "Welcome to Agent", "", "", 16);
+  for (unsigned i = 0; i < sizeof(pages) / sizeof(pages[0]); ++i) {
+    char id[16];
+    snprintf(id, sizeof(id), "tour-%u", i);
+    agent_capability_add_element(capabilities->ui, "text", id, "", "", pages[i], "", "", 0);
+  }
+  agent_capability_add_element(capabilities->ui, "item", "tour-dismiss", "Got it", "Dismiss this tour", "", "local.tour.dismiss", "", 0);
+  agent_ui_end(capabilities->ui);
+}
 
 static void prv_tick(void *context) {
   AgentCapabilities *capabilities = context;
@@ -147,6 +174,18 @@ bool agent_capabilities_handle_ui_event(AgentCapabilities *capabilities, const A
     agent_capabilities_show_dashboard(capabilities);
     return true;
   }
+  if (strcmp(event->action, "local.tour") == 0) {
+    prv_show_tour(capabilities);
+    return true;
+  }
+  if (strcmp(event->action, "local.tour.dismiss") == 0) {
+    if (persist_write_int(TOUR_DISMISSED_KEY, 1) < 0) {
+      agent_ui_set_status(capabilities->ui, "Could not dismiss tour. Try again.", false, false);
+      return true;
+    }
+    agent_capabilities_show_dashboard(capabilities);
+    return true;
+  }
   if (strcmp(event->action, "local.dashboard.notifications") == 0) {
     capabilities->navigation_revision += 1;
     prv_show_notifications(capabilities);
@@ -196,6 +235,7 @@ void agent_capabilities_show_dashboard(AgentCapabilities *capabilities) {
                                "Hold Select", "", "local.dictate", "", 0);
   agent_capability_add_element(capabilities->ui, "item", "weather", "Weather", capabilities->weather_range, capabilities->weather_temperature, "local.weather", capabilities->weather_meta, 0);
   agent_capability_add_element(capabilities->ui, "item", "todos", capabilities->collection_notes ? "Notes" : "Todos", "", "", capabilities->collection_notes ? "local.notes" : "local.todos", "", 0);
+  prv_add_tour(capabilities);
   for (uint8_t i = 0; i < capabilities->module_count; ++i) {
     RegisteredModule *module = &capabilities->modules[i];
     if (module->module.dashboard) {
@@ -210,6 +250,7 @@ void agent_capabilities_show_dashboard(AgentCapabilities *capabilities) {
 static void prv_show_notifications(AgentCapabilities *capabilities) {
   agent_capabilities_set_active(capabilities, "notifications", true);
   agent_ui_begin(capabilities->ui, "notifications", "list", "Notifications", "", "", 16);
+  prv_add_tour(capabilities);
   for (uint8_t i = 0; i < capabilities->module_count; ++i) {
     RegisteredModule *module = &capabilities->modules[i];
     if (module->module.dashboard) { module->module.dashboard(capabilities, module->context, false); }

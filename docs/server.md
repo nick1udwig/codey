@@ -2,6 +2,21 @@
 
 `pebble-agent-server` is the real self-hosted PAM endpoint. It accepts a watch request over streaming HTTP or the `pam.v1` WebSocket subprotocol, runs the corresponding conversation turn through Codex app-server, validates the model's PAM one complete line at a time, and streams those lines to the phone.
 
+## Release installation
+
+See the [one-line installer](../README.md#run-the-agent-service) for prebuilt
+Linux and Apple Silicon binaries. Go is only needed for source builds.
+Publishing a GitHub release triggers `.github/workflows/release-server.yml`,
+which tests the service, cross-compiles five targets and attaches binaries,
+`SHA256SUMS`, and `install.sh`. Release asset uploads require mutable releases;
+repositories enforcing immutable releases need to attach assets before publishing.
+
+The installer offers a systemd **user** unit on Linux and otherwise prints manual
+instructions. It never uses sudo or enables lingering. Configure a reverse proxy
+or VPN to reach the default loopback listener from the phone. Use
+`systemctl --user edit pebble-agent.service` to customize the unit. Stop and disable
+it with `systemctl --user disable --now pebble-agent.service`.
+
 ## Prerequisites
 
 - Go 1.24 or newer to build the binary.
