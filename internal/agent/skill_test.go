@@ -41,7 +41,7 @@ func TestInstalledSkillAndExamples(t *testing.T) {
 	if !strings.Contains(a.instructions(true), path) {
 		t.Fatal("skill not discoverable")
 	}
-	if !strings.Contains(a.instructions(false), "## Explaining Pebble Agent") || !strings.Contains(a.instructions(false), "# Pebble Agent feature guide") {
+	if !strings.Contains(a.instructions(false), "## Explaining codey") || !strings.Contains(a.instructions(false), "# codey feature guide") {
 		t.Fatal("tool-disabled fallback missing app help")
 	}
 	if !strings.Contains(a.instructions(false), "type=slider") {

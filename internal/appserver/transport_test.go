@@ -206,7 +206,7 @@ func TestUnixConnectorUsesWebSocketOverUnixSocket(t *testing.T) {
 }
 
 func TestStdioConnectorFramesJSONLines(t *testing.T) {
-	if os.Getenv("PEBBLE_AGENT_STDIO_HELPER") == "1" {
+	if os.Getenv("CODEY_STDIO_HELPER") == "1" {
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
 			fmt.Println(scanner.Text())
@@ -216,7 +216,7 @@ func TestStdioConnectorFramesJSONLines(t *testing.T) {
 	connector := &StdioConnector{
 		Command: os.Args[0],
 		Args:    []string{"-test.run=TestStdioConnectorFramesJSONLines"},
-		Env:     []string{"PEBBLE_AGENT_STDIO_HELPER=1"},
+		Env:     []string{"CODEY_STDIO_HELPER=1"},
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

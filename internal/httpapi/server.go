@@ -60,7 +60,7 @@ func (server *Server) root(response http.ResponseWriter, request *http.Request) 
 	}
 	response.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	response.WriteHeader(http.StatusOK)
-	_, _ = io.WriteString(response, "Pebble Agent server\nPOST PAM to /v1/agent\n")
+	_, _ = io.WriteString(response, "codey server\nPOST PAM to /v1/agent\n")
 }
 
 func (server *Server) health(response http.ResponseWriter, request *http.Request) {
@@ -88,7 +88,7 @@ func (server *Server) agent(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	if !server.authorized(headerToken(request), "") {
-		response.Header().Set("WWW-Authenticate", `Bearer realm="pebble-agent"`)
+		response.Header().Set("WWW-Authenticate", `Bearer realm="codey"`)
 		http.Error(response, "unauthorized", http.StatusUnauthorized)
 		return
 	}

@@ -1159,7 +1159,7 @@ void agent_ui_open_menu(AgentUi *ui, const AgentUiMenuItem *items, uint8_t count
   prv_menu_animate(ui);
 }
 static void prv_agent_menu(AgentUi *ui) {
-  const AgentUiMenuItem items[] = {{"Talk to Agent", "local.dictate"}, {"New Chat", "local.new-chat"}};
+  const AgentUiMenuItem items[] = {{"Talk to codey", "local.dictate"}, {"New Chat", "local.new-chat"}};
   agent_ui_open_menu(ui, items, 2);
 }
 static void prv_menu_select(AgentUi *ui, int index) {

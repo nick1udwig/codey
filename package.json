@@ -1,5 +1,5 @@
 {
-  "name": "pebble-agent",
+  "name": "codey",
   "author": "nick1udwig",
   "version": "0.1.0",
   "description": "A streaming, agent-defined interface for Repebble watches.",
@@ -15,12 +15,12 @@
     "test": "node tests/run.js && node tests/native/run.js && node tests/integration.mjs && go test ./...",
     "build:watch": "pebble build",
     "build:settings": "node scripts/build-settings-site.mjs",
-    "build:server": "go build -o build/pebble-agent-server ./cmd/pebble-agent-server",
-    "server": "go run ./cmd/pebble-agent-server",
+    "build:server": "go build -o build/codey-server ./cmd/codey-server",
+    "server": "go run ./cmd/codey-server",
     "demo:server": "node examples/server.mjs"
   },
   "pebble": {
-    "displayName": "Agent",
+    "displayName": "codey",
     "uuid": "a59810b4-596d-4c6e-81ae-7f2152af8c17",
     "sdkVersion": "3",
     "enableMultiJS": true,

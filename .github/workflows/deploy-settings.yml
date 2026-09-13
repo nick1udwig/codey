@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/deploy-settings.yml
       - docs/config/**
+      - src/common/endpoints.js
       - package.json
       - scripts/build-settings-site.mjs
   workflow_dispatch:

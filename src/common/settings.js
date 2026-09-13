@@ -1,5 +1,7 @@
 "use strict";
 
+var Endpoints = require("./endpoints");
+
 var STORAGE_KEY = "pebble-agent.settings.v1";
 var CONFIG_URL = "https://nick1udwig.github.io/pebble-agent/config/";
 
@@ -27,7 +29,7 @@ function copyDefaults(value) {
   Object.keys(DEFAULTS).forEach(function(key) {
     settings[key] = source[key] == null ? DEFAULTS[key] : source[key];
   });
-  settings.endpoint = String(settings.endpoint || "").trim();
+  settings.endpoint = Endpoints.normalize(settings.endpoint) || "";
   settings.token = String(settings.token || "").trim();
   settings.units = settings.units === "imperial" || settings.units === "metric" ? settings.units : "auto";
   settings.locationLabel = String(settings.locationLabel || DEFAULTS.locationLabel).slice(0, 64);

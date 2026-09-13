@@ -311,7 +311,7 @@ if the phone never completes delivery; it does not overwrite a newer screen or
 an alert. Phone transport timeouts normally report the failure sooner.
 
 The dashboard maps Up to Notifications, Down to Todos, and Select to dictation.
-Holding Talk to Agent or Select opens a reusable animated overlay menu; outside
+Holding Talk to codey or Select opens a reusable animated overlay menu; outside
 taps and Back dismiss it without changing the dashboard. New Chat lives in this
 menu. Todo rows use `choice` with `meta` containing `todo=true`, text in `value`,
 and the checked flag for archived items. Horizontal touch drags or long Up/Down

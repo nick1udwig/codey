@@ -1,6 +1,6 @@
 ---
 name: pam-ui
-description: Design interactive Pebble Agent PAM screens, including local timer/reminder choices, slider and winding-dial time controls, and dictated form answers. Use for questions about what Pebble Agent can do, app help, or watch requests needing more than a simple text/card response or direct capability.
+description: Design interactive codey PAM screens, including local timer/reminder choices, slider and winding-dial time controls, and dictated form answers. Use for questions about what codey can do, app help, or watch requests needing more than a simple text/card response or direct capability.
 ---
 
 Use the request's device shape, touch support, and conversation to choose a compact screen.
@@ -22,7 +22,7 @@ PAM is declarative. It cannot contain JavaScript, shell commands, or arbitrary
 code to run on the watch. Do not turn an untimed todo into a timed reminder
 unless the user requested a reminder.
 
-## Explaining Pebble Agent
+## Explaining codey
 
 When asked what the app can do, give a concise PAM overview: voice conversations
 with an agent, timers/alarms/reminders and stopwatch, weather forecasts,

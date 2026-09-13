@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
 import vm from "node:vm";
+import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 
 import {
@@ -89,6 +90,7 @@ function runConfig(hash, bridge, XHR) {
   };
   const window = { location };
   if (bridge) window.PebbleConfigBridge = bridge;
+  vm.runInNewContext(fs.readFileSync(new URL("../src/common/endpoints.js", import.meta.url), "utf8"), window);
   vm.runInNewContext(configScript, {
     window,
     document,
@@ -285,6 +287,46 @@ test("model discovery uses bearer auth and ignores stale endpoint responses", ()
   h.elements.endpoint.value = "https://other.test"; h.elements.endpoint.handlers.input();
   requests[1].status = 200; requests[1].responseText = body; requests[1].onload();
   assert.match(h.elements["model-status"].textContent, /this endpoint/);
+});
+
+test("settings browser resolves nested bases and blocks invalid URLs before sending tokens", () => {
+  const requests = [];
+  function XHR() { this.headers = {}; requests.push(this); }
+  XHR.prototype.open = function(method, url) { this.url = url; };
+  XHR.prototype.setRequestHeader = function(k, v) { this.headers[k] = v; };
+  XHR.prototype.send = function() {};
+  for (const input of ["foo.com/bar/baz/biz", "https://foo.com/bar/baz/biz/", "wss://foo.com/bar/baz/biz/v1/agent/"]) {
+    let saved;
+    const h = runConfig("", { submit(value) { saved = value; } }, XHR);
+    h.elements.endpoint.value = input;
+    h.elements.token.value = "secret";
+    h.elements["load-models"].handlers.click();
+    assert.equal(requests.at(-1).url, "https://foo.com/bar/baz/biz/v1/models");
+    assert.equal(requests.at(-1).headers.Authorization, "Bearer secret");
+    h.submit({ preventDefault() {} });
+    assert.equal(saved.endpoint, input === "foo.com/bar/baz/biz" ? "https://" + input : input.replace(/\/+$/, ""));
+  }
+  for (const input of ["ftp://foo.com", "https://user:pass@foo.com", "https://foo.com/codey?x=y", "https://foo.com/codey#x"]) {
+    let saved;
+    const h = runConfig("", { submit(value) { saved = value; } }, XHR);
+    h.elements.endpoint.value = input;
+    const count = requests.length;
+    h.elements["load-models"].handlers.click();
+    h.submit({ preventDefault() {} });
+    assert.equal(requests.length, count);
+    assert.equal(saved, undefined);
+  }
+});
+
+test("built settings page includes and loads its shared endpoint helper", () => {
+  execFileSync(process.execPath, ["scripts/build-settings-site.mjs"], { cwd: new URL("..", import.meta.url), stdio: "pipe" });
+  const page = new URL("../build/settings-site/config/index.html", import.meta.url);
+  const scripts = [...fs.readFileSync(page, "utf8").matchAll(/<script src="([^"]+)"/g)].map(match => new URL(match[1], page));
+  assert.equal(scripts.length, 2);
+  const browser = {};
+  vm.runInNewContext(fs.readFileSync(scripts[0], "utf8"), browser);
+  assert.equal(browser.CodeyEndpoints.api("foo.com/bar/baz/biz", "models"), "https://foo.com/bar/baz/biz/v1/models");
+  assert.equal(fs.readFileSync(scripts[1], "utf8"), configScript);
 });
 
 let passed = 0;

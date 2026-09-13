@@ -1,5 +1,6 @@
 "use strict";
 
+var Endpoints = require("../common/endpoints");
 var Pam = require("../common/pam");
 var Model = require("../common/model");
 var WatchProtocol = require("../common/watch-protocol");
@@ -144,7 +145,7 @@ function handleNoteRequest(action,id,value,token) {
 function sendConnection() {
   var message = {};
   message[Key.messageType] = "bridge";
-  message[Key.value] = settings.endpoint ? "Agent connected · Hold Select to talk" : "Configure endpoint in phone settings";
+  message[Key.value] = settings.endpoint ? "codey connected · Hold Select to talk" : "Configure endpoint in phone settings";
   watchQueue.enqueue(message);
 }
 
@@ -527,8 +528,8 @@ Pebble.addEventListener("showConfiguration", function() {
   // Fetch through the phone bridge before opening the HTTPS settings page.
   // This also works with local HTTP/WS endpoints that a browser would block as
   // mixed content. Catalog metadata is not persisted as user settings.
-  var match = /^(https?|wss?):\/\/([^/?#]+)(?:[/?#]|$)/i.exec(settings.endpoint);
-  if (!match || match[2].indexOf("@") >= 0 || typeof XMLHttpRequest === "undefined") {
+  var url = Endpoints.api(settings.endpoint, "models");
+  if (!url || typeof XMLHttpRequest === "undefined") {
     Pebble.openURL(Settings.buildConfigUrl(settings, Date.now()));
     return;
   }
@@ -540,7 +541,7 @@ Pebble.addEventListener("showConfiguration", function() {
   }
   var xhr = new XMLHttpRequest();
   try {
-    xhr.open("GET", match[1].toLowerCase().replace(/^ws/, "http") + "://" + match[2] + "/v1/models", true);
+    xhr.open("GET", url, true);
     xhr.timeout = 8000;
     if (settings.token) { xhr.setRequestHeader("Authorization", "Bearer " + settings.token); }
     xhr.onload = function() {

@@ -1,6 +1,7 @@
 "use strict";
 
 module.exports = {
+  endpoints: require("./endpoints"),
   pam: require("./pam"),
   model: require("./model"),
   writer: require("./writer"),

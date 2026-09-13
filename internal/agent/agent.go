@@ -19,7 +19,7 @@ import (
 //go:embed prompt.md
 var developerInstructions string
 
-const baseInstructions = "You are Pebble Agent, a concise general assistant for a small watch. Follow the developer instructions exactly. Use only the tools permitted by the session configuration when needed. Return the final answer only as PAM."
+const baseInstructions = "You are codey, a concise general assistant for a small watch. Follow the developer instructions exactly. Use only the tools permitted by the session configuration when needed. Return the final answer only as PAM."
 
 type Config struct {
 	SkillPath string
@@ -119,7 +119,7 @@ func (agent *Agent) startThread(ctx context.Context, connection *appserver.Conne
 		return "", err
 	}
 	params["ephemeral"] = false
-	params["serviceName"] = "pebble-agent"
+	params["serviceName"] = "codey"
 	err = connection.Request(ctx, "thread/start", params, &response)
 	if err != nil {
 		return "", fmt.Errorf("start Codex thread: %w", err)

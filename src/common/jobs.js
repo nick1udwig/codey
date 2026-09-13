@@ -1,5 +1,6 @@
 "use strict";
 
+var Endpoints = require("./endpoints");
 var buildRequest = require("./agent-client").buildRequest;
 var storageKey = "pebble-agent.jobs.v1";
 function terminal(job) { return /^(done|failed|canceled)$/.test(job.status); }
@@ -9,7 +10,7 @@ function uid() {
   return out.slice(0, 30);
 }
 function endpoint(url) {
-  return String(url).replace(/^ws:/, "http:").replace(/^wss:/, "https:").replace(/\/+$/, "").replace(/\/v1\/agent$/, "") + "/v1/jobs/";
+  return Endpoints.api(url, "jobs/");
 }
 function Jobs(options) {
   this.options = options;

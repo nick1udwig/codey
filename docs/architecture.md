@@ -20,10 +20,10 @@ The included Go endpoint has separate packages for PAM validation, HTTP/WebSocke
 
 ## Phone library
 
-`require("pebble-agent")` exposes:
+`require("codey")` exposes:
 
 ```js
-const Agent = require("pebble-agent");
+const Agent = require("codey");
 
 const writer = new Agent.writer.Writer({
   onLine(line) {

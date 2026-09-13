@@ -79,7 +79,7 @@ Supply the detailed layout/element/capability portion of [protocol.md](protocol.
 5. Stop and emit `error message="…"` on invalid structure rather than forwarding arbitrary text.
 6. Persist only the state needed for the next semantic event.
 
-The included `examples/server.mjs` is a deterministic transport fixture, not a production AI or authentication service. The real reference implementation is `cmd/pebble-agent-server`; see [server.md](server.md).
+The included `examples/server.mjs` is a deterministic transport fixture, not a production AI or authentication service. The real reference implementation is `cmd/codey-server`; see [server.md](server.md).
 
 ## Codex settings
 

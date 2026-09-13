@@ -50,7 +50,7 @@ func main() {
 		if errors.Is(err, flag.ErrHelp) {
 			return
 		}
-		fmt.Fprintln(os.Stderr, "pebble-agent-server:", err)
+		fmt.Fprintln(os.Stderr, "codey-server:", err)
 		os.Exit(1)
 	}
 }
@@ -60,24 +60,24 @@ func run(arguments []string) error {
 	if err != nil {
 		return err
 	}
-	flags := flag.NewFlagSet("pebble-agent-server", flag.ContinueOnError)
+	flags := flag.NewFlagSet("codey-server", flag.ContinueOnError)
 	var config options
-	flags.StringVar(&config.listen, "listen", environment("PEBBLE_AGENT_LISTEN", "127.0.0.1:8787"), "HTTP listen address")
-	flags.StringVar(&config.model, "model", environment("PEBBLE_AGENT_MODEL", "gpt-5.6-luna"), "Codex model")
-	flags.StringVar(&config.effort, "effort", environment("PEBBLE_AGENT_EFFORT", "xhigh"), "reasoning effort")
-	flags.StringVar(&config.codexCommand, "codex", environment("PEBBLE_AGENT_CODEX", "codex"), "Codex CLI command")
-	flags.StringVar(&config.appServerUnix, "app-server-unix", os.Getenv("PEBBLE_AGENT_APP_SERVER_UNIX"), "explicit Codex daemon Unix socket")
-	flags.StringVar(&config.appServerURL, "app-server-url", environment("PEBBLE_AGENT_APP_SERVER_URL", "ws://127.0.0.1:4222"), "fallback Codex app-server WebSocket URL")
+	flags.StringVar(&config.listen, "listen", environment("CODEY_LISTEN", "127.0.0.1:8787"), "HTTP listen address")
+	flags.StringVar(&config.model, "model", environment("CODEY_MODEL", "gpt-5.6-luna"), "Codex model")
+	flags.StringVar(&config.effort, "effort", environment("CODEY_EFFORT", "xhigh"), "reasoning effort")
+	flags.StringVar(&config.codexCommand, "codex", environment("CODEY_CODEX", "codex"), "Codex CLI command")
+	flags.StringVar(&config.appServerUnix, "app-server-unix", environment("CODEY_APP_SERVER_UNIX", ""), "explicit Codex daemon Unix socket")
+	flags.StringVar(&config.appServerURL, "app-server-url", environment("CODEY_APP_SERVER_URL", "ws://127.0.0.1:4222"), "fallback Codex app-server WebSocket URL")
 	flags.StringVar(&config.appServerTokenEnvironment, "app-server-token-env", "CODEX_APP_SERVER_TOKEN", "environment variable containing app-server WebSocket bearer token")
-	flags.StringVar(&config.authTokenEnvironment, "auth-token-env", "PEBBLE_AGENT_TOKEN", "environment variable containing the phone bearer token")
+	flags.StringVar(&config.authTokenEnvironment, "auth-token-env", "CODEY_TOKEN", "environment variable containing the phone bearer token")
 	flags.BoolVar(&config.allowUnauthenticatedPublic, "allow-unauthenticated-public", false, "allow a non-loopback listener without a phone bearer token")
 	flags.DurationVar(&config.connectTimeout, "connect-timeout", 5*time.Second, "timeout per app-server transport")
 	flags.DurationVar(&config.turnTimeout, "turn-timeout", 0, "maximum Codex turn duration; 0 means unlimited")
 	flags.DurationVar(&config.jobRetention, "job-retention", 0, "completed job retention (e.g. 168h); 0 keeps unreceived results forever")
 	flags.StringVar(&config.statePath, "state", defaults.state, "session state JSON path")
 	flags.StringVar(&config.workspace, "workspace", defaults.workspace, "absolute Codex cwd and writable root when phone settings allow workspace writes")
-	flags.StringVar(&config.logLevel, "log-level", environment("PEBBLE_AGENT_LOG_LEVEL", "info"), "debug, info, warn, or error")
-	flags.StringVar(&config.logFile, "log-file", environment("PEBBLE_AGENT_LOG_FILE", defaults.log), "rotating log path, or - for stderr only")
+	flags.StringVar(&config.logLevel, "log-level", environment("CODEY_LOG_LEVEL", "info"), "debug, info, warn, or error")
+	flags.StringVar(&config.logFile, "log-file", environment("CODEY_LOG_FILE", defaults.log), "rotating log path, or - for stderr only")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
@@ -109,11 +109,11 @@ func run(arguments []string) error {
 		logOutput = io.MultiWriter(os.Stderr, rotatingLog)
 	}
 	logger := slog.New(slog.NewTextHandler(logOutput, &slog.HandlerOptions{Level: level}))
-	logger.Info("Pebble Agent logging configured",
+	logger.Info("codey logging configured",
 		"file", config.logFile,
 		"max_bytes", logfile.DefaultMaxBytes,
 		"backups", logfile.DefaultBackups)
-	phoneToken := os.Getenv(config.authTokenEnvironment)
+	phoneToken := environment(config.authTokenEnvironment, "")
 	if phoneToken == "" && !config.allowUnauthenticatedPublic && !loopbackListener(config.listen) {
 		return fmt.Errorf("refusing unauthenticated non-loopback listener %q; set %s or pass --allow-unauthenticated-public", config.listen, config.authTokenEnvironment)
 	}
@@ -172,7 +172,7 @@ func run(arguments []string) error {
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    16 << 10,
 	}
-	logger.Info("Pebble Agent server listening",
+	logger.Info("codey server listening",
 		"address", listener.Addr().String(),
 		"endpoint", "/v1/agent",
 		"model", config.model,
@@ -223,6 +223,13 @@ func defaultPaths() (paths, error) {
 }
 
 func environment(name, fallback string) string {
+	// Existing service environments remain valid after the project rename.
+	if strings.HasPrefix(name, "CODEY_") {
+		if value, ok := os.LookupEnv(name); ok {
+			return strings.TrimSpace(value)
+		}
+		name = "PEBBLE_AGENT_" + strings.TrimPrefix(name, "CODEY_")
+	}
 	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
 		return value
 	}

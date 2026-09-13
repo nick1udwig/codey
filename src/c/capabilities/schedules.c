@@ -92,7 +92,7 @@ static void prv_schedule(Schedules *s) {
       s->schedule_failed = true;
       s->last_retry = now;
       agent_ui_set_status(agent_capabilities_ui(s->capabilities),
-                          "Wakeup unavailable; keep Agent open", true, false);
+                          "Wakeup unavailable; keep codey open", true, false);
     }
   }
 }
@@ -118,7 +118,7 @@ static void prv_dashboard(AgentCapabilities *capabilities, void *context, bool r
   AgentUi *ui = agent_capabilities_ui(capabilities);
   if (!refresh && s->schedule_failed) {
     agent_capability_add_element(ui, "text", "wakeup-warning", "", "",
-                                 "Wakeup unavailable; keep Agent open", "", "", 0);
+                                 "Wakeup unavailable; keep codey open", "", "", 0);
   }
   const char *headings[] = { "Notifications", "Timers", "Alarms & reminders" };
   const char *sections[] = { "notifications", "timers", "alarms" };
@@ -348,7 +348,7 @@ static bool prv_command(AgentCapabilities *capabilities, const AgentCapabilityCo
   }
   prv_tick(s);
   if (s->schedule_failed) {
-    agent_ui_set_status(agent_capabilities_ui(capabilities), "Wakeup unavailable; keep Agent open", true, false);
+    agent_ui_set_status(agent_capabilities_ui(capabilities), "Wakeup unavailable; keep codey open", true, false);
   }
   return true;
 }

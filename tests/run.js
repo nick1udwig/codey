@@ -954,7 +954,7 @@ test("PebbleKit bridge keeps native dashboard and round-trips configuration", fu
     harness.handlers.showConfiguration();assert.strictEqual(harness.opened.length,1);
     harness.handlers.webviewclosed({response:JSON.stringify({endpoint:"https://agent.test",token:"t",units:"metric"})});
     assert.match(harness.storageData[Settings.STORAGE_KEY],/agent.test/);
-    assert.ok(harness.sent.some(function(m){return m[0]==="bridge" && /Agent connected/.test(m[8]);}));
+    assert.ok(harness.sent.some(function(m){return m[0]==="bridge" && /codey connected/.test(m[8]);}));
   }finally{harness.cleanup();}
 });
 
@@ -1479,11 +1479,11 @@ test("phone configuration fetches model choices before opening HTTPS settings", 
   XHR.prototype.open = function(method,url) { this.url=url; };
   XHR.prototype.setRequestHeader = function(k,v) {this.headers[k]=v;};
   XHR.prototype.send = function() {};
-  var storage = {}; storage[Settings.STORAGE_KEY] = JSON.stringify({endpoint:"ws://local.test:8787/v1/agent",token:"secret"});
+  var storage = {}; storage[Settings.STORAGE_KEY] = JSON.stringify({endpoint:"ws://local.test:8787/bar/baz/biz/v1/agent",token:"secret"});
   var h = loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
   try {
     h.handlers.showConfiguration();
-    assert.strictEqual(xhr.url,"http://local.test:8787/v1/models");
+    assert.strictEqual(xhr.url,"http://local.test:8787/bar/baz/biz/v1/models");
     assert.strictEqual(xhr.headers.Authorization,"Bearer secret");
     xhr.status=200; xhr.responseText=JSON.stringify({models:[{model:"example",supportedReasoningEfforts:[]}],defaultModel:"example",defaultEffort:"low"});xhr.onload();
     var state=JSON.parse(decodeURIComponent(h.opened[0].split("#")[1]));
@@ -1494,6 +1494,8 @@ test("phone configuration fetches model choices before opening HTTPS settings", 
     assert.strictEqual(h.opened.length,2);
   } finally {h.cleanup();}
 });
+
+require("./endpoints")(test);
 
 function runOne(entry) {
   return new Promise(function(resolve, reject) {

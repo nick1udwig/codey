@@ -1,6 +1,6 @@
-# Pebble Agent feature guide
+# codey feature guide
 
-- **Talk to Agent:** Select on the dashboard starts voice dictation. Short local
+- **Talk to codey:** Select on the dashboard starts voice dictation. Short local
   commands such as “start a five-minute timer” are handled by the phone; other
   requests go to the self-hosted Codex service. Answers can be lists, cards,
   grids, forms and other watch-sized interactive screens. Hold Select on home
@@ -27,7 +27,7 @@
   need an arming tap: tap twice to activate, or tap then hold/drag/swipe on the
   control. The arm expires after 1.5 seconds. Back goes home, then exits.
   A watch Quick Launch shortcut starts dictation on launch.
-- **Setup:** In the Pebble phone app, open Agent's gear/settings and enter the
+- **Setup:** In the Pebble phone app, open codey's gear/settings and enter the
   reachable service /v1/agent URL and matching bearer token. Model, reasoning,
   fast mode, search and backend permissions are configurable there. Voice needs
   the paired phone; local timers and To Do lists work offline. The server uses

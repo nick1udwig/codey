@@ -45,6 +45,7 @@ def build(ctx):
 
     ctx.env = cached_env
     ctx.set_group('bundle')
+    ctx.env.BUNDLE_NAME = 'codey.pbw'
     ctx.pbl_bundle(binaries=binaries,
                    js=ctx.path.ant_glob(['src/pkjs/**/*.js',
                                          'src/common/**/*.js']),

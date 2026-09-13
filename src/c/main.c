@@ -582,7 +582,7 @@ static void prv_quick_launch(void *context) {
 }
 
 static void prv_show_boot(void) {
-  agent_ui_begin(s_ui, "boot", "text", "Pebble Agent", "", "", 16);
+  agent_ui_begin(s_ui, "boot", "text", "codey", "", "", 16);
   agent_ui_add(s_ui, &(AgentUiElementSpec) {
     .kind = "text",
     .id = "boot-text",

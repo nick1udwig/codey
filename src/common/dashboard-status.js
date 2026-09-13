@@ -1,5 +1,7 @@
 "use strict";
 
+var Endpoints = require("./endpoints");
+
 function unknown() {
   return { remainingPercent: null, activeThreads: null, state: "unknown" };
 }
@@ -16,7 +18,7 @@ function Status(options) {
 Status.prototype.refresh = function() {
   var self = this;
   var settings = self.options.settings();
-  var match = /^(https?|wss?):\/\/([^/?#]+)(?:[/?#]|$)/i.exec(settings.endpoint || "");
+  var url = Endpoints.api(settings.endpoint, "status");
   var key = (settings.endpoint || "") + ":" + (settings.token || "");
   if (key !== self.key) {
     self.key = key;
@@ -28,7 +30,7 @@ Status.prototype.refresh = function() {
   var now = Date.now();
   if (self.busy || (self.last !== null && now - self.last < 60000)) { return; }
   self.last = now;
-  if (!match || !self.options.XMLHttpRequest) {
+  if (!url || !self.options.XMLHttpRequest) {
     self.options.update(unknown());
     return;
   }
@@ -43,8 +45,7 @@ Status.prototype.refresh = function() {
   }
   try {
     var xhr = new self.options.XMLHttpRequest();
-    var scheme = /^(https|wss)$/i.test(match[1]) ? "https" : "http";
-    xhr.open("GET", scheme + "://" + match[2] + "/v1/status", true);
+    xhr.open("GET", url, true);
     xhr.timeout = 17000;
     if (settings.token) { xhr.setRequestHeader("Authorization", "Bearer " + settings.token); }
     xhr.onload = function() {

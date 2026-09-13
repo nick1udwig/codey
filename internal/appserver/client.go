@@ -251,7 +251,7 @@ func (connection *Connection) rejectServerRequest(id json.RawMessage, method str
 	payload, err := json.Marshal(struct {
 		ID    json.RawMessage `json:"id"`
 		Error RPCError        `json:"error"`
-	}{ID: id, Error: RPCError{Code: -32000, Message: "Pebble Agent does not permit interactive request " + method}})
+	}{ID: id, Error: RPCError{Code: -32000, Message: "codey does not permit interactive request " + method}})
 	if err != nil {
 		return
 	}
@@ -343,7 +343,7 @@ func (client *Client) Connection(ctx context.Context) (*Connection, uint64, stri
 		var initializeResult map[string]any
 		err = connection.Request(attemptCtx, "initialize", map[string]any{
 			"capabilities": map[string]bool{"experimentalApi": true},
-			"clientInfo":   map[string]string{"name": "pebble_agent", "title": "Pebble Agent", "version": client.config.Version},
+			"clientInfo":   map[string]string{"name": "codey", "title": "codey", "version": client.config.Version},
 		}, &initializeResult)
 		if err == nil {
 			err = connection.Notify(attemptCtx, "initialized", map[string]any{})

@@ -1,6 +1,7 @@
 (function() {
   "use strict";
 
+  var Endpoints = window.CodeyEndpoints;
   var defaults = {
     endpoint: "",
     token: "",
@@ -92,7 +93,7 @@
     select.value = entries.some(function(entry) { return entry.reasoningEffort === previous; }) ? previous : "";
   }
   function applyCatalog(result, requestedEndpoint) {
-    catalog = result; catalogEndpoint = requestedEndpoint;
+    catalog = result; catalogEndpoint = Endpoints.normalize(requestedEndpoint);
     var list = document.getElementById("codex-models"); list.textContent = "";
     catalog.models.forEach(function(model) {
       var option = document.createElement("option"); option.value = model.model;
@@ -115,17 +116,12 @@
   endpoint.addEventListener("input", invalidateCatalog);
   token.addEventListener("input", invalidateCatalog);
   document.getElementById("load-models").addEventListener("click", function() {
-    var url;
-    try {
-      url = new URL(endpoint.value.trim().replace(/^ws:/i, "http:").replace(/^wss:/i, "https:"));
-      if (url.protocol !== "http:" && url.protocol !== "https:") { throw new Error("Unsupported endpoint"); }
-      if (url.username || url.password) { throw new Error("Use the bearer token field for authentication"); }
-      url.pathname = "/v1/models"; url.search = ""; url.hash = "";
-    } catch (_) { modelStatus.textContent = "Enter a valid agent endpoint first."; return; }
+    var url = Endpoints.api(endpoint.value, "models");
+    if (!url) { modelStatus.textContent = "Enter a valid server URL first."; return; }
     var generation = ++discoveryGeneration;
-    var requestedEndpoint = endpoint.value.trim();
+    var requestedEndpoint = Endpoints.normalize(endpoint.value);
     var xhr = new XMLHttpRequest();
-    xhr.open("GET", url.toString(), true);
+    xhr.open("GET", url, true);
     xhr.timeout = 15000;
     if (token.value.trim()) { xhr.setRequestHeader("Authorization", "Bearer " + token.value.trim()); }
     modelStatus.textContent = "Loading available models…";
@@ -149,8 +145,13 @@
   form.addEventListener("submit", function(event) {
     var settings;
     event.preventDefault();
+    var normalizedEndpoint = Endpoints.normalize(endpoint.value);
+    if (normalizedEndpoint === null) {
+      status.textContent = "Enter a server URL without credentials, a query, or a fragment.";
+      return;
+    }
     settings = {
-      endpoint: endpoint.value.trim(),
+      endpoint: normalizedEndpoint,
       token: token.value.trim(),
       units: units.value,
       locationLabel: locationLabel.value.trim() || defaults.locationLabel,

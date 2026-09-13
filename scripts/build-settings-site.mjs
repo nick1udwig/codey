@@ -1,4 +1,4 @@
-import { access, cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,16 +13,23 @@ await rm(outputDirectory, { recursive: true, force: true });
 await mkdir(outputDirectory, { recursive: true });
 await cp(sourceDirectory, path.join(outputDirectory, "config"), { recursive: true });
 
+await mkdir(path.join(outputDirectory, "src", "common"), { recursive: true });
+await cp(path.join(repositoryRoot, "src", "common", "endpoints.js"), path.join(outputDirectory, "src", "common", "endpoints.js"));
+
+const configIndex = path.join(outputDirectory, "config", "index.html");
+await writeFile(configIndex, (await readFile(configIndex, "utf8"))
+  .replace("../../src/common/endpoints.js", "../src/common/endpoints.js"));
+
 const redirect = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="refresh" content="0; url=./config/" />
-    <title>Pebble Agent settings</title>
+    <title>codey settings</title>
   </head>
   <body>
-    <p><a href="./config/">Open Pebble Agent settings</a></p>
+    <p><a href="./config/">Open codey settings</a></p>
   </body>
 </html>
 `;

@@ -1,5 +1,7 @@
 "use strict";
 
+var Endpoints = require("./endpoints");
+
 var Pam = require("./pam");
 
 function line(kind, attrs, depth) {
@@ -80,6 +82,7 @@ AgentClient.prototype.send = function(request, callbacks) {
     (callbacks.onError || function() {})(new Error("Configure an agent endpoint in the phone app"));
     return null;
   }
+  endpoint = Endpoints.api(endpoint, "agent");
   if (/^wss?:\/\//i.test(endpoint)) {
     return this._sendWebSocket(endpoint, request, callbacks);
   }

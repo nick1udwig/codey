@@ -4,16 +4,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#111827" />
-    <title>Pebble Agent settings</title>
+    <title>codey settings</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <main>
       <header>
-        <div class="mark" aria-hidden="true">A</div>
+        <div class="mark" aria-hidden="true">c</div>
         <div>
-          <p class="eyebrow">Pebble Agent</p>
-          <h1>Agent settings</h1>
+          <p class="eyebrow">codey</p>
+          <h1>codey settings</h1>
           <p class="lede">Configure your connection, Codex model, and permissions.</p>
         </div>
       </header>
@@ -26,9 +26,9 @@
         <p>Vibrate when an answer finishes arriving. Quiet Time always silences this vibration.</p>
         <label>
           <span>Agent endpoint</span>
-          <input id="endpoint" name="endpoint" type="url" inputmode="url"
-                 placeholder="https://agent.example.com/respond" autocomplete="url" />
-          <small>HTTPS is strongly recommended. HTTP and WebSocket endpoints are also supported for local development.</small>
+          <input id="endpoint" name="endpoint" type="text" inputmode="url"
+                 placeholder="https://example.com/codey" autocomplete="url" />
+          <small>Enter the server base URL, including any path. HTTPS is added if omitted; an existing /v1/agent URL also works.</small>
         </label>
 
         <label>
@@ -120,6 +120,7 @@
         <p id="status" role="status">Hold Select on the watch after saving.</p>
       </form>
     </main>
+    <script src="../../src/common/endpoints.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

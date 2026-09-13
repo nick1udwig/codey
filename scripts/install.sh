@@ -8,16 +8,17 @@ case "$(uname -s)/$(uname -m)" in
   Linux/aarch64|Linux/arm64) target=linux-arm64 ;;
   Linux/armv7l|Linux/armv8l) target=linux-arm ;;
   Darwin/arm64) target=darwin-arm64 ;;
-  *) echo 'Unsupported system. Build from source: go build ./cmd/pebble-agent-server' >&2; exit 1 ;;
+  *) echo 'Unsupported system. Build from source: go build ./cmd/codey-server' >&2; exit 1 ;;
 esac
 command -v curl >/dev/null || { echo 'curl is required.' >&2; exit 1; }
 base="https://github.com/$repo/releases/latest/download"
-if [[ -n ${PEBBLE_AGENT_VERSION:-} ]]; then
-  base="https://github.com/$repo/releases/download/$PEBBLE_AGENT_VERSION"
+version=${CODEY_VERSION-${PEBBLE_AGENT_VERSION:-}}
+if [[ -n $version ]]; then
+  base="https://github.com/$repo/releases/download/$version"
 fi
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-asset="pebble-agent-server-$target"
+asset="codey-server-$target"
 curl -fLsS --retry 3 "$base/$asset" -o "$work/$asset"
 curl -fLsS --retry 3 "$base/SHA256SUMS" -o "$work/SHA256SUMS"
 expected=$(awk -v name="$asset" '$2 == name {print $1}' "$work/SHA256SUMS")
@@ -27,15 +28,15 @@ else
   actual=$(shasum -a 256 "$work/$asset"); actual=${actual%% *}
 fi
 [[ $expected =~ ^[0-9a-f]{64}$ && $actual == "$expected" ]] || { echo 'Checksum verification failed.' >&2; exit 1; }
-bin="$HOME/.local/bin/pebble-agent-server"
+bin="$HOME/.local/bin/codey-server"
 mkdir -p "${bin%/*}"
 install -m 755 "$work/$asset" "$bin.new"
 mv -f "$bin.new" "$bin"
 printf 'Installed %s\n' "$bin"
 manual() {
-  printf '\nInstall and sign in to the Codex CLI first, then run:\n  export PEBBLE_AGENT_TOKEN="replace-with-a-long-random-secret"\n  %q --listen 127.0.0.1:8787\n' "$bin"
+  printf '\nInstall and sign in to the Codex CLI first, then run:\n  export CODEY_TOKEN="replace-with-a-long-random-secret"\n  %q --listen 127.0.0.1:8787\n' "$bin"
   echo 'Connect the phone through an HTTPS reverse proxy/VPN, or use --listen 0.0.0.0:8787 on a trusted private network.'
-  echo 'Enter the reachable /v1/agent URL and the same token in the Pebble app settings.'
+  echo 'Enter the reachable server base URL and the same token in codey phone settings.'
 }
 if [[ $target != linux-* ]] || ! command -v systemctl >/dev/null || ! systemctl --user show-environment >/dev/null 2>&1; then
   echo 'A systemd user manager is unavailable.'
@@ -55,37 +56,43 @@ if ! command -v codex >/dev/null; then
   exit 0
 fi
 config="${XDG_CONFIG_HOME:-$HOME/.config}"
-mkdir -p "$config/pebble-agent" "$config/systemd/user"
+mkdir -p "$config/codey" "$config/systemd/user"
 umask 077
-if [[ ! -e $config/pebble-agent/environment ]]; then
+if [[ ! -e $config/codey/environment && -f $config/pebble-agent/environment ]]; then
+  sed 's/^PEBBLE_AGENT_/CODEY_/' "$config/pebble-agent/environment" > "$config/codey/environment"
+fi
+if [[ ! -e $config/codey/environment ]]; then
   token=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
-  printf 'PEBBLE_AGENT_TOKEN=%s\n' "$token" > "$config/pebble-agent/environment"
+  printf 'CODEY_TOKEN=%s\n' "$token" > "$config/codey/environment"
 fi
 # Escape systemd quoted strings and literal specifiers.
 unit_quote() { local s=$1; s=${s//\\/\\\\}; s=${s//\"/\\\"}; s=${s//%/%%}; printf '%s' "$s"; }
-cat > "$config/systemd/user/pebble-agent.service" <<UNIT
+cat > "$config/systemd/user/codey.service" <<UNIT
 [Unit]
-Description=Pebble Agent service
+Description=codey service
 After=network.target
 
 [Service]
 ExecStart="$(unit_quote "$bin")" --listen 127.0.0.1:8787
 Environment="PATH=$(unit_quote "$PATH")"
-EnvironmentFile="$(unit_quote "$config/pebble-agent/environment")"
+EnvironmentFile="$(unit_quote "$config/codey/environment")"
 Restart=on-failure
 RestartSec=5
 
 [Install]
 WantedBy=default.target
 UNIT
-if systemctl --user daemon-reload && systemctl --user enable pebble-agent.service && systemctl --user restart pebble-agent.service; then
+if [[ -f $config/systemd/user/pebble-agent.service ]]; then
+  systemctl --user disable --now pebble-agent.service
+fi
+if systemctl --user daemon-reload && systemctl --user enable codey.service && systemctl --user restart codey.service; then
   echo 'User service enabled. It runs while your user manager is active (normally after login).'
-  printf 'Token file: %s\n' "$config/pebble-agent/environment"
+  printf 'Token file: %s\n' "$config/codey/environment"
   echo 'Listener: 127.0.0.1:8787. Use an HTTPS reverse proxy/VPN to reach it from your phone.'
-  echo 'Status: systemctl --user status pebble-agent.service'
-  echo 'Logs: journalctl --user -u pebble-agent.service'
+  echo 'Status: systemctl --user status codey.service'
+  echo 'Logs: journalctl --user -u codey.service'
 else
-  echo 'Could not start the user service. Check: journalctl --user -u pebble-agent.service' >&2
+  echo 'Could not start the user service. Check: journalctl --user -u codey.service' >&2
   manual
   exit 1
 fi

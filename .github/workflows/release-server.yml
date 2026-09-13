@@ -19,11 +19,11 @@ jobs:
           mkdir -p dist
           for target in linux/amd64 linux/386 linux/arm linux/arm64 darwin/arm64; do
             export GOOS=${target%/*} GOARCH=${target#*/} CGO_ENABLED=0 GOARM=7
-            go build -trimpath -ldflags='-s -w' -o "dist/pebble-agent-server-${GOOS}-${GOARCH}" ./cmd/pebble-agent-server
+            go build -trimpath -ldflags='-s -w' -o "dist/codey-server-${GOOS}-${GOARCH}" ./cmd/codey-server
           done
           cp scripts/install.sh dist/install.sh
           cd dist
-          sha256sum pebble-agent-server-* > SHA256SUMS
+          sha256sum codey-server-* > SHA256SUMS
       - name: Attach assets to release
         env:
           GH_TOKEN: ${{ github.token }}

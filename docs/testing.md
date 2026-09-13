@@ -130,7 +130,7 @@ empty, the SDK's packet installer works through `pebble repl --emulator emery`:
 
 ```python
 from libpebble2.services.install import AppInstaller
-AppInstaller(pebble, 'build/pebble-agent.pbw').install()
+AppInstaller(pebble, 'build/codey.pbw').install()
 ```
 
 Notification progress regression checks 0%, 25%, paused stability, resumed 50%,

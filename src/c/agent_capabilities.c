@@ -37,7 +37,7 @@ static void prv_show_notifications(AgentCapabilities *capabilities);
 
 static void prv_add_tour(AgentCapabilities *capabilities) {
   if (persist_read_int(TOUR_DISMISSED_KEY) != 1) {
-    agent_capability_add_element(capabilities->ui, "item", "welcome", "Welcome to Agent",
+    agent_capability_add_element(capabilities->ui, "item", "welcome", "Welcome to codey",
                                  "A quick tour", "", "local.tour", "dashboard_kind=job", 0);
   }
 }
@@ -50,7 +50,7 @@ static void prv_show_tour(AgentCapabilities *capabilities) {
   };
   capabilities->navigation_revision += 1;
   agent_capabilities_set_active(capabilities, "tour", true);
-  agent_ui_begin(capabilities->ui, "tour", "list", "Welcome to Agent", "", "", 16);
+  agent_ui_begin(capabilities->ui, "tour", "list", "Welcome to codey", "", "", 16);
   for (unsigned i = 0; i < sizeof(pages) / sizeof(pages[0]); ++i) {
     char id[16];
     snprintf(id, sizeof(id), "tour-%u", i);
@@ -231,7 +231,7 @@ void agent_capabilities_show_dashboard(AgentCapabilities *capabilities) {
   agent_capability_add_element(capabilities->ui, "item", "calendar", "Calendar", "", "", "local.calendar", "", 0);
   agent_capability_add_element(capabilities->ui, "item", "dashboard-summary", "Notifications",
                                "", "", "local.dashboard.notifications", "", 0);
-  agent_capability_add_element(capabilities->ui, "item", "dictate", "Talk to Agent",
+  agent_capability_add_element(capabilities->ui, "item", "dictate", "Talk to codey",
                                "Hold Select", "", "local.dictate", "", 0);
   agent_capability_add_element(capabilities->ui, "item", "weather", "Weather", capabilities->weather_range, capabilities->weather_temperature, "local.weather", capabilities->weather_meta, 0);
   agent_capability_add_element(capabilities->ui, "item", "todos", capabilities->collection_notes ? "Notes" : "Todos", "", "", capabilities->collection_notes ? "local.notes" : "local.todos", "", 0);

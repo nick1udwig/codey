@@ -278,7 +278,7 @@ static void test_failures_and_capacity(void) {
   command(caps, "timer", "cancel_all", "", "");
   writes_fail = 1; command(caps, "timer", "start", "lost", "duration=5s");
   writes_fail = 0; event(caps, "local.home"); assert(element("schedule-0") < 0);
-  wake_fail = true; command(caps, "timer", "start", "live", "duration=5s"); assert(strstr(ui.status, "keep Agent open"));
+  wake_fail = true; command(caps, "timer", "start", "live", "duration=5s"); assert(strstr(ui.status, "keep codey open"));
   advance(5); assert(element("notifications") >= 0 && buzzes > 0);
   wake_fail = false; command(caps, "timer", "cancel_all", "", "");
   command(caps, "timer", "start", "bad", "duration=2147483648s"); assert(strstr(ui.status, "duration"));
