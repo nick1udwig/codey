@@ -20,6 +20,25 @@ npm run build:watch
 
 The watch build compiles and links the same sources for both target platforms. At the last run it used about 31 KiB of each platform's 128 KiB RAM budget, leaving about 100 KiB for heap.
 
+### Streaming efficiency regressions
+
+Phone tests verify that UTF-8 truncation stops after the requested prefix while
+preserving splitting behavior for Unicode, malformed surrogates, and small byte
+budgets. Go tests cover bounded PAM line storage, maximum-length CRLF at every
+split, emitted-byte ownership across buffer reuse, emission failures, and strict
+validation around display-text repairs.
+
+Run the repeatable server benchmark with:
+
+```sh
+go test ./internal/pam -run '^$' -bench BenchmarkOutputStream -benchmem -count=3
+```
+
+It streams 48 text elements using one-byte, 32-byte, and whole-response chunks.
+On the development host, buffering and normalization improvements reduced the
+32-byte case from about 47 to 33 microseconds and from 78,218 to 38,488 allocated
+bytes per response. These are host measurements, not device battery results.
+
 ## Emulator checks completed
 
 ### Emery (rectangular)

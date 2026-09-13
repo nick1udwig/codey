@@ -10,6 +10,14 @@ import (
 var bareDisplayTail = regexp.MustCompile(`(?:^|[ \t])(title|subtitle|label|value|message)=([^\s"'][^="'\r\n]*)$`)
 
 func normalizeOutputLine(source string) string {
+	// A repairable multiword value ends in a word without = or quotes.
+	// Skip the speculative parse for ordinary key=value and quoted tails;
+	// OutputValidator still parses and validates every line afterward.
+	tail := strings.TrimRight(source, " \t")
+	tail = tail[strings.LastIndexAny(tail, " \t")+1:]
+	if strings.ContainsAny(tail, "=\"'") {
+		return source
+	}
 	if _, err := parseLine(source, 1, DefaultMaxLineBytes, DefaultMaxDepth); err == nil {
 		return source
 	}

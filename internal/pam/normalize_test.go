@@ -41,9 +41,38 @@ func TestOutputNormalizationDoesNotGuessAmbiguousOrActionAttributes(t *testing.T
 		`screen id=a layout=card title=Some words status=true`,
 		`screen id=a layout=card title=Answer status=not true`,
 		`screen id=a layout=card title="Already quoted"`,
+		`screen id=a layout=card title="Multiple words"   `,
+		`screen id=a layout=card title=Answer # trailing comment`,
+		`screen id=a layout=card title=Answer # message=ignored words`,
+		`screen id=a layout=card title="text with = and ' symbols"`,
+		"screen id=a layout=card title=Answer\t",
+		"   ",
+		"",
 	} {
 		if got := normalizeOutputLine(source); got != source {
 			t.Fatalf("changed %q to %q", source, got)
+		}
+	}
+}
+
+func TestOutputNormalizationRepairsTailsAfterQuotedAttributes(t *testing.T) {
+	for _, source := range []string{
+		`screen id=a layout=card subtitle="Quoted subtitle" title=Two words`,
+		"screen id=a layout=card title=Two words \t",
+		"screen id=a layout=card title=Two\twords",
+		"screen id=a layout=card title=é漢 🙂",
+	} {
+		got := normalizeOutputLine(source)
+		if got == source {
+			t.Fatalf("did not repair %q", source)
+		}
+		node, err := parseLine(got, 1, DefaultMaxLineBytes, DefaultMaxDepth)
+		if err != nil {
+			t.Fatalf("invalid repair %q: %v", got, err)
+		}
+		start := strings.LastIndex(source, "title=") + len("title=")
+		if node.Attrs["title"] != strings.TrimRight(source[start:], " \t") {
+			t.Fatalf("repair changed title contents: %q", got)
 		}
 	}
 }
