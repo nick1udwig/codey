@@ -676,7 +676,9 @@ test("configuration URL embeds normalized state without exposing it in the query
   assert.match(url, /\?v=nonce#/);
   assert.strictEqual(url.slice(0, url.indexOf("#")).indexOf("secret"), -1);
   assert.strictEqual(state.endpoint, "https://agent.test");
-  assert.strictEqual(state.token, "secret");
+  assert.strictEqual(state.token, "");
+  assert.strictEqual(state.tokenConfigured, true);
+  assert.ok(!url.includes("secret"));
   assert.strictEqual(state.locationLabel.length, 64);
   assert.strictEqual(state.timeoutSeconds, 10);
 });
@@ -1135,44 +1137,16 @@ test("Codex dashboard status throttles, reports missing data, and ignores old en
  status.refresh();assert.strictEqual(requests.length,2);status.last=Date.now()-61000;status.refresh();requests[2].ontimeout();assert.strictEqual(updates[updates.length-1].remainingPercent,null);
 });
 
-test("phone notes persist full bodies and send only requested summaries or pages", function() {
-  var Notes=require("../src/common/notes"), raw={}, fail=false;
-  var storage={getItem:function(k){return raw[k]||null;},setItem:function(k,v){if(fail)throw new Error("full");raw[k]=v;}};
-  var store=new Notes.Store(storage), body="José 🌙 ".repeat(500);
-  var id=store.mutate({command:"add",value:body},"once");
-  assert.strictEqual(store.mutate({command:"add",value:body},"once"),id);assert.strictEqual(store.count(),1);
-  assert.ok(!store.render("",0).includes(body.slice(-200)));
-  var page=0, reconstructed="", more=true;
-  while(more){var nodes=parse(store.render(id,page));nodes.filter(function(n){return n.attrs.id && /^body-/.test(n.attrs.id);}).forEach(function(n){reconstructed+=n.attrs.value;});more=nodes.some(function(n){return n.attrs.id==="next";});page++;assert.ok(page<100);}
-  assert.strictEqual(reconstructed,body);
-  store=new Notes.Store(storage);assert.strictEqual(store.load().entries[0].text,body);
-  fail=true;assert.throws(function(){store.mutate({command:"edit",id:id,value:"lost"});},/full/);fail=false;
-  assert.strictEqual(store.load().entries[0].text,body);
-  store.mutate({command:"edit",id:id,value:"Saved replacement"},"edit");assert.strictEqual(store.load().entries[0].id,id);
-  for(var i=0;i<10;i++)store.mutate({command:"add",value:"Title "+i},"n"+i);
-  assert.strictEqual(parse(store.render("",0)).filter(function(n){return n.attrs.action==="local.note.open";}).length,8);
-  assert.strictEqual(parse(store.render("",1)).filter(function(n){return n.attrs.action==="local.note.open";}).length,3);
-});
-test("phone notes requests and ripple preference stay local", function() {
-  var storage={}, h=loadPkjsHarness({storageData:storage,XMLHttpRequest:function(){throw new Error("must stay local");}});
-  try {
-    new (require("../src/common/notes").Store)(global.localStorage).mutate({command:"add",id:"note-1",value:"Note content"});
-    h.handlers.appmessage({payload:{0:"capability_event",2:"note",9:"list",8:"0",10:"42"}});
-    assert.ok(h.sent.some(function(m){return m[0]==="answer"&&m[2]==="begin"&&m[12]===42;}));
-    assert.ok(h.sent.some(function(m){return m[0]==="answer"&&m[2]==="complete"&&m[11]===0;}));
-    assert.ok(h.sent.some(function(m){return m[0]==="render" && m[6]==="Note content";}));
-    assert.ok(!h.sent.some(function(m){return m[0]==="render" && /^body-/.test(m[4]||"");}));
-    h.sent.length=0;
-    h.handlers.appmessage({payload:{0:"capability_event",2:"note",4:"note-1",9:"read",8:"0"}});
-    assert.ok(h.sent.some(function(m){return m[0]==="render" && m[8]==="Note content";}));
-    h.handlers.appmessage({payload:{0:"ready"}});
-    h.handlers.webviewclosed({response:JSON.stringify({tapAnimation:false})});
-    assert.ok(h.sent.some(function(m){return m[0]==="bridge"&&m[2]==="preferences"&&m[11]===0;}));
-    assert.strictEqual(JSON.parse(storage[Settings.STORAGE_KEY]).tapAnimation,false);
+test("unenrolled collection writes are rejected without legacy phone persistence", function() {
+  var storage={},h=loadPkjsHarness({storageData:storage});
+  try {h.handlers.appmessage({payload:{0:"capability_event",2:"note",9:"list",8:"0",10:"42"}});
+  assert.ok(h.sent.some(function(m){return m[0]==="answer"&&m[2]==="begin"&&m[12]===42;}));
+  assert.ok(h.sent.some(function(m){return m[0]==="status"&&m[2]==="error";}));
+  assert.strictEqual(storage["pebble-agent.notes.v1"],undefined);
   }finally{h.cleanup();}
 });
 
-test("note dictation preserves content and edits an explicit match locally", function() {
+test("note dictation preserves content and requires collection enrollment", function() {
   ["make a note ", "create a note: ", "please add a note ", "note: ", "note:"].forEach(function(prefix) {
     var attrs=LocalDictation.parse(prefix+"Call José tomorrow at 7").node.attrs;
     assert.strictEqual(attrs.type,"note");assert.strictEqual(attrs.command,"add");
@@ -1186,7 +1160,7 @@ test("note dictation preserves content and edits an explicit match locally", fun
   var h=loadPkjsHarness({XMLHttpRequest:function(){throw new Error("Note must stay local");}});
   try {
     h.handlers.appmessage({payload:{0:"input",2:"dictation",8:"note: set an alarm for 7 am"}});
-    assert.ok(h.sent.some(function(m){return m[0]==="render" && m[8]==="set an alarm for 7 am";}));
+    assert.ok(h.sent.some(function(m){return m[0]==="status" && m[2]==="error";}));
     assert.ok(!h.sent.some(function(m){return m[0]==="capability";}));
   } finally {h.cleanup();}
 });

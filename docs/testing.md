@@ -115,7 +115,7 @@ The generated resource bundle builds on Emery and Gabbro. The JS bridge suite
 covers New Chat resetting/persisting a session before its dictation acknowledgment,
 canceling old responses, keeping subsequent normal dictation in that session,
 and routing Weather locally without a model request. Native scheduler tests cover
-all five dashboard action bindings, the Calendar placeholder, persistent todo addition,
+all five dashboard action bindings, the Calendar placeholder, phone-routed explicit task actions without collection persistence,
 archive/restore, counts, storage failure, capacity and text limits, opening and
 refreshing the separate Notifications list, returning home, and concurrent expiry.
 
@@ -248,3 +248,13 @@ method checks, once-per-minute requests, and stale endpoint response rejection.
 The full suite includes 83 phone tests, native sanitizer cases, seven integration
 tests, and all Go packages. Emulator screenshots verify dashboard layout; real
 touch and dictation remain hardware checks.
+
+## Backend collection synchronization
+
+`npm test` includes the two-slot journal/replay/alias tests, native collection
+persistence checks, and Go transactional/provider fixtures. The shared engine
+tests include unknown delivery, interrupted enumeration, and late acknowledgments
+of older revisions. `pebble build` verifies Emery/Gabbro; server release targets
+remain linux/{amd64,386,arm,arm64} and darwin/arm64 with CGO disabled.
+Authenticated provider accounts, real PebbleKit termination, OAuth browser return,
+and hardware remain separate qualification gates; see the operations runbook.

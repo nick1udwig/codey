@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/coder/websocket"
+	"github.com/nick1udwig/pebble-agent/internal/collectionstore"
 	"github.com/nick1udwig/pebble-agent/internal/jobs"
 	"github.com/nick1udwig/pebble-agent/internal/pam"
 )
@@ -23,10 +24,15 @@ type Responder interface {
 }
 
 type Config struct {
-	Jobs      *jobs.Store
-	Responder Responder
-	Token     string
-	Logger    *slog.Logger
+	Collections         *collectionstore.Store
+	RefreshCollections  func()
+	Integrations        http.Handler
+	IntegrationTicket   func() (string, error)
+	ProviderDescriptors func() any
+	Jobs                *jobs.Store
+	Responder           Responder
+	Token               string
+	Logger              *slog.Logger
 }
 
 type Server struct {
@@ -36,6 +42,15 @@ type Server struct {
 
 func New(config Config) *Server {
 	server := &Server{config: config, mux: http.NewServeMux()}
+	for _, path := range []string{"/v1/sync/", "/v1/collections", "/v1/collections/", "/v1/records/", "/v1/conflicts", "/v1/conflicts/"} {
+		server.mux.HandleFunc(path, server.collection)
+	}
+	server.mux.HandleFunc("/v1/providers", server.integrationAPI)
+	server.mux.HandleFunc("/v1/integration-sessions", server.integrationAPI)
+	if config.Integrations != nil {
+		server.mux.Handle("/integrations", config.Integrations)
+		server.mux.Handle("/integrations/", config.Integrations)
+	}
 	server.mux.HandleFunc("/healthz", server.health)
 	server.mux.HandleFunc("/v1/jobs/", server.job)
 	server.mux.HandleFunc("/v1/models", server.models)

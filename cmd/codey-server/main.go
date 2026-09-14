@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,15 +19,23 @@ import (
 
 	"github.com/nick1udwig/pebble-agent/internal/agent"
 	"github.com/nick1udwig/pebble-agent/internal/appserver"
+	"github.com/nick1udwig/pebble-agent/internal/collectionstore"
+	"github.com/nick1udwig/pebble-agent/internal/collectionsync"
 	"github.com/nick1udwig/pebble-agent/internal/httpapi"
+	"github.com/nick1udwig/pebble-agent/internal/integrationauth"
 	"github.com/nick1udwig/pebble-agent/internal/jobs"
 	"github.com/nick1udwig/pebble-agent/internal/logfile"
+	"github.com/nick1udwig/pebble-agent/internal/providers"
 	"github.com/nick1udwig/pebble-agent/internal/state"
 )
 
 var version = "dev"
 
 type options struct {
+	integrationsConfig         string
+	dataDir                    string
+	backup                     string
+	restoreEpoch               bool
 	listen                     string
 	model                      string
 	effort                     string
@@ -62,6 +71,14 @@ func run(arguments []string) error {
 	}
 	flags := flag.NewFlagSet("codey-server", flag.ContinueOnError)
 	var config options
+	flags.StringVar(&config.integrationsConfig, "integrations-config", "", "operator integration configuration JSON, outside the agent workspace")
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	flags.StringVar(&config.dataDir, "data-dir", filepath.Join(userHome, ".pebble-agent", "data"), "durable collections directory")
+	flags.StringVar(&config.backup, "collections-backup", "", "write a consistent collections backup and exit")
+	flags.BoolVar(&config.restoreEpoch, "collections-restored", false, "rotate store epoch and pause providers after restoring a backup, then exit")
 	flags.StringVar(&config.listen, "listen", environment("CODEY_LISTEN", "127.0.0.1:8787"), "HTTP listen address")
 	flags.StringVar(&config.model, "model", environment("CODEY_MODEL", "gpt-5.6-luna"), "Codex model")
 	flags.StringVar(&config.effort, "effort", environment("CODEY_EFFORT", "xhigh"), "reasoning effort")
@@ -120,6 +137,33 @@ func run(arguments []string) error {
 	if err := os.MkdirAll(config.workspace, 0o700); err != nil {
 		return fmt.Errorf("create workspace: %w", err)
 	}
+	for _, sensitive := range []string{config.dataDir, config.integrationsConfig} {
+		if sensitive == "" {
+			continue
+		}
+		absolute, e := filepath.Abs(sensitive)
+		if e != nil {
+			return e
+		}
+		rel, e := filepath.Rel(config.workspace, absolute)
+		if e != nil {
+			return e
+		}
+		if rel == "." || rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return errors.New("collection data and integration credentials must be outside the agent workspace")
+		}
+	}
+	collections, err := collectionstore.Open(config.dataDir)
+	if err != nil {
+		return err
+	}
+	defer collections.Close()
+	if config.backup != "" {
+		return collections.Backup(config.backup)
+	}
+	if config.restoreEpoch {
+		return collections.RestoreEpoch()
+	}
 	store, err := state.Open(config.statePath)
 	if err != nil {
 		return err
@@ -142,7 +186,7 @@ func run(arguments []string) error {
 	_, _, transport, err := client.Connection(startupContext)
 	startupCancel()
 	if err != nil {
-		return err
+		logger.Warn("Codex unavailable; collections remain available")
 	}
 	skillPath, err := agent.InstallSkill(filepath.Dir(config.statePath))
 	if err != nil {
@@ -161,7 +205,30 @@ func run(arguments []string) error {
 		return err
 	}
 	defer jobStore.Close()
-	handler := httpapi.New(httpapi.Config{Jobs: jobStore, Responder: responder, Token: phoneToken, Logger: logger})
+	var integrationConfig integrationauth.Config
+	if config.integrationsConfig != "" {
+		raw, e := os.ReadFile(config.integrationsConfig)
+		if e != nil {
+			return e
+		}
+		if e = json.Unmarshal(raw, &integrationConfig); e != nil {
+			return e
+		}
+	}
+	providerHTTP := providers.HTTP{Client: providers.SafeClient(integrationConfig.PrivateHosts)}
+	adapters := map[string]providers.Adapter{"todoist": providers.Todoist{HTTP: providerHTTP}, "googletasks": providers.Google{HTTP: providerHTTP}, "nextcloudnotes": providers.Nextcloud{HTTP: providerHTTP}}
+	integrations, err := integrationauth.New(collections, config.dataDir, integrationConfig, adapters)
+	if err != nil {
+		return err
+	}
+	engine := collectionsync.New(collections, adapters, integrations)
+	integrations.Refresh = engine.Refresh
+	workerContext, workerCancel := context.WithCancel(context.Background())
+	defer workerCancel()
+	workerDone := make(chan struct{})
+	go func() { defer close(workerDone); engine.Run(workerContext) }()
+	defer func() { workerCancel(); <-workerDone }()
+	handler := httpapi.New(httpapi.Config{Collections: collections, RefreshCollections: engine.Refresh, Integrations: integrations, IntegrationTicket: integrations.Ticket, ProviderDescriptors: func() any { return integrations.Descriptors() }, Jobs: jobStore, Responder: responder, Token: phoneToken, Logger: logger})
 	listener, err := net.Listen("tcp", config.listen)
 	if err != nil {
 		return err

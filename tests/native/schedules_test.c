@@ -132,40 +132,19 @@ static void test_weather_summary(void) {
   agent_capabilities_destroy(caps);
 }
 
+static char todo_action[24];
+static void todo_event(const char *type,const char *id,const char *action,const char *value,void *context) {
+  (void)id;(void)value;(void)context;if(!strcmp(type,"todo"))agent_protocol_copy(todo_action,sizeof(todo_action),action);
+}
 static void test_todos(void) {
-  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
-  assert(strcmp(ui.elements[element("todos")].value, "0") == 0);
-  AgentCapabilityCommand cmd = { .type = "todo", .command = "add", .id = "milk", .value = "Buy milk and call a friend about the long weekend plans", .invocation_id = 456 };
-  assert(agent_capabilities_handle_command(caps, &cmd));
-  assert(strcmp(ui.screen, "todos") == 0 && element("todo-0") >= 0);
-  assert((ui.flags & 16) && element("todo-add") < 0);
-  assert(strcmp(ui.elements[element("todo-0")].value, cmd.value) == 0);
-  assert(agent_capabilities_handle_command(caps, &cmd));
-  assert(element("todo-1") < 0); // retry does not add another row
-  event(caps, "local.home"); assert(strcmp(ui.elements[element("todos")].value, "1") == 0);
-  event(caps, "local.todos");
-  writes_fail = 1; event(caps, "local.todo.toggle.0"); assert(strstr(ui.status, "Could not save"));
-  writes_fail = 0; event(caps, "local.todo.toggle.0"); assert(element("todo-0") < 0);
-  event(caps, "local.home"); assert(strcmp(ui.elements[element("todos")].value, "0") == 0);
-  event(caps, "local.todos"); event(caps, "local.todo.archive");
-  assert(strcmp(ui.screen, "todo-archive") == 0 && element("todo-0") >= 0);
-  agent_capabilities_destroy(caps);
-  caps = agent_capabilities_create(&ui, NULL, NULL);
-  event(caps, "local.todos"); assert(element("todo-0") < 0);
-  event(caps, "local.todo.archive"); assert(element("todo-0") >= 0);
-  event(caps, "local.todo.toggle.0"); assert(element("todo-0") < 0);
-  event(caps, "local.todos"); assert(element("todo-0") >= 0);
-  char long_text[181]; memset(long_text, 'x', 180); long_text[180] = 0;
-  cmd.value = long_text; cmd.invocation_id = 457;
-  assert(agent_capabilities_handle_command(caps, &cmd)); assert(strstr(ui.status, "179"));
-  cmd.id = "";
-  for (int i = 1; i < 32; ++i) {
-    cmd.value = "Another item"; cmd.invocation_id = 500 + i;
-    assert(agent_capabilities_handle_command(caps, &cmd));
-  }
-  cmd.invocation_id = 999; assert(agent_capabilities_handle_command(caps, &cmd));
-  assert(strstr(ui.status, "storage is full"));
-  event(caps, "local.home"); assert(strcmp(ui.elements[element("todos")].value, "32") == 0);
+  reset(); AgentCapabilities *caps=agent_capabilities_create(&ui,todo_event,NULL);
+  assert(!strcmp(ui.elements[element("todos")].value,"-"));int before=writes;
+  event(caps,"local.todos");assert(!strcmp(todo_action,"list"));
+  event(caps,"local.todo.complete");assert(!strcmp(todo_action,"complete"));
+  event(caps,"local.todo.restore");assert(!strcmp(todo_action,"restore"));
+  event(caps,"local.todo.archive");assert(!strcmp(todo_action,"archive"));
+  AgentCapabilityCommand cmd={.type="todo",.command="add",.value="Never persist this"};
+  assert(!agent_capabilities_handle_command(caps,&cmd));assert(writes==before);
   agent_capabilities_destroy(caps);
 }
 
@@ -403,17 +382,10 @@ static void test_jobs(void) {
 
 
 static void test_checkbox_double_tap(void) {
-  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
-  command(caps,"todo","add","checkbox","ignored");
-  TouchGuard guard = {0};
-  assert(!touch_guard_down(&guard,1,12,50,100));
-  assert(!touch_guard_up(&guard,1,12,50,150));
-  assert(element("todo-0") >= 0); // Arming does not archive.
-  assert(touch_guard_down(&guard,1,12,50,250));
-  if (touch_guard_up(&guard,1,12,50,300)) event(caps,"local.todo.toggle.0");
-  assert(element("todo-0") < 0);
-  event(caps,"local.todo.archive"); assert(element("todo-0") >= 0);
-  agent_capabilities_destroy(caps);
+  reset();AgentCapabilities *caps=agent_capabilities_create(&ui,todo_event,NULL);todo_action[0]=0;int before=writes;
+  TouchGuard guard={0};assert(!touch_guard_down(&guard,1,12,50,100));assert(!touch_guard_up(&guard,1,12,50,150));assert(!todo_action[0]);
+  assert(touch_guard_down(&guard,1,12,50,250));if(touch_guard_up(&guard,1,12,50,300))event(caps,"local.todo.complete");
+  assert(!strcmp(todo_action,"complete"));assert(writes==before);agent_capabilities_destroy(caps);
 }
 static char note_action[24], note_id[32], note_value[220];
 static void note_event(const char *type,const char *id,const char *action,const char *value,void *context) {

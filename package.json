@@ -12,7 +12,7 @@
   ],
   "private": true,
   "scripts": {
-    "test": "node tests/run.js && node tests/native/run.js && node tests/integration.mjs && go test ./...",
+    "test": "node tests/run.js && node tests/collections.js && node tests/native/run.js && node tests/integration.mjs && go test ./...",
     "build:watch": "pebble build",
     "build:settings": "node scripts/build-settings-site.mjs",
     "build:server": "go build -o build/codey-server ./cmd/codey-server",
@@ -47,7 +47,13 @@
       "Action": 9,
       "Meta": 10,
       "Flags": 11,
-      "Index": 12
+      "Index": 12,
+      "CollectionProtocol": 13,
+      "BridgeSession": 14,
+      "EventSequence": 15,
+      "ViewToken": 16,
+      "DeliveryState": 17,
+      "ErrorCode": 18
     },
     "resources": {
       "media": [

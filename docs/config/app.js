@@ -4,6 +4,7 @@
   var Endpoints = window.CodeyEndpoints;
   var defaults = {
     endpoint: "",
+    serverBaseUrl:"", collectionDevelopmentHTTP:false,
     token: "",
     units: "auto",
     locationLabel: "Current location",
@@ -20,6 +21,8 @@
   var status = document.getElementById("status");
 
   var extraFields = {
+    serverBaseUrl:document.getElementById("server-base-url"),
+    collectionDevelopmentHTTP:document.getElementById("collection-development-http"),
     tapAnimation: document.getElementById("tap-animation"),
     answerVibrate: document.getElementById("answer-vibrate"),
     codexModel: document.getElementById("codex-model"),
@@ -62,7 +65,8 @@
   var newSession = document.getElementById("new-session");
   newSession.checked = false;
   endpoint.value = current.endpoint || "";
-  token.value = current.token || "";
+  token.value = "";
+  token.placeholder=current.tokenConfigured?"Configured — leave blank to keep":"Bearer token";
   units.value = current.units || "auto";
   timeout.value = String(current.timeoutSeconds || 45);
   locationLabel.value = current.locationLabel || defaults.locationLabel;
@@ -142,6 +146,8 @@
     xhr.send();
   });
 
+  var manageIntegrations=false;
+  document.getElementById("manage-integrations").addEventListener("click",function(){manageIntegrations=true;form.requestSubmit();});
   form.addEventListener("submit", function(event) {
     var settings;
     event.preventDefault();
@@ -165,6 +171,8 @@
     }
     status.textContent = "Saved. Returning to Pebble…";
     if (newSession.checked) { settings.newSession = true; }
+    if(document.getElementById("recover-collections").checked)settings.recoverCollections=true;
+    if(manageIntegrations)settings.manageIntegrations=true;
     closeWith(settings);
   });
 }());

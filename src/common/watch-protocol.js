@@ -15,7 +15,8 @@ var Key = Object.freeze({
   action: 9,
   meta: 10,
   flags: 11,
-  index: 12
+  index: 12,
+  collectionProtocol:13, bridgeSession:14, eventSequence:15, viewToken:16, deliveryState:17, errorCode:18
 });
 
 var CORE_ATTRS = {

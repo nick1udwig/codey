@@ -267,7 +267,7 @@ The server installs it beside its state on startup; restart an updated server to
 ## Rename compatibility
 
 The project and watchapp are named codey; builds produce `codey.pbw` and `codey-server`.
-The watch UUID, phone storage keys, server state directory, and `~/.pebble-agent/server.log` retain their existing identities so updates keep conversations, jobs, notes, and settings.
+The watch UUID, phone storage keys, server state directory, and `~/.pebble-agent/server.log` retain their existing identities so updates keep conversations, jobs, and settings. The backend-sync development upgrade deliberately does not migrate legacy notes/to-dos.
 `CODEY_*` environment variables take precedence over legacy `PEBBLE_AGENT_*` variables.
 The installer uses `~/.config/codey/environment` and `codey.service`, reusing the legacy token and disabling the old service when upgrading.
 GitHub repository URLs, the Go module path, and the hosted settings URL still use `nick1udwig/pebble-agent`; renaming the local project does not move those hosted resources.

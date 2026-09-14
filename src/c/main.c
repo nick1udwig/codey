@@ -26,6 +26,9 @@ typedef struct {
   char action[AGENT_UI_ACTION_LENGTH];
   char value[OUTBOX_VALUE_LENGTH];
   char meta[96];
+  char bridge[32];
+  char view[16];
+  uint32_t event;
   uint8_t retries;
 } OutgoingMessage;
 
@@ -43,6 +46,12 @@ static AppTimer *s_new_chat_timer;
 static AppTimer *s_response_timer;
 static bool s_accept_remote;
 static char s_note_edit_id[32];
+static bool s_note_append;
+static char s_collection_bridge[32], s_collection_view[16];
+static uint32_t s_collection_event;
+static OutgoingMessage s_collection_pending;
+static bool s_collection_waiting;
+static AppTimer *s_collection_retry_timer;
 static uint32_t s_note_token, s_note_sequence;
 static AnswerNotification s_answer_notification;
 static WatchResponse s_response;
@@ -131,6 +140,15 @@ static int32_t prv_tuple_int(DictionaryIterator *iter, uint32_t key, int32_t fal
 
 static void prv_flush_outbox(void);
 
+static void prv_collection_retry(void *context) {
+  (void)context;s_collection_retry_timer=NULL;
+  if(!s_collection_waiting)return;
+  if(connection_service_peek_pebble_app_connection()&&s_outbox_count<OUTBOX_QUEUE_SIZE) {
+    bool queued=false;for(int i=0;i<s_outbox_count;i++)if(s_outbox[i].event==s_collection_pending.event&&!strcmp(s_outbox[i].bridge,s_collection_pending.bridge))queued=true;
+    if(!queued){s_outbox[s_outbox_count++]=s_collection_pending;prv_flush_outbox();}
+  }
+  s_collection_retry_timer=app_timer_register(3000,prv_collection_retry,NULL);
+}
 static void prv_remove_outbox_head(void) {
   if (!s_outbox_count) { return; }
   if (s_outbox_count > 1) {
@@ -189,6 +207,12 @@ static void prv_flush_outbox(void) {
   if (message->action[0]) { dict_write_cstring(iter, MESSAGE_KEY_Action, message->action); }
   if (message->value[0]) { dict_write_cstring(iter, MESSAGE_KEY_Value, message->value); }
   if (message->meta[0]) { dict_write_cstring(iter, MESSAGE_KEY_Meta, message->meta); }
+  if (message->bridge[0]) {
+    dict_write_int32(iter,MESSAGE_KEY_CollectionProtocol,1);
+    dict_write_cstring(iter,MESSAGE_KEY_BridgeSession,message->bridge);
+    dict_write_cstring(iter,MESSAGE_KEY_ViewToken,message->view);
+    dict_write_int32(iter,MESSAGE_KEY_EventSequence,message->event);
+  }
   s_outbox_busy = true;
   result = app_message_outbox_send();
   if (result != APP_MSG_OK) {
@@ -215,6 +239,17 @@ static bool prv_queue_message(const char *type, uint32_t request_id, const char 
   agent_protocol_copy(message->action, sizeof(message->action), action);
   agent_protocol_copy(message->value, sizeof(message->value), value);
   agent_protocol_copy(message->meta, sizeof(message->meta), meta);
+  if (!strcmp(type,"capability_event") && (!strcmp(operation,"note") || !strcmp(operation,"todo"))) {
+    agent_protocol_copy(message->bridge,sizeof(message->bridge),s_collection_bridge);
+    agent_protocol_copy(message->view,sizeof(message->view),s_collection_view);
+    message->event=s_collection_event;
+    if(!strcmp(action,"edit")||!strcmp(action,"append")||!strcmp(action,"complete")||!strcmp(action,"restore")) {
+      s_collection_pending=*message;s_collection_waiting=true;
+      if(s_collection_retry_timer)app_timer_cancel(s_collection_retry_timer);
+      s_collection_retry_timer=app_timer_register(3000,prv_collection_retry,NULL);
+      agent_ui_set_status(s_ui,"Sending…",false,true);
+    }
+  }
   prv_flush_outbox();
   return true;
 }
@@ -235,7 +270,9 @@ static void prv_ui_event(const AgentUiEvent *event, void *context) {
   // Any newer interaction supersedes an unacknowledged new-chat request. Its
   // delayed phone acknowledgment must never open dictation on another screen.
   prv_cancel_new_chat();
-  if (strcmp(event->action, "local.note.edit") == 0) {
+  if (strcmp(event->action, "local.note.edit") == 0 || strcmp(event->action,"local.note.append")==0) {
+    if (!connection_service_peek_pebble_app_connection() || !s_collection_bridge[0]) { agent_ui_set_status(s_ui,"Phone unavailable · Not saved",true,false); return; }
+    s_note_append=!strcmp(event->action,"local.note.append");
     agent_protocol_copy(s_note_edit_id, sizeof(s_note_edit_id), event->element_id);
     prv_start_dictation((void *)2); return;
   }
@@ -316,7 +353,7 @@ static void prv_dictation_callback(DictationSession *session, DictationSessionSt
     if (strlen(transcription) >= OUTBOX_VALUE_LENGTH) {
       s_note_edit_id[0]=0;agent_ui_set_status(s_ui,"Dictation is too long. Note was not changed.",true,false);return;
     }
-    AgentCapabilityCommand command = {.type="note", .command="edit", .id=s_note_edit_id, .value=transcription};
+    AgentCapabilityCommand command = {.type="note", .command=s_note_append?"append":"edit", .id=s_note_edit_id, .value=transcription};
     agent_capabilities_handle_command(s_capabilities, &command);
     s_note_edit_id[0] = 0;
     return;
@@ -356,7 +393,11 @@ static void prv_capability_event(const char *type, const char *id, const char *a
                                  const char *value, void *context) {
   (void)context;
   char token[16] = "";
-  if (!strcmp(type,"note")) {
+  if (!strcmp(type,"note") || !strcmp(type,"todo")) {
+    if (!connection_service_peek_pebble_app_connection() || !s_collection_bridge[0]) { agent_ui_set_status(s_ui,"Phone unavailable · Not saved",true,false); return; }
+    if(s_collection_waiting && (!strcmp(action,"edit")||!strcmp(action,"append")||!strcmp(action,"complete")||!strcmp(action,"restore"))) {agent_ui_set_status(s_ui,"Waiting for phone save confirmation",false,false);return;}
+    if (s_collection_event == INT32_MAX) { agent_ui_set_status(s_ui,"Reopen app to renew collection session",true,false); return; }
+    s_collection_event++;
     prv_begin_request();
     s_note_sequence = s_note_sequence == INT32_MAX ? 1 : s_note_sequence + 1;
     s_note_token = s_note_sequence;
@@ -468,6 +509,22 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   const char *operation = prv_tuple_string(iter, MESSAGE_KEY_Operation);
   uint32_t request_id = (uint32_t)prv_tuple_int(iter, MESSAGE_KEY_RequestId, 0);
   (void)context;
+  if (!strcmp(type,"bridge") && !strcmp(operation,"collections")) {
+    if (prv_tuple_int(iter,MESSAGE_KEY_CollectionProtocol,0)!=1) return;
+    const char *bridge=prv_tuple_string(iter,MESSAGE_KEY_BridgeSession);
+    if (strcmp(bridge,s_collection_bridge)) { s_collection_event=0; s_collection_view[0]=0; }
+    agent_protocol_copy(s_collection_bridge,sizeof(s_collection_bridge),bridge);return;
+  }
+  if (!strcmp(type,"collection-view")) {
+    if(watch_response_accepts(&s_response,request_id)) {agent_protocol_copy(s_collection_view,sizeof(s_collection_view),prv_tuple_string(iter,MESSAGE_KEY_ViewToken));}
+    return;
+  }
+  if (!strcmp(type,"collection-ack")) {
+    if(strcmp(prv_tuple_string(iter,MESSAGE_KEY_BridgeSession),s_collection_pending.bridge) || (uint32_t)prv_tuple_int(iter,MESSAGE_KEY_EventSequence,0)!=s_collection_pending.event)return;
+    s_collection_waiting=false;if(s_collection_retry_timer){app_timer_cancel(s_collection_retry_timer);s_collection_retry_timer=NULL;}
+    const char *state=prv_tuple_string(iter,MESSAGE_KEY_DeliveryState);
+    agent_ui_set_status(s_ui,prv_tuple_string(iter,MESSAGE_KEY_Value),!strcmp(state,"rejected")||!strcmp(state,"needs_attention"),false);return;
+  }
   if (!strcmp(type,"notes")) {
     AgentCapabilityCommand c={.type="note",.command=operation,.id=prv_tuple_string(iter,MESSAGE_KEY_ElementId),.value=prv_tuple_string(iter,MESSAGE_KEY_Value)};
     agent_capabilities_handle_command(s_capabilities,&c);return;
@@ -632,6 +689,7 @@ static void prv_init(void) {
 
 static void prv_deinit(void) {
   prv_stop_response_timer();
+  if(s_collection_retry_timer)app_timer_cancel(s_collection_retry_timer);
   if (s_ready_timer) { app_timer_cancel(s_ready_timer); }
   if (s_quick_launch_timer) { app_timer_cancel(s_quick_launch_timer); }
   if (s_new_chat_timer) { app_timer_cancel(s_new_chat_timer); }

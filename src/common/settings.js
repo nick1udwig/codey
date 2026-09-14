@@ -7,6 +7,8 @@ var CONFIG_URL = "https://nick1udwig.github.io/pebble-agent/config/";
 
 var DEFAULTS = Object.freeze({
   endpoint: "",
+  serverBaseUrl: "",
+  collectionDevelopmentHTTP: false,
   token: "",
   units: "auto",
   locationLabel: "Current location",
@@ -30,6 +32,8 @@ function copyDefaults(value) {
     settings[key] = source[key] == null ? DEFAULTS[key] : source[key];
   });
   settings.endpoint = Endpoints.normalize(settings.endpoint) || "";
+  settings.serverBaseUrl = (Endpoints.normalize(settings.serverBaseUrl) || "").replace(/^ws:/,"http:").replace(/^wss:/,"https:");
+  settings.collectionDevelopmentHTTP = source.collectionDevelopmentHTTP === true;
   settings.token = String(settings.token || "").trim();
   settings.units = settings.units === "imperial" || settings.units === "metric" ? settings.units : "auto";
   settings.locationLabel = String(settings.locationLabel || DEFAULTS.locationLabel).slice(0, 64);
@@ -72,6 +76,8 @@ function save(settings, storage) {
 function buildConfigUrl(settings, nonce, catalog) {
   var normalized = copyDefaults(settings);
   if (catalog) { normalized.codexCatalog = catalog; }
+  normalized.tokenConfigured = !!normalized.token;
+  normalized.token = "";
   var state = encodeURIComponent(JSON.stringify(normalized));
   return CONFIG_URL + "?v=" + encodeURIComponent(String(nonce || Date.now())) + "#" + state;
 }
@@ -87,6 +93,8 @@ function parseConfigResponse(response) {
     var normalized = copyDefaults(source);
     // Preserve the action only while handling this submission. save() and
     // buildConfigUrl() strip it because it is not a persistent preference.
+    if (source && source.recoverCollections === true) normalized.recoverCollections=true;
+    if (source && source.manageIntegrations === true) normalized.manageIntegrations=true;
     if (source && source.newSession === true) { normalized.newSession = true; }
     return normalized;
   } catch (error) {

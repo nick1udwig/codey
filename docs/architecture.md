@@ -154,3 +154,14 @@ watch store. Note edits and task completion preserve stable record identities. S
 [collections](collections.md) for the planned provider adapter, canonical store,
 outbox, revision, and conflict boundaries. Remote synchronization is not yet
 implemented.
+
+## Collection ownership
+
+Canonical notes/tasks live in `internal/collectionstore` (SQLite), with shared
+mutation semantics in `internal/collections`. `internal/collectionsync` runs
+serialized provider work using adapters from `internal/providers`;
+`internal/integrationauth` holds encrypted credentials and browser management.
+The phone's `src/common/collections` owns accepted-but-uncommitted input and
+disposable caches. `collection-views.js` projects bounded PAM pages. Native
+Notes/To-dos modules emit requests and hold no collection content in persistence.
+See [collections](collections.md) for enrollment, outages, and release limits.
