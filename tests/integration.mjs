@@ -66,7 +66,7 @@ function request(port, { method = "POST", body = "" } = {}) {
 function runConfig(hash, bridge, XHR) {
   const ids = ["settings", "endpoint", "token", "units", "timeout", "location-label", "status", "codex-model", "codex-effort", "fast-mode", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review", "answer-vibrate", "tap-animation"];
   const elements = {};
-  ids.push("new-session");
+  ids.push("new-session","server-base-url","collection-development-http","manage-integrations","recover-collections");
   let submit;
   ids.forEach(id => {
     elements[id] = {
@@ -190,7 +190,7 @@ test("configuration page hydrates state and closes with normalized form values",
   };
   const harness = runConfig("#" + encodeURIComponent(JSON.stringify(initial)));
   assert.equal(harness.elements.endpoint.value, initial.endpoint);
-  assert.equal(harness.elements.token.value, initial.token);
+  assert.equal(harness.elements.token.value, "");
   assert.equal(harness.elements.units.value, "imperial");
   assert.equal(harness.elements.timeout.value, "60");
   assert.equal(harness.elements["location-label"].value, "Seattle");
@@ -208,6 +208,7 @@ test("configuration page hydrates state and closes with normalized form values",
   const saved = JSON.parse(decodeURIComponent(harness.location.href.split("#")[1]));
   assert.deepEqual(saved, {
     endpoint: "https://new.test/agent",
+    serverBaseUrl:"",collectionDevelopmentHTTP:false,
     token: "secret",
     units: "metric",
     locationLabel: "Current location",
@@ -275,6 +276,7 @@ test("model discovery uses bearer auth and ignores stale endpoint responses", ()
   XHR.prototype.setRequestHeader = function(k, v) { this.headers[k] = v; };
   XHR.prototype.send = function() {};
   const h = runConfig("#" + encodeURIComponent(JSON.stringify({ endpoint: "wss://agent.test/v1/agent", token: "secret", codexModel: "example", codexEffort: "ultra" })), null, XHR);
+  h.elements.token.value="secret"; // A newly entered token, never restored from the URL.
   const load = () => h.elements["load-models"].handlers.click();
   const body = JSON.stringify({ defaultModel: "example", defaultEffort: "high", models: [{ model: "example", displayName: "Example", supportedReasoningEfforts: [{ reasoningEffort: "low", description: "Fast" }, { reasoningEffort: "high", description: "Thorough" }] }] });
   load();

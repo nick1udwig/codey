@@ -25,8 +25,8 @@ static bool command(AgentCapabilities *host, const AgentCapabilityCommand *c,
     request(s, "", "list", "0");
     return true;
   }
-  if (!strcmp(c->command, "edit")) {
-    request(s, c->id, "edit", c->value);
+  if (!strcmp(c->command, "edit") || !strcmp(c->command, "append")) {
+    request(s, c->id, c->command, c->value);
     return true;
   }
   if (!strcmp(c->command, "count")) {

@@ -329,3 +329,10 @@ Unknown values display dashes and a question face.
 The pictographs are drawn directly because the watch system font does not supply emoji glyphs.
 
 Protocol reference: [Codex app-server](https://learn.chatgpt.com/docs/app-server).
+
+## Durable notes and to-dos
+
+The collection API starts independently of Codex. Configure `--data-dir` and
+`CODEY_TOKEN`; optional `--integrations-config` enables provider management.
+See [collection server operations](collections-server-operations.md) for OAuth,
+Nextcloud setup, encryption keys, backup, restore, and recovery.

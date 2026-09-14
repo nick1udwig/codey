@@ -58,8 +58,7 @@ On other screens, hold Select to dictate into the current conversation.
 
 ## Requests and stored items
 
-Todos and their archive persist on the watch (32 items total, up to 179 UTF-8 bytes each).
-Local lists work offline; weather and voice require the phone.
+Notes and to-dos are saved on the server. The phone queues accepted changes during server outages; the watch needs its phone connection to save. Cached pages are marked stale when the server is unavailable. See [collection setup and recovery](collections.md).
 Agent requests immediately animate into **Notifications**.
 A completed response buzzes during the configured notification window (45 seconds by default), without replacing the current screen.
 After that window there is no automatic polling.
@@ -70,11 +69,11 @@ Canceling does not undo work already performed.
 
 Notes shares the To Do tile: tap, then hold the tile to choose **Notes** or **To Do**.
 The last collection opened stays on the dashboard.
-Say “make a note Call Jane,” “note: Call Jane,” or “edit a note Call Jane to Call John.”
-Open a note and select **Edit note** to dictate its replacement directly.
-Notes live on the phone: opening the list loads summaries, and opening a note loads its contents in pages.
+Say “make a note Call Jane” or “note: Call Jane.”
+Open a note and select **Append to note** or **Replace entire note**.
+Notes live on the server; the phone loads bounded summaries and revision-pinned content pages.
 The watch keeps only the displayed page in memory.
-See [collections and future sync design](collections.md).
+See [collection setup and backend sync](collections.md).
 
 The arming tap shows a brief expanding ripple with edge reflection.
 The next touch stops it immediately.

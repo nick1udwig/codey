@@ -289,7 +289,7 @@ including those superseded by a local navigation or notification revision, and
 times out after eight seconds. Ordinary `local.dictate` keeps the current session.
 
 `input` with action `local.weather` invokes the existing local weather capability
-on the phone. Calendar is a local placeholder. Todos use the persistent native `todo` capability (`add` with quoted `value`, `list`, and `archive`). Notifications
+on the phone. Calendar is a local placeholder. Todos use the phone collection capability (`add` with quoted `value`, `list`, and `archive`), backed by canonical server records. Notifications
 uses a separate native list; arrival of an alert opens it without incrementing
 the navigation revision that protects pending capability commands.
 
@@ -316,7 +316,7 @@ taps and Back dismiss it without changing the dashboard. New Chat lives in this
 menu. Todo rows use `choice` with `meta` containing `todo=true`, text in `value`,
 and the checked flag for archived items. Horizontal touch drags or long Up/Down
 pan text; short Up/Down scroll the list. Checking archives, unchecking restores.
-The native store holds 32 items including archived entries, 179 UTF-8 bytes each.
+Lists are transient eight-record pages. The phone resolves short aliases against the exact view token and displayed revision; no native collection store exists.
 
 Terminal errors replace the content with a scrollable Request failed screen,
 including the reason and Try again / Dashboard actions. Transport HTTP 0,
@@ -369,13 +369,40 @@ The maintained advanced examples live in the server's
 full fallback guidance when file-reading tools are disabled. The Codex app-server
 must share that filesystem. Native notification and timer behavior is unchanged.
 
-## Native Notes
+## Notes capabilities
 
-Use `capability type=note command=add value="Call Jane"` to save a note,
-`capability type=note command=list` to browse, and
-`capability type=note command=edit id="KNOWN-ID" value="Call John"` to replace
-one. An edit can use `match="EXACT OLD TEXT"` instead of `id`; a nonunique or
-missing match is rejected. The phone stores full note bodies and serves list summaries or content pages on
-demand. Voice edits from a note detail view target its stable ID and bypass agent
-interpretation. Previous/Next controls fetch additional pages from the phone.
-See [collections](collections.md) for local storage and planned sync boundaries.
+Use `capability type=note command=add value="Call Jane"` to request a real save,
+and `capability type=note command=list` to browse. Existing-record edits use the
+record picker and its revision-scoped Append / Replace entire note actions.
+Text matches and invented IDs cannot authorize an edit. Body pages stay pinned
+to one revision, and displayed chunks are never submitted as a full replacement.
+See [collections](collections.md) for server ownership and durability handoff.
+
+## Collection protocol version 1
+
+AppMessage keys 0–12 retain their values. New keys are:
+
+| Number | Name | Meaning |
+|---|---|---|
+| 13 | CollectionProtocol | Version 1 |
+| 14 | BridgeSession | Phone-issued bridge session |
+| 15 | EventSequence | Monotonic event identity; retransmissions reuse it |
+| 16 | ViewToken | Exact alias/revision mapping |
+| 17 | DeliveryState | accepted_phone, accepted_server, synced, needs_attention, rejected |
+| 18 | ErrorCode | Bounded machine-readable error |
+
+`bridge operation=collections` supplies protocol/session readiness. `collection-view`
+sets the token for the matching render request. Existing `capability_event` messages
+with operation `note` or `todo` carry list/read/edit/append/complete/restore actions.
+The phone resolves an alias only within that exact view. It checks an existing
+receipt before rejecting an expired view, so retransmission cannot target a reused
+row. `collection-ack` carries the original session/event and delivery state.
+The native app retains and retries an unacknowledged mutation in RAM only.
+
+JSON collection routes, schemas, and recovery are documented in
+[the collection specification](notes-todos-backend-sync-spec.md),
+[JSON schema](collections-api.schema.json), and [operations](collections-server-operations.md).
+All routes require bearer authentication. Mutation revisions/sequences are decimal
+strings. Snapshot pages are fixed; body pages are UTF-8 safe and revision-pinned.
+Management uses a single-use `/v1/integration-sessions` ticket and server cookies,
+never a provider token in a phone settings fragment.
