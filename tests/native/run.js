@@ -26,6 +26,7 @@ var compile = childProcess.spawnSync("cc", [
   "-I" + path.join(root, "src", "c"),
   path.join(root, "tests", "native", testCase + ".c"),
   path.join(root, "src", "c", "agent_protocol.c"),
+  path.join(root, "src", "c", "collection_preview.c"),
   path.join(root, "src", "c", "agent_capabilities.c"),
   path.join(root, "src", "c", "capabilities", "schedules.c"),
   path.join(root, "src", "c", "capabilities", "stopwatch.c"),

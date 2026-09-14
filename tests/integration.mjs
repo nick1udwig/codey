@@ -66,7 +66,7 @@ function request(port, { method = "POST", body = "" } = {}) {
 function runConfig(hash, bridge, XHR) {
   const ids = ["settings", "endpoint", "token", "units", "timeout", "location-label", "status", "codex-model", "codex-effort", "fast-mode", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review", "answer-vibrate", "tap-animation"];
   const elements = {};
-  ids.push("new-session","server-base-url","collection-development-http","manage-integrations","recover-collections");
+  ids.push("token-status","new-session","collection-development-http","manage-integrations","recover-collections");
   let submit;
   ids.forEach(id => {
     elements[id] = {
@@ -208,7 +208,7 @@ test("configuration page hydrates state and closes with normalized form values",
   const saved = JSON.parse(decodeURIComponent(harness.location.href.split("#")[1]));
   assert.deepEqual(saved, {
     endpoint: "https://new.test/agent",
-    serverBaseUrl:"",collectionDevelopmentHTTP:false,
+    collectionDevelopmentHTTP:false,
     token: "secret",
     units: "metric",
     locationLabel: "Current location",

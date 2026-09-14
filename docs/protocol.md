@@ -392,7 +392,16 @@ AppMessage keys 0–12 retain their values. New keys are:
 | 18 | ErrorCode | Bounded machine-readable error |
 
 `bridge operation=collections` supplies protocol/session readiness. `collection-view`
-sets the token for the matching render request. Existing `capability_event` messages
+sets the token for the matching render request. Lists instead use one
+`collection-list` message: Operation is `note` or `task`, Value contains up to eight
+newline-separated titles (71 UTF-8 bytes each; embedded whitespace is normalized),
+ViewToken binds `r0` through `r7` to the exact phone records/revisions, and Meta has
+one delivery-state character per row (`p` pending server, `s` synced, `b` backend
+pending, `d` saved on server). Flags are completed=1, next page=2, stale=4,
+partial=8, first active page=16. Subtitle carries the overall status. Only first
+active pages replace the persistent title preview. Preview rows have no mutation
+or read aliases until a live response arrives. All list messages are guarded by
+the same request/navigation checks as render messages. Existing `capability_event` messages
 with operation `note` or `todo` carry list/read/edit/append/complete/restore actions.
 The phone resolves an alias only within that exact view. It checks an existing
 receipt before rejecting an expired view, so retransmission cannot target a reused

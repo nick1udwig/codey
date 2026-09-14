@@ -3,6 +3,7 @@
 #include "agent_capabilities.h"
 #include "agent_protocol.h"
 #include "agent_ui.h"
+#include "collection_preview.h"
 #include "answer_notification.h"
 #include "local_action.h"
 #include "watch_response.h"
@@ -514,6 +515,12 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
     const char *bridge=prv_tuple_string(iter,MESSAGE_KEY_BridgeSession);
     if (strcmp(bridge,s_collection_bridge)) { s_collection_event=0; s_collection_view[0]=0; }
     agent_protocol_copy(s_collection_bridge,sizeof(s_collection_bridge),bridge);return;
+  }
+  if (!strcmp(type,"collection-list")) {
+    if(!watch_response_accepts(&s_response,request_id))return;
+    agent_protocol_copy(s_collection_view,sizeof(s_collection_view),prv_tuple_string(iter,MESSAGE_KEY_ViewToken));
+    collection_preview_receive(s_capabilities,!strcmp(operation,"note"),prv_tuple_string(iter,MESSAGE_KEY_Value),prv_tuple_int(iter,MESSAGE_KEY_Flags,0),prv_tuple_string(iter,MESSAGE_KEY_Subtitle),prv_tuple_string(iter,MESSAGE_KEY_Meta));
+    return;
   }
   if (!strcmp(type,"collection-view")) {
     if(watch_response_accepts(&s_response,request_id)) {agent_protocol_copy(s_collection_view,sizeof(s_collection_view),prv_tuple_string(iter,MESSAGE_KEY_ViewToken));}

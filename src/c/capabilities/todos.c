@@ -1,14 +1,18 @@
 #include "internal.h"
+#include "../collection_preview.h"
 #include <string.h>
 
-// Collection contents and mutations are never written to native persistence.
+// Only display titles are cached; mutations still require live phone aliases.
 static void request(AgentCapabilities *host, const char *id, const char *action, const char *value) {
   agent_capabilities_set_collection(host, false);
   agent_capabilities_set_active(host, "todos", true);
   AgentUi *ui=agent_capabilities_ui(host);
+  bool preview=!strcmp(action,"list") && strcmp(value,"next") && collection_preview_show(host,false);
+  if(!preview) {
   agent_ui_begin(ui,"todos","list","To-dos","","",16);
   agent_capability_add_element(ui,"text","loading","","","Loading from phone…","","",0);
   agent_ui_end(ui);
+  }
   agent_capabilities_emit(host,"todo",id,action,value);
 }
 static bool command(AgentCapabilities *host,const AgentCapabilityCommand *c,void *context) {

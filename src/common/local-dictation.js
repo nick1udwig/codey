@@ -114,8 +114,16 @@ function parse(input, now) {
   if (/^(?:please )?(?:edit (?:a |the )?note|(?:show|open|list)(?: me)? (?:my |the )?notes)[.!]?$/i.test(raw)) { return operation("note", "list"); }
   var note = /^(?:please )?(?:make|create|add) (?:me )?(?:a |new |another )?note(?:\s+that|\s+saying)?\s*[:,]?\s+(.+)$/i.exec(raw) || /^note\s*:\s*(.+)$/i.exec(raw);
   if (note && note[1].trim()) { return operation("note", "add", { value: note[1].trim() }); }
-  var todo = /^(?:please )?(?:add|create|make|set|put down) (?:me )?(?:(?:a|new|another) )?(?:todo|to-do|to do|task)(?: (?:to|for))? (.+)$/i.exec(input.trim());
-  if (!todo) { todo = /^(?:please )?(?:to-do|todo|to do):?\s+(.+)$/i.exec(input.trim()); }
+  var todo = /^(?:please )?(?:add|create|make|set|put down) (?:me )?(?:(?:a|new|another) )?(?:todo|to-do|to do|2\s*d|two (?:two|do)|to o|task)(?: (?:to|for))? (.+)$/i.exec(input.trim());
+  if (!todo) {
+    // Match the longest command prefix before inspecting its payload. Do not
+    // backtrack from an empty "to do" command into "to" with a task named "do".
+    var prefix = /^(?:please )?(?:to-do|todo|to do|2\s*d|two(?: two| do)?|to o|to)(?=[:\s]|$)/i.exec(raw);
+    if (prefix) {
+      var payload = raw.slice(prefix[0].length).replace(/^\s*:?\s*/, "");
+      if (payload) { todo = [raw, payload]; }
+    }
+  }
   if (todo && todo[1].trim()) { return operation("todo", "add", { value: todo[1].trim() }); }
   var text = normalize(input), match, seconds, at;
   if (/^(?:show|open|list)(?: me)? (?:my |the )?(?:todos|to-dos|to dos|tasks)$/.test(text)) { return operation("todo", "list"); }

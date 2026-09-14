@@ -1,5 +1,6 @@
 #include "../agent_protocol.h"
 #include "internal.h"
+#include "../collection_preview.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -9,12 +10,15 @@ static void request(Notes *s, const char *id, const char *action,
   agent_capabilities_set_collection(s->host, true);
   agent_capabilities_set_active(s->host, "notes", true);
   AgentUi *ui = agent_capabilities_ui(s->host);
+  bool preview=!strcmp(action,"list") && strcmp(value,"next") && collection_preview_show(s->host,true);
+  if(!preview) {
   agent_ui_begin(ui, "notes-loading", "list", "Notes", "", "", 16);
   agent_capability_add_element(ui, "text", "loading", "", "",
                                "Loading from phone…", "", "", 0);
   agent_capability_add_element(ui, "item", "retry", "Reload notes", "", "",
                                "local.notes", "", 0);
   agent_ui_end(ui);
+  }
   agent_capabilities_emit(s->host, "note", id, action, value);
 }
 static bool command(AgentCapabilities *host, const AgentCapabilityCommand *c,

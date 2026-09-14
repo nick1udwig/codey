@@ -258,3 +258,10 @@ of older revisions. `pebble build` verifies Emery/Gabbro; server release targets
 remain linux/{amd64,386,arm,arm64} and darwin/arm64 with CGO disabled.
 Authenticated provider accounts, real PebbleKit termination, OAuth browser return,
 and hardware remain separate qualification gates; see the operations runbook.
+
+Collection latency: phone logs report `collection read <kind> <action> ms=…`
+(HTTP/setup work before queuing the list) and `collection Bluetooth ack ms=…`
+(the compact list send until transport acknowledgment). These logs exclude titles
+and credentials. Watch cached previews require no network; verify initial loads,
+reopening after restart, empty collections, pagination, and offline refresh errors
+on hardware. Local server timings do not measure phone networking or Bluetooth.

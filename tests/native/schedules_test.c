@@ -1,5 +1,6 @@
 #include "agent_capabilities.h"
 #include "agent_protocol.h"
+#include "collection_preview.h"
 #include "touch_guard.h"
 #include <assert.h>
 #include <limits.h>
@@ -145,6 +146,29 @@ static void test_todos(void) {
   event(caps,"local.todo.archive");assert(!strcmp(todo_action,"archive"));
   AgentCapabilityCommand cmd={.type="todo",.command="add",.value="Never persist this"};
   assert(!agent_capabilities_handle_command(caps,&cmd));assert(writes==before);
+  agent_capabilities_destroy(caps);
+}
+
+static void test_collection_previews(void) {
+  reset();AgentCapabilities *caps=agent_capabilities_create(&ui,todo_event,NULL);
+  assert(!collection_preview_show(caps,false));
+  collection_preview_receive(caps,false,"Buy milk\nCall José",16,"Saved on server","dp");
+  assert(!strcmp(ui.elements[element("r0")].action,"local.todo.complete"));
+  assert(!strcmp(ui.elements[element("r1")].subtitle,"Pending server"));
+  agent_capabilities_destroy(caps);
+  caps=agent_capabilities_create(&ui,todo_event,NULL);
+  assert(collection_preview_show(caps,false));
+  assert(!strcmp(ui.elements[element("r0")].value,"Buy milk"));
+  assert(!ui.elements[element("r0")].action[0]);
+  collection_preview_receive(caps,false,"Completed item",1,"Saved","d");
+  assert(collection_preview_show(caps,false));
+  assert(!strcmp(ui.elements[element("r0")].value,"Buy milk"));
+  collection_preview_receive(caps,true,"Note title",16,"Saved","d");
+  assert(collection_preview_show(caps,true));
+  assert(!strcmp(ui.elements[element("r0")].title,"Note title"));
+  collection_preview_receive(caps,false,"",16,"Saved","");
+  assert(collection_preview_show(caps,false));assert(element("r0")<0);
+  storage[4491].size=0;assert(!collection_preview_show(caps,true));
   agent_capabilities_destroy(caps);
 }
 
@@ -443,7 +467,7 @@ static void test_welcome_tour(void) {
 int main(void) {
   test_welcome_tour();
    test_checkbox_double_tap(); test_notes(); test_idle_cadence();
-  test_weather_summary(); test_todos(); test_dashboard_progress(); test_dashboard_destinations(); test_multiple_and_ack(); test_pause_cancel_restore(); test_failures_and_capacity(); test_stopwatch_dashboard();  test_explicit_replacement();
+  test_weather_summary(); test_todos(); test_collection_previews(); test_dashboard_progress(); test_dashboard_destinations(); test_multiple_and_ack(); test_pause_cancel_restore(); test_failures_and_capacity(); test_stopwatch_dashboard();  test_explicit_replacement();
   test_reused_ids_and_screen_independent_expiry(); test_delivery_replay_after_relaunch();
    test_jobs();
   puts("✓ schedules: concurrent deadlines, repeated alerts, acknowledge, snooze, navigation, persistence, failures, bounds, stopwatch, jobs");

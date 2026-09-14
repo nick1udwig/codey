@@ -40,7 +40,7 @@ Touch taps open each section:
   Swipe vertically or use Up/Down to navigate.
   Drag item text horizontally, or hold Up/Down to pan the selected item left/right.
   Add items by talking to codey: “make a to-do to buy milk,” “set a task to call José,” or “create a todo to book tickets.”
-  The bare prefix also works: “to-do send a birthday card to John.”
+  The bare prefix also works: “to-do send a birthday card to John.” Speech variants `2D`, `2 d`, `two`, `two two`, `two do`, `to`, and `to o` also create a to-do when followed by item text at the start of dictation. These short prefixes are ambiguous: “to note the address” creates a task called “note the address.” Use “note: …” or “make a note …” to save a note. Embedded phrases and negated commands do not trigger this shortcut; “set two timers …” is not a to-do.
 
 ## Gestures and new chats
 

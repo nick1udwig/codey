@@ -4,7 +4,7 @@
   var Endpoints = window.CodeyEndpoints;
   var defaults = {
     endpoint: "",
-    serverBaseUrl:"", collectionDevelopmentHTTP:false,
+    collectionDevelopmentHTTP:false,
     token: "",
     units: "auto",
     locationLabel: "Current location",
@@ -21,7 +21,6 @@
   var status = document.getElementById("status");
 
   var extraFields = {
-    serverBaseUrl:document.getElementById("server-base-url"),
     collectionDevelopmentHTTP:document.getElementById("collection-development-http"),
     tapAnimation: document.getElementById("tap-animation"),
     answerVibrate: document.getElementById("answer-vibrate"),
@@ -66,7 +65,8 @@
   newSession.checked = false;
   endpoint.value = current.endpoint || "";
   token.value = "";
-  token.placeholder=current.tokenConfigured?"Configured — leave blank to keep":"Bearer token";
+  token.placeholder=current.tokenConfigured?"Token saved — leave blank to keep":"Bearer token";
+  document.getElementById("token-status").textContent=current.tokenConfigured?"A bearer token is saved on your phone. Leave this field blank to keep it.":"Enter your server bearer token. After saving, this field is blank so the token is not exposed in the settings URL.";
   units.value = current.units || "auto";
   timeout.value = String(current.timeoutSeconds || 45);
   locationLabel.value = current.locationLabel || defaults.locationLabel;

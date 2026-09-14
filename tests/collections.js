@@ -9,3 +9,26 @@ function input(seq){return {ingress:"watch:bridge_a:"+seq,collection_id:"col_not
 (function staleSessionsAndOverlay(){var f=enrolled(),op=f.j.accept(input(1));f.j.receipt({operation_id:op.id,outcome:"applied",durably_recorded:true,revision:"1"});f.j.bridge("bridge_b");assert.throws(function(){f.j.accept(input(1));},/Stale/);var cache={pages:{},records:{}};var client=Object.create(Client.prototype);client.journal=f.j;client.cache=cache;f.j.update(function(d){d.bridge="bridge_a";});var next=f.j.accept(input(2));var page=client.project({records:[]},"note","active");assert.strictEqual(page.records[0].id,next.record_id);})();
 (function viewAliases(){var client={list:function(kind,state,snapshot,cursor,done){done(null,{records:[{id:"canonical-id-that-never-fits-native",title:"A",revision:"1",capabilities:[]}],complete:true});}},views=new Views(client);var first;views.list("note","active","","",function(e,v){assert.ifError(e);first=v;});assert.strictEqual(views.resolve(first.token,"r0").record.revision,"1");views.list("note","active","","",function(){});assert.throws(function(){views.resolve(first.token,"r0");},/Stale/);})();
 console.log("✓ collection journal: durable recovery, torn slots, duplicate ingress, dependencies, quota, stale sessions, overlays, view aliases");
+
+(function startupEnrollment(){
+ var client=new Client({storage:storage(),base:function(){return "https://server.test";},token:function(){return "test";}}),pending=[],completed=0;
+ client.request=function(method,path,body,done){pending.push({method:method,path:path,done:done});};
+ client.connect(function(e){assert.ifError(e);completed++;});
+ client.list("task","active","","",function(e,p){assert.ifError(e);assert.deepStrictEqual(p.records,[]);completed++;});
+ assert.strictEqual(pending.length,1);
+ pending.shift().done(null,{protocol_version:1,server_instance_id:"s",store_epoch:"e",principal:"operator"});
+ assert.strictEqual(pending.length,1);assert.strictEqual(pending[0].path,"/v1/sync/clients");
+ pending.shift().done(null,{client_id:"c",server_instance_id:"s",store_epoch:"e",principal:"operator"});
+ pending.shift().done(null,[{id:"col_task",kind:"task",binding_generation:"1"}]);
+ assert.strictEqual(completed,1);
+ pending.shift().done(null,{snapshot_id:"snapshot"});
+ pending.shift().done(null,{records:[],snapshot_id:"snapshot",complete:true});
+ assert.strictEqual(completed,2);
+})();
+(function setupErrorAndRetry(){
+ var client=new Client({storage:storage(),base:function(){return "http://server.test";},token:function(){return "test";}});
+ client.list("task","active","","",function(e){assert.match(e.message,/HTTP requires/);});
+ assert.strictEqual(client.connectWaiters,null);
+ client.options.base=function(){return "";};
+ client.ensure(function(e){assert.match(e.message,/URL and bearer token/);});
+})();

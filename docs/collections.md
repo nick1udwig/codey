@@ -1,8 +1,10 @@
 # Notes and To-dos: server storage and backend sync
 
 Notes and to-dos are canonical server records. The phone keeps a durable mutation
-journal and a bounded disposable read cache. The watch holds only the current
-page and an unfinished transmission in RAM. Timers, alarms, and the remembered
+journal and a bounded disposable read cache. The watch persists up to eight truncated titles each for Notes and active To-dos.
+It shows these noninteractive cached previews immediately while refreshing live
+aliases from the phone; completed lists and later pages do not replace the preview.
+Mutations and record identities are not stored in this display cache. Timers, alarms, and the remembered
 Notes/To-dos tile selection retain their existing persistence.
 
 This is a breaking development upgrade. Legacy phone notes and native task slots
@@ -11,9 +13,9 @@ data was explicitly excluded from preservation for this implementation.
 
 ## Setup
 
-Configure the server bearer token (`CODEY_TOKEN`) and the collection server base
-URL in phone settings. A root URL or an agent endpoint ending in `/v1/agent` can
-supply the default; other custom paths require an explicit collection base URL.
+Configure the server bearer token (`CODEY_TOKEN`) and server URL in phone settings.
+Collections always use that same URL, stripping a trailing `/v1/agent` and
+converting WebSocket schemes to HTTP(S). There is no separate collection URL.
 HTTPS is required unless **Allow HTTP for local development collections** is
 explicitly enabled. The server creates one To-dos and one Notes collection.
 Collection APIs remain available when Codex is unavailable.

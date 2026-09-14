@@ -1192,6 +1192,18 @@ test("bare todo prefix creates an item without interpreting its text as an alarm
   assert.strictEqual(LocalDictation.parse("please explain the to-do list"), null);
 });
 
+test("dictation recognizes to-do mishearings only at command boundaries", function() {
+  ["2D", "2d", "2 D", "TWO", "two", "two two", "two do", "to", "to o", "to do"].forEach(function(prefix) {
+    var result=LocalDictation.parse(prefix+" Buy Milk and call José");
+    assert.strictEqual(result.node.attrs.type,"todo");
+    assert.strictEqual(result.node.attrs.value,"Buy Milk and call José");
+    assert.strictEqual(LocalDictation.parse(prefix),null);
+  });
+  ["do not add a todo to buy milk", "explain to do lists", "today buy milk", "together buy milk", "2 days until Friday", "twofold increase", "noteworthy idea", "know this", "no thanks"].forEach(function(phrase){assert.strictEqual(LocalDictation.parse(phrase),null,phrase);});
+  assert.strictEqual(LocalDictation.parse("note: to buy milk").node.attrs.type,"note");
+  assert.strictEqual(LocalDictation.parse("to note the address").node.attrs.value,"note the address");
+});
+
 test("todo voice commands preserve item text and use the local capability", function() {
   var todo = LocalDictation.parse("Add a todo to Buy Milk and call José", new Date());
   assert.strictEqual(todo.node.attrs.type, "todo");
@@ -1334,6 +1346,45 @@ test("dictated form answers bypass local regexes and retain question context", f
     assert.strictEqual(nodes.filter(function(n) {return n.kind === "input";})[0].attrs.kind, "dictate-answer");
     assert.strictEqual(nodes.filter(function(n) {return n.kind === "context";})[0].attrs.screen, "when");
   } finally {h.cleanup();}
+});
+
+test("phone retains a blank-submitted token and waits for setup before a dictated todo", function() {
+  var requests=[],storage={};
+  storage[Settings.STORAGE_KEY]=JSON.stringify({endpoint:"wss://agent.test",token:"saved-token"});
+  function XHR(){} XHR.prototype.open=function(method,url){this.url=url;};
+  XHR.prototype.setRequestHeader=function(){};
+  XHR.prototype.send=function(){requests.push(this);};
+  var h=loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
+  try {
+    h.handlers.webviewclosed({response:JSON.stringify({endpoint:"wss://agent.test",token:""})});
+    assert.strictEqual(JSON.parse(storage[Settings.STORAGE_KEY]).token,"saved-token");
+    h.handlers.appmessage({payload:{0:"input",2:"dictation",8:"2D Buy Milk"}});
+    var setup=requests.filter(function(r){return /\/v1\/sync\/info$/.test(r.url);});
+    assert.strictEqual(setup.length,1);
+    setup[0].status=401;setup[0].responseText=JSON.stringify({code:"auth_required",message:"Test collection authentication failure"});setup[0].onload();
+    assert.ok(h.sent.some(function(m){return JSON.stringify(m).indexOf("Test collection authentication failure")>=0;}));
+    assert.ok(!h.sent.some(function(m){return JSON.stringify(m).indexOf("Connect collection server first")>=0;}));
+  } finally {h.cleanup();}
+});
+
+test("collection lists use one bounded Bluetooth payload with exact view aliases", function() {
+ var requests=[],storage={};storage[Settings.STORAGE_KEY]=JSON.stringify({endpoint:"https://agent.test/v1/agent",token:"t",serverBaseUrl:"https://obsolete.test"});
+ function XHR(){}XHR.prototype.open=function(method,url){this.url=url;};XHR.prototype.setRequestHeader=function(){};XHR.prototype.send=function(){requests.push(this);};
+ var h=loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
+ function reply(value){var r=requests.shift();r.status=200;r.responseText=JSON.stringify(value);r.onload();}
+ try {
+  h.handlers.appmessage({payload:{0:"capability_event",2:"todo",9:"list",8:"0"}});
+  assert.strictEqual(requests[0].url,"https://agent.test/v1/sync/info");
+  reply({protocol_version:1,server_instance_id:"s",store_epoch:"e",principal:"operator"});
+  reply({client_id:"c",server_instance_id:"s",store_epoch:"e",principal:"operator"});
+  reply([{id:"col_task",kind:"task",binding_generation:"1"}]);
+  reply({snapshot_id:"snap"});
+  reply({snapshot_id:"snap",complete:false,next_cursor:"next",records:Array.from({length:8},function(_,i){return {id:"record"+i,title:"🌙".repeat(80),revision:"1",completed:false,capabilities:["task.complete"]};})});
+  var lists=h.sent.filter(function(m){return m[0]==="collection-list";});assert.strictEqual(lists.length,1);
+  assert.strictEqual(lists[0][8].split("\n").length,8);assert.ok(Buffer.byteLength(lists[0][8])<576);
+  assert.ok(lists[0][16]);assert.strictEqual(lists[0][Watch.Key.flags]&18,18);
+  assert.strictEqual(h.sent.filter(function(m){return m[0]==="render";}).length,0);
+ }finally{h.cleanup();}
 });
 
 test("Native dashboard survives bridge startup, configuration, and local notifications", function() {

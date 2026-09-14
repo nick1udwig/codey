@@ -35,7 +35,7 @@
           <span>Bearer token</span>
           <input id="token" name="token" type="password" autocomplete="off"
                  placeholder="Optional" />
-          <small>Leave blank to keep the saved bearer token. It is never included in this settings URL.</small>
+          <small id="token-status">Leave blank to keep the saved bearer token. It is never included in this settings URL.</small>
         </label>
 
         <fieldset>
@@ -119,8 +119,7 @@
         <button type="submit">Save &amp; close</button>
         <p id="status" role="status">Hold Select on the watch after saving.</p>
         <fieldset><legend>Notes and to-dos</legend>
-          <label>Collection server base URL<input id="server-base-url" type="text" inputmode="url" placeholder="https://example.com/codey"></label>
-          <small>Custom agent paths need an explicit collection base URL.</small>
+          <p>Notes, to-dos, and sync settings use the server URL above.</p>
           <label><input id="collection-development-http" type="checkbox">Allow HTTP for local development collections</label>
           <label><input id="recover-collections" type="checkbox"> Archive quarantined phone input on the original server for review, then re-enroll</label>
           <button id="manage-integrations" type="button">Save &amp; manage sync services</button>

@@ -28,10 +28,7 @@ var sessionId = loadSessionId();
 var commandSequence = loadCommandSequence();
 var collections=null, collectionViews=null, collectionError="", collectionTimer=null;
 function collectionBase() {
- if(settings.serverBaseUrl)return settings.serverBaseUrl;
- var endpoint=Endpoints.normalize(settings.endpoint)||"";
- if(!/\/v1\/agent$/.test(endpoint)&&!/^https?:\/\/[^/]+$/.test(endpoint))return "";
- return endpoint.replace(/\/v1\/agent$/,"").replace(/^ws:/,"http:").replace(/^wss:/,"https:");
+ return (Endpoints.normalize(settings.endpoint)||"").replace(/\/v1\/agent$/,"").replace(/^ws:/,"http:").replace(/^wss:/,"https:");
 }
 try {
  collections=new CollectionClient({storage:localStorage,XMLHttpRequest:typeof XMLHttpRequest!=="undefined"?XMLHttpRequest:null,base:collectionBase,token:function(){return settings.token;},allowHTTP:function(){return settings.collectionDevelopmentHTTP;}});
@@ -50,11 +47,23 @@ function syncCollections(){
  if(collectionTimer&&collectionTimer.unref)collectionTimer.unref();
 }
 function collectionAck(payload,state,text){var m={};m[Key.messageType]="collection-ack";m[Key.bridgeSession]=String(read(payload,Key.bridgeSession,"BridgeSession")||"");m[Key.eventSequence]=Number(read(payload,Key.eventSequence,"EventSequence")||0);m[Key.deliveryState]=state;m[Key.value]=text;if(state==="rejected")m[Key.errorCode]=/stale|session|view/i.test(text)?"stale_view":/reused/i.test(text)?"idempotency_mismatch":"invalid_input";watchQueue.enqueue(m);}
-function renderCollection(requestId,error,view){if(error){sendStatus(error.message,"error",requestId);return;}if(requestId!==activeRequestId)return;var m={};m[Key.messageType]="collection-view";m[Key.requestId]=requestId;m[Key.viewToken]=view.token;watchQueue.enqueue(m);capabilityContext(requestId).renderPam(view.source);sendAnswerNotification(requestId,"complete",true);}
+function renderCollection(requestId,error,view){
+ if(requestId!==activeRequestId)return;
+ if(error){sendStatus(error.message,"error",requestId);return;}
+ var m={};m[Key.requestId]=requestId;m[Key.viewToken]=view.token;
+ if(view.list){
+  var list=view.list;m[Key.messageType]="collection-list";m[Key.operation]=list.kind;
+  m[Key.value]=list.titles.join("\n");m[Key.meta]=list.states;
+  m[Key.flags]=(list.state==="completed"?1:0)|(list.next?2:0)|(list.stale?4:0)|(list.partial?8:0)|(list.first?16:0);
+  m[Key.subtitle]=list.stale?"Cached · Server unavailable":list.pending?list.pending+" pending server":list.partial?"First 8 · More after sync":"Saved on server";
+  watchQueue.enqueue(m);
+ }else{m[Key.messageType]="collection-view";watchQueue.enqueue(m);capabilityContext(requestId).renderPam(view.source);}
+ sendAnswerNotification(requestId,"complete",true);
+}
 function handleCollectionRequest(kind,action,id,value,token,payload){
  var requestId=nextRequestId();activeRequestId=requestId;sendAnswerNotification(requestId,"begin",true,token);
  if(!collections){sendStatus(collectionError||"Collections unavailable","error",requestId);return;}
- var viewToken=String(read(payload,Key.viewToken,"ViewToken")||""),done=function(e,v){renderCollection(requestId,e,v);};
+ var started=Date.now(),viewToken=String(read(payload,Key.viewToken,"ViewToken")||""),done=function(e,v){log("collection read "+kind+" "+action+" ms="+(Date.now()-started));renderCollection(requestId,e,v);};
  try {
   if(action==="list"||action==="archive"){
    if(value==="next"){var page=collectionViews.resolve(viewToken,"next");collectionViews.list(kind,page.state,page.snapshot,page.cursor,done);}
@@ -75,6 +84,13 @@ function handleCollectionRequest(kind,action,id,value,token,payload){
  }catch(e){collectionAck(payload,"rejected",e.message);sendStatus(e.message,"error",requestId);}
 }
 function phoneCollection(attrs,requestId,complete,job,commandIndex){
+ if(!collections){sendStatus(collectionError||"Collections unavailable","error",requestId);if(complete)complete(false);return;}
+ collections.ensure(function(e){
+  if(e){sendStatus(e.message,"error",requestId);if(complete)complete(false);return;}
+  phoneCollectionReady(attrs,requestId,complete,job,commandIndex);
+ });
+}
+function phoneCollectionReady(attrs,requestId,complete,job,commandIndex){
  var kind=attrs.type==="todo"?"task":"note";
  function finish(e,op){if(e){sendStatus(e.message,"error",requestId);if(complete)complete(false);return;}var delivery="Saved on phone · Pending server";collections.drain(function(error,data){if(error||!op||!data)return;data.results.forEach(function(r){if(r.operation_id===op.id&&r.durably_recorded){delivery=r.outcome==="applied"?"Saved on server":"Needs attention in server settings";if(requestId===activeRequestId)sendStatus(delivery,"show",requestId);}});});collectionViews.list(kind,"active","","",function(e,v){if(e&&op){sendStatus(delivery+" · List unavailable","show",requestId);sendAnswerNotification(requestId,"complete",true);if(complete)complete(true);return;}renderCollection(requestId,e,v);if(op)sendStatus(delivery,"show",requestId);if(complete)complete(!e);});}
  try{if(!collections)throw new Error(collectionError);if(attrs.command==="list"||attrs.command==="archive"){collectionViews.list(kind,attrs.command==="archive"?"completed":"active","","",function(e,v){renderCollection(requestId,e,v);if(complete)complete(!e);});return;}if(attrs.command!=="add")throw new Error("Open the collection and choose a record to edit.");var col=collections.collection(kind),scope=collections.journal.data.scope;
@@ -127,7 +143,8 @@ function loadSessionId() {
 }
 
 var watchQueue = new WatchProtocol.MessageQueue(function(message, success, failure) {
-  Pebble.sendAppMessage(message, success, failure);
+  var started=Date.now();
+  Pebble.sendAppMessage(message, function(){if(message[Key.messageType]==="collection-list")log("collection Bluetooth ack ms="+(Date.now()-started));success();}, failure);
 }, {
   maxQueue: 96,
   maxRetries: 3,

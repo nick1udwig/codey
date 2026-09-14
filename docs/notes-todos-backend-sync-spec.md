@@ -1,5 +1,13 @@
 # Notes and To-Dos Backend Sync: Implementation Specification
 
+> UX amendment: The watch now persists a disposable preview of up to eight
+> truncated titles for each active collection. Cached rows are noninteractive
+> until refreshed with live aliases; mutation payloads and identities remain
+> unpersisted on the watch. This supersedes the original prohibition on all
+> watch collection persistence below. Collections use the main server URL
+> (removing `/v1/agent` when present); no separate `serverBaseUrl` is configured.
+> Live list rendering is batched in `collection-list`; see `docs/protocol.md`.
+
 **Version:** 1.0  
 **Date:** September 13, 2026  
 **Repository baseline:** `nick1udwig/pebble-agent`, commit `db1f87610340748293eef22016f3d150265b0e98`  

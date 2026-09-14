@@ -1,5 +1,13 @@
 # Notes and To-Dos Backend Sync: Implementation Plan
 
+> UX amendment: The watch now persists a disposable preview of up to eight
+> truncated titles for each active collection. Cached rows are noninteractive
+> until refreshed with live aliases; mutation payloads and identities remain
+> unpersisted on the watch. This supersedes the original prohibition on all
+> watch collection persistence below. Collections use the main server URL
+> (removing `/v1/agent` when present); no separate `serverBaseUrl` is configured.
+> Live list rendering is batched in `collection-list`; see `docs/protocol.md`.
+
 Implementation lives on `feat/sync-notes-to-dos-with-backend`. See
 [implemented behavior](collections.md) and [operations / validation](collections-server-operations.md).
 Hardware and authenticated provider qualification are release gates, not claims made by automated fixtures.
