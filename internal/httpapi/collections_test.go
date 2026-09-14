@@ -39,7 +39,7 @@ func TestCollectionsRequireAuthAndWorkWithoutAgent(t *testing.T) {
 
 func TestManagementURLAndProviderRequireAuthenticatedPhone(t *testing.T) {
 	calls := 0
-	s := New(Config{Token: "t", IntegrationTicket: func(base, provider string) (string, error) {
+	s := New(Config{Token: "t", IntegrationTicket: func(base, provider, collection string) (string, error) {
 		calls++
 		if base != "https://example.test/codey" || provider != "todoist" {
 			t.Fatal(base, provider)

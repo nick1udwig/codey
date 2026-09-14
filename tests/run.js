@@ -1392,8 +1392,8 @@ test("failed sync management reopens settings with the server error and no token
  function XHR(){}XHR.prototype.open=function(method,url){this.url=url;};XHR.prototype.setRequestHeader=function(){};XHR.prototype.send=function(body){this.body=body;requests.push(this);};
  var h=loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
  try{
-  h.handlers.webviewclosed({response:JSON.stringify({endpoint:"https://agent.test",token:"",syncProvider:"todoist",manageIntegrations:true})});
-  var r=requests.filter(function(r){return /integration-sessions$/.test(r.url);})[0];assert.ok(r);assert.deepStrictEqual(JSON.parse(r.body),{public_url:"https://agent.test",provider:"todoist"});
+  h.handlers.webviewclosed({response:JSON.stringify({endpoint:"https://agent.test",token:"",todoSyncProvider:"todoist",manageCollection:"task"})});
+  var r=requests.filter(function(r){return /integration-sessions$/.test(r.url);})[0];assert.ok(r);assert.deepStrictEqual(JSON.parse(r.body),{public_url:"https://agent.test",provider:"todoist",collection_id:"col_task"});
   r.status=400;r.responseText=JSON.stringify({message:"Operator must configure HTTPS public_url for integration settings"});r.onload();
   assert.strictEqual(h.opened.length,1);
   var state=JSON.parse(decodeURIComponent(h.opened[0].split("#")[1]));

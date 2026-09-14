@@ -626,7 +626,7 @@ Pebble.addEventListener("webviewclosed", function(event) {
       Pebble.openURL(Settings.buildConfigUrl(settings,Date.now(),null,message));
     }
     if(!collections)managementError(collectionError||"Collections unavailable");
-    else collections.request("POST","/v1/integration-sessions",{public_url:collectionBase(),provider:settings.syncProvider},function(e,data){
+    else collections.request("POST","/v1/integration-sessions",{public_url:collectionBase(),provider:updated.manageCollection==="note"?settings.noteSyncProvider:settings.todoSyncProvider,collection_id:updated.manageCollection==="note"?"col_note":"col_task"},function(e,data){
       if(e){managementError(e.message);return;}
       var base=collectionBase();
       if(!data.url||data.url.indexOf(base.replace(/\/$/,"")+"/integrations?ticket=")!==0){managementError("Sync settings returned an unexpected server URL.");return;}

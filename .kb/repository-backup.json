@@ -1,7 +1,21 @@
 {
   "version": 1,
-  "created_at": "2026-09-14T02:28:04.988676567+00:00",
+  "created_at": "2026-09-14T03:02:04.488514291+00:00",
   "documents": [
+    {
+      "id": "01a09dda-ebb0-7531-ba7c-63bb5c3cb1de",
+      "slug": "issues/separate-notes-and-todos-backend-setup",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Separate note and to-do backend setup with server-only defaults",
+      "content": "Replace ambiguous shared All services menu with independent todo and note setup preferences, both server-only by default. To-dos offer Todoist/Google Tasks; notes offer Nextcloud Notes. Dynamic instructions explain required credentials or server OAuth config; README contains complete activation/disconnection flow. One-time management action sends selected collection and matching provider; server rejects mismatched provider kinds and scopes forms to the selected collection. Saving a preference alone does not activate or disconnect a backend. Regression tests cover defaults, independent selection, dynamic instructions, one-shot actions, mismatches and scoped forms.\n\nValidated all Go packages, 90 JS tests, 11 settings integration tests, both watch builds. Deployed server PID 2057505 and verified both public HTTPS management pages show only matching provider forms. Updated phone package/settings site built but not installed/published. README now documents credentials, Google OAuth JSON, private Nextcloud hosts, activation/export, and server-only disconnection.\n",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-14T03:02:04.202788060Z",
+      "modified_at": "2026-09-14T03:02:04.202788060Z"
+    },
     {
       "id": "01a09dbb-27e9-7d60-abea-2ba176210074",
       "slug": "issues/codey-home-and-phone-managed-sync-setup",
@@ -337,16 +351,16 @@
     {
       "id": "01a09805-4759-7923-a05c-5f27bab32e2d",
       "slug": "reference/docs/collections",
-      "version": 6,
+      "version": 7,
       "doc_type": "reference",
       "title": "docs/collections.md",
-      "content": "Source: `docs/collections.md`\n\n# Notes and To-dos: server storage and backend sync\n\nNotes and to-dos are canonical server records. The phone keeps a durable mutation\njournal and a bounded disposable read cache. The watch persists up to eight truncated titles each for Notes and active To-dos.\nIt shows these noninteractive cached previews immediately while refreshing live\naliases from the phone; completed lists and later pages do not replace the preview.\nMutations and record identities are not stored in this display cache. Timers, alarms, and the remembered\nNotes/To-dos tile selection retain their existing persistence.\n\nThis is a breaking development upgrade. Legacy phone notes and native task slots\nare ignored; there is no migration or compatibility fallback. Existing collection\ndata was explicitly excluded from preservation for this implementation.\n\n## Setup\n\nConfigure the server bearer token (`CODEY_TOKEN`) and server URL in phone settings.\nCollections always use that same URL, stripping a trailing `/v1/agent` and\nconverting WebSocket schemes to HTTP(S). There is no separate collection URL.\nHTTPS is required unless **Allow HTTP for local development collections** is\nexplicitly enabled. The server creates one To-dos and one Notes collection.\nCollection APIs remain available when Codex is unavailable.\n\nChoose a **Sync service to configure**, then **Save & manage sync services**.\nThe phone sends its HTTPS server URL and selected service to create a short-lived\nmanagement session; no separate public URL configuration is required.\nSelect Server only, Todoist, Google Tasks, or Nextcloud Notes; authenticate,\ndiscover a project/list/category, preview the records, then activate it. Existing\nserver records are exported only when explicitly selected. Provider secrets are\nentered on the server page and encrypted with a separately held server key.\n\n## Saving and browsing\n\n- Dictate “note: Call Jane” or “todo: Buy milk” to create a record. These commands\n  and collection browsing do not need Codex.\n- Open a note to read revision-pinned pages, **Append to note**, or **Replace\n  entire note**. Replacement saves the complete new dictation, never the displayed\n  page. Ambiguous text-based edits direct you to the record picker.\n- Task checkboxes emit explicit complete/restore operations. Completed tasks have\n  a separate paginated view. Completion is distinct from deletion.\n- Lists contain at most eight records; bodies contain at most four UTF-8 chunks\n  per page. Large collections remain server-owned. Uncached offline pages are\n  reported unavailable; cached pages are marked stale.\n- Saves first show Sending, then **Saved on phone · Pending server**, then\n  **Saved on server**. External delivery is tracked separately in server settings.\n  A transport acknowledgment alone never means that the input was saved.\n\nThe phone may accept supported writes while the server is unavailable after\ninitial enrollment. The watch cannot create collection mutations without its\nphone connection/readiness handshake. Unaccepted input exists only in RAM and\ncan be lost when closing the watch app. Phone uploads resume when PebbleKit JS\nruns again; it is not a permanent background service. Uninstalling/clearing phone\nstorage can destroy input that has not reached the server.\n\nThe journal has two checksummed slots with read-back verification. Defaults are\n256 retained operations and 512 KiB per slot, plus a 1 MiB disposable cache.\nCache eviction never removes pending input. Queue exhaustion rejects the next\nsave. When more than eight uncommitted creates exist, the view explicitly reports\npartial coverage; remaining records become browsable after server upload.\n\n## Providers and recovery\n\nTodoist uses API v1 incremental synchronization and stable command UUIDs. Completed\nhistory discovery covers the last 89 days; previously imported canonical history\nis retained. Recurring completion adopts the returned next occurrence. The API\nhas weaker concurrent-write guarantees than Nextcloud's conditional updates.\n\nGoogle Tasks includes hidden, completed, and deleted tasks in full paginated\nreads. Due values are date-only; assigned tasks are read-only. A create with an\nunknown remote outcome requires review before retrying.\n\nNextcloud Notes uses API v1.2+ chunk cursors and `If-Match` updates. All chunks must\nsucceed before missing mapped notes are treated as deleted. Category moves are\nnot treated as deletions. Read-only or incomplete notes do not offer replacement.\n\nManagement displays conflicts and pending/error/unknown provider operations.\nResolve conflicts against the observed current revision. For uncertain delivery,\ninspect the provider before linking a verified remote record, stopping delivery,\nor explicitly confirming that retrying cannot duplicate a write. Switching\nproviders preserves records and requires a decision about pending delivery;\nin-flight/unknown work prevents a switch.\n\nChanging the server URL, bearer-token identity, or restored store epoch quarantines\nold phone work. Restore the original connection to recover that journal rather\nthan redirecting it. For a restored original server, the phone settings recovery checkbox archives quarantined input as server conflicts without executing it, then re-enrolls only after durable handoff. Review those proposals before applying them. Developer recovery can also export complete JSON with\n`CollectionClient.exportJournal()` from the running phone bridge.\n\nSee [server operations](collections-server-operations.md), the\n[implementation plan](notes-todos-backend-sync-plan.md), and the\n[implementation specification](notes-todos-backend-sync-spec.md).\n",
+      "content": "Source: `docs/collections.md`\n\n# Notes and To-dos: server storage and backend sync\n\nNotes and to-dos are canonical server records. The phone keeps a durable mutation\njournal and a bounded disposable read cache. The watch persists up to eight truncated titles each for Notes and active To-dos.\nIt shows these noninteractive cached previews immediately while refreshing live\naliases from the phone; completed lists and later pages do not replace the preview.\nMutations and record identities are not stored in this display cache. Timers, alarms, and the remembered\nNotes/To-dos tile selection retain their existing persistence.\n\nThis is a breaking development upgrade. Legacy phone notes and native task slots\nare ignored; there is no migration or compatibility fallback. Existing collection\ndata was explicitly excluded from preservation for this implementation.\n\n## Setup\n\nConfigure the server bearer token (`CODEY_TOKEN`) and server URL in phone settings.\nCollections always use that same URL, stripping a trailing `/v1/agent` and\nconverting WebSocket schemes to HTTP(S). There is no separate collection URL.\nHTTPS is required unless **Allow HTTP for local development collections** is\nexplicitly enabled. The server creates one To-dos and one Notes collection.\nCollection APIs remain available when Codex is unavailable.\n\nChoose independently under **To-do sync setup** or **Notes sync setup**; each\ndefaults to **Server only**. Read the instructions shown for that selection, then\nchoose **Save & open To-do setup** or **Save & open Notes setup**.\nThe phone sends its HTTPS server URL and selected service to create a short-lived\nmanagement session scoped to that collection; no separate public URL configuration\nis required. Setup preferences are not active bindings: activate or disconnect on\nthe server page. See [backend setup](../README.md#backend-sync-setup) for credentials\nand Google OAuth configuration.\nSelect Server only, Todoist, Google Tasks, or Nextcloud Notes; authenticate,\ndiscover a project/list/category, preview the records, then activate it. Existing\nserver records are exported only when explicitly selected. Provider secrets are\nentered on the server page and encrypted with a separately held server key.\n\n## Saving and browsing\n\n- Dictate “note: Call Jane” or “todo: Buy milk” to create a record. These commands\n  and collection browsing do not need Codex.\n- Open a note to read revision-pinned pages, **Append to note**, or **Replace\n  entire note**. Replacement saves the complete new dictation, never the displayed\n  page. Ambiguous text-based edits direct you to the record picker.\n- Task checkboxes emit explicit complete/restore operations. Completed tasks have\n  a separate paginated view. Completion is distinct from deletion.\n- Lists contain at most eight records; bodies contain at most four UTF-8 chunks\n  per page. Large collections remain server-owned. Uncached offline pages are\n  reported unavailable; cached pages are marked stale.\n- Saves first show Sending, then **Saved on phone · Pending server**, then\n  **Saved on server**. External delivery is tracked separately in server settings.\n  A transport acknowledgment alone never means that the input was saved.\n\nThe phone may accept supported writes while the server is unavailable after\ninitial enrollment. The watch cannot create collection mutations without its\nphone connection/readiness handshake. Unaccepted input exists only in RAM and\ncan be lost when closing the watch app. Phone uploads resume when PebbleKit JS\nruns again; it is not a permanent background service. Uninstalling/clearing phone\nstorage can destroy input that has not reached the server.\n\nThe journal has two checksummed slots with read-back verification. Defaults are\n256 retained operations and 512 KiB per slot, plus a 1 MiB disposable cache.\nCache eviction never removes pending input. Queue exhaustion rejects the next\nsave. When more than eight uncommitted creates exist, the view explicitly reports\npartial coverage; remaining records become browsable after server upload.\n\n## Providers and recovery\n\nTodoist uses API v1 incremental synchronization and stable command UUIDs. Completed\nhistory discovery covers the last 89 days; previously imported canonical history\nis retained. Recurring completion adopts the returned next occurrence. The API\nhas weaker concurrent-write guarantees than Nextcloud's conditional updates.\n\nGoogle Tasks includes hidden, completed, and deleted tasks in full paginated\nreads. Due values are date-only; assigned tasks are read-only. A create with an\nunknown remote outcome requires review before retrying.\n\nNextcloud Notes uses API v1.2+ chunk cursors and `If-Match` updates. All chunks must\nsucceed before missing mapped notes are treated as deleted. Category moves are\nnot treated as deletions. Read-only or incomplete notes do not offer replacement.\n\nManagement displays conflicts and pending/error/unknown provider operations.\nResolve conflicts against the observed current revision. For uncertain delivery,\ninspect the provider before linking a verified remote record, stopping delivery,\nor explicitly confirming that retrying cannot duplicate a write. Switching\nproviders preserves records and requires a decision about pending delivery;\nin-flight/unknown work prevents a switch.\n\nChanging the server URL, bearer-token identity, or restored store epoch quarantines\nold phone work. Restore the original connection to recover that journal rather\nthan redirecting it. For a restored original server, the phone settings recovery checkbox archives quarantined input as server conflicts without executing it, then re-enrolls only after durable handoff. Review those proposals before applying them. Developer recovery can also export complete JSON with\n`CollectionClient.exportJournal()` from the running phone bridge.\n\nSee [server operations](collections-server-operations.md), the\n[implementation plan](notes-todos-backend-sync-plan.md), and the\n[implementation specification](notes-todos-backend-sync-spec.md).\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium"
       },
       "created_at": "2026-09-12T23:49:15.056444193Z",
-      "modified_at": "2026-09-14T02:28:04.001107014Z"
+      "modified_at": "2026-09-14T03:02:04.202788060Z"
     },
     {
       "id": "01a097ea-d805-7c22-9326-792e1e76bdb5",
@@ -746,10 +760,10 @@
     {
       "id": "01a091eb-494b-70e2-a1ae-cedae4248f70",
       "slug": "reference/docs/protocol",
-      "version": 14,
+      "version": 15,
       "doc_type": "reference",
       "title": "docs/protocol.md",
-      "content": "Source: `docs/protocol.md`\n\n# Pebble Agent Markup 1\n\nPAM is a UTF-8, newline-framed tree protocol for dynamic watch interfaces and capability calls. It is not JSON, TOML, YAML, or Markdown.\n\n## Why this format\n\nTOML tables are pleasant for static configuration but do not cleanly express ordered, repeated UI children while they are still arriving. YAML is broad and difficult to parse safely in the Pebble phone runtime. XML is streamable but verbose and requires a substantially larger parser.\n\nPAM has four properties that matter here:\n\n1. A newline commits exactly one node. No later token can change how that line parses.\n2. Two-space indentation supplies parent/child hierarchy, and a child can only follow an already-emitted parent.\n3. Attributes are bounded `name=value` tokens with one quoting/escaping rule.\n4. The parser has no aliases, executable tags, implicit typing, or ambiguous scalars.\n\nAs soon as this arrives:\n\n```pam\npam version=1\nscreen id=results layout=list title=Results\n  item id=first title=\"First result\"\n```\n\nthe watch can show the screen and first row. It does not wait for `done`.\n\n## Lexical grammar\n\n```text\ndocument  = header, newline, { node, newline } ;\nheader    = \"pam version=1\" ;\nnode      = indent, kind, { space, attribute } ;\nindent    = { \"  \" } ;\nkind      = lowercase-letter, { lowercase-letter | digit | \"_\" | \"-\" } ;\nattribute = name, \"=\", (bare-value | quoted-value) ;\n```\n\n- Indentation is exactly two spaces per level. Tabs and skipped levels are errors.\n- Blank lines and lines whose first non-space character is `#` are ignored.\n- Bare values contain no whitespace.\n- Single or double quotes may delimit values.\n- Quoted escapes are `\\\\`, `\\\"`, `\\'`, `\\n`, `\\r`, `\\t`, and `\\uXXXX`.\n- Duplicate attributes on one line are errors.\n- The current implementation accepts at most 2,048 bytes per agent line and eight hierarchy levels.\n\nAttributes remain strings at the protocol boundary. Schema consumers explicitly parse booleans and numbers.\n\n## Root nodes\n\n### `screen`\n\nBegins a new screen and replaces the previous agent screen immediately.\n\nRequired attributes:\n\n- `id` — stable identifier, at most 31 UTF-8 bytes on the watch.\n- `layout` — one of the layouts below.\n\nCommon optional attributes:\n\n- `title`, `subtitle`\n- `status=true` — show Pebble's time/status bar.\n- `actionbar=true` — reserve a right action rail for Up/Select/Down bindings.\n- `columns=1..4` — grid column count; defaults to two.\n\n### `patch`\n\nUpdates an existing element. The model merges the supplied attributes with the existing element before forwarding the patch, so omitted fields remain intact.\n\n```pam\npatch target=download value=63 subtitle=\"63 percent\"\n```\n\n### `remove`\n\n```pam\nremove target=stale-row\n```\n\n### `done`\n\nMarks the active screen complete and removes its streaming indicator. It does not close the screen.\n\n### `error`\n\n```pam\nerror message=\"I couldn't complete that request\"\n```\n\n### `capability`\n\nInvokes a registered phone-side or watch-side module. See [Capabilities](#capabilities).\n\n## Layouts\n\n- `text` — long prose, explanations, and logs; scrolls by default.\n- `list` / `menu` — Pebble-style rows and sections with row selection.\n- `grid` — compact choices, app launchers, and numeric tiles with grid selection.\n- `card` — a focused fact plus supporting metrics or items.\n- `progress` — ongoing work, countdowns, and progress bars.\n- `form` — fields, toggles, and submit actions.\n- `choice` — radio/check-style decisions.\n- `modal` — alerts, confirmations, and important decisions.\n\nThese cover Pebble's standard menu/list, scrolling text, card, status bar, action bar, choice dialog, progress, form, and number-input idioms. The renderer adapts geometry to rectangular and round displays.\n\n## Screen elements\n\nEvery addressable element should have a unique `id`. If it does not, the phone assigns a response-local ID, but explicit IDs are required for patching and are strongly recommended.\n\n### Content\n\n```pam\n  section id=nearby title=Nearby\n  item id=cafe title=\"Coffee shop\" subtitle=\"0.2 mi\" action=place.open\n  text id=summary value=\"A paragraph that wraps and scrolls.\"\n  metric id=heart-rate label=\"Heart rate\" value=\"72 bpm\"\n  image id=notice title=\"Heads up\" value=warning icon=warning\n  spacer id=gap height=16\n```\n\nSupported symbolic image icons are `info`, `check`, `warning`, `sun`/`weather`, `timer`, `close`, `up`, `down`, `left`, and `right`. The image element is deliberately symbolic: arbitrary remote bitmaps are not accepted into the watch heap.\n\n### Progress\n\n```pam\n  progress id=download title=Downloading value=35 min=0 max=100\n```\n\n`value`, `min`, and `max` are integers.\n\n### Forms and choices\n\n```pam\nscreen id=settings layout=form title=Settings\n  field id=servings title=Servings value=2 type=number min=1 max=12 step=1 action=settings.servings\n  choice id=metric title=Metric checked=true action=settings.units.metric\n  choice id=imperial title=Imperial action=settings.units.imperial\n  action id=save title=Save action=settings.save primary=true\ndone\n```\n\nA selected numeric field opens Pebble's native `NumberWindow`. Its confirmed value is returned as an input event.\n\n### Flags\n\nAll selectable elements accept:\n\n- `disabled=true`\n- `checked=true`\n- `selected=true`\n- `primary=true`\n- `destructive=true`\n\n## Input bindings\n\nAn element's `action` is emitted when the user selects or taps it. A `bind` maps a physical or gesture input without drawing another content row:\n\n```pam\n  bind id=older input=up action=page.previous title=Older icon=up\n  bind id=open input=select action=result.open title=Open icon=check\n  bind id=newer input=down action=page.next title=Newer icon=down\n  bind id=back-swipe input=swipe-right action=navigate.back\n```\n\nInputs are:\n\n- Buttons: `up`, `select`, `down`, `back`\n- Touch: `tap`, `swipe-left`, `swipe-right`, `swipe-up`, `swipe-down`\n\nIf Up or Down has no binding, it navigates/selects or scrolls. If Back has no binding, it closes the current window. A right swipe without a binding follows Pebble's Back convention.\n\nLong Select is not bindable. It always starts dictation, regardless of a short-Select binding.\n\n### Touch hotspots\n\nNormal visual elements are automatically tappable. Invisible percentage-based regions are available for custom layouts:\n\n```pam\n  hotspot id=map-west x=0 y=20 width=50 height=80 action=map.west\n```\n\nCoordinates are percentages of the full display. Prefer element taps unless a genuine free-form region is necessary.\n\n## Capabilities\n\nCapabilities are root nodes so they can execute as soon as their line arrives. The registry allows additional modules without a protocol change.\n\n### Timer\n\n```pam\ncapability type=timer command=start id=tea title=\"Tea\" duration=5m\ncapability type=timer command=pause id=tea\ncapability type=timer command=resume id=tea\ncapability type=timer command=cancel id=tea\ncapability type=timer command=show id=tea\n```\n\nDurations accept an integer number of seconds or `s`, `m`, `h`, and `d` suffixes. Timers persist and schedule a wakeup.\n\n### Stopwatch\n\n```pam\ncapability type=stopwatch command=start id=run title=\"Run\"\ncapability type=stopwatch command=pause id=run\ncapability type=stopwatch command=resume id=run\ncapability type=stopwatch command=lap id=run\ncapability type=stopwatch command=reset id=run\ncapability type=stopwatch command=show id=run\n```\n\n### Weather\n\nFetch at the phone's current location:\n\n```pam\ncapability type=weather command=current id=weather location=\"Current location\"\n```\n\nOr let the agent supply already-known data without a second network request:\n\n```pam\ncapability type=weather command=show id=weather location=\"London\" temperature=18 unit=\"°C\" condition=Rain high=20 low=14 wind=\"12 km/h\"\n```\n\nLatitude and longitude can be supplied as `latitude` and `longitude`. Weather networking runs in a phone registry module and emits a normal card screen.\n\n### Reminder\n\n```pam\ncapability type=reminder command=schedule id=medicine title=\"Take medicine\" subtitle=\"With food\" in=2h\ncapability type=reminder command=schedule id=meeting title=\"Meeting\" at=1788201000\ncapability type=reminder command=list\ncapability type=reminder command=cancel id=meeting\ncapability type=reminder command=cancel_all\n```\n\n`at` is a Unix timestamp in seconds; `in` is a duration from 1 second to 7 days.\n`alarm` is an alias of `reminder`. Four timers and four alarms/reminders are\npersisted independently, including unacknowledged notifications. Use a unique\nID shorter than 32 bytes for each new alert. Each new creation command allocates\na separate alert even if the model reuses an ID; collisions receive a unique\nsuffix. Use `show` to open an existing alert, or `replace=true` to replace it.\nThe phone supplies a persisted delivery sequence in `Index` for capability\nmessages. A retry retains that sequence and cannot restart or duplicate its\nalert. The watch persists this delivery identity separately from the model ID.\nTimer and reminder/alarm support `show`, `list`, `ack`, `cancel`, and\n`cancel_all` (the latter only affects its own category). Timer also supports\n`start`, `pause`, and `resume`; alarm/reminder use `schedule`.\n\nFinished alerts appear in the native dashboard and buzz repeatedly until\nacknowledged or snoozed ten minutes. Local completion does not trigger an agent\nturn. Back returns home without canceling. The native scheduler multiplexes all\ndeadlines onto one system wakeup; when wakeup scheduling fails, it warns that\nAgent must stay open. The native watch sends `ready value=local-active`; the\nphone sends `MessageType=bridge` with connection/configuration status instead\nof streaming an onboarding screen over the local dashboard.\n\n## Answer arrival notification\n\nThe phone sends `MessageType=answer Operation=begin` when a query starts.\nAfter a successful response has finished parsing and any phone capability has\nfinished, it queues `MessageType=answer Operation=complete`, its `RequestId`,\nand `Flags=1` when the `answerVibrate`\nsetting is enabled (`0` when disabled). This setting defaults to on and appears\nas \"Answer arrived vibration\" on the phone settings page. The watch tracks the\nrequest from its begin message and emits one short pulse on completion, even\nif the user has returned to the dashboard. It checks `quiet_time_is_active()`\nat delivery time and suppresses the pulse during Quiet Time. Duplicate or stale\ncompletion messages do not vibrate. Startup screens, local timer events,\ntransport failures, and malformed responses do not send this notification.\n\n## Limits and failure behavior\n\n- The watch stores up to 48 elements per screen.\n- Text values are capped at 319 bytes on the watch. Larger values are streamed in UTF-8-safe append chunks and truncated at the final watch buffer boundary.\n- Titles, subtitles, IDs, actions, and metadata have smaller fixed limits declared in `agent_ui.h`.\n- Unknown kinds/layouts and invalid hierarchy produce a visible protocol error rather than partially executing an unrecognized node.\n- A new response supersedes queued operations from an older request. The watch also rejects stale request IDs.\n- Capability commands are allowlisted by registries; PAM cannot call arbitrary native functions.\n\n\n### Dashboard controls\n\n`input` with operation `new-chat` and action `local.new-chat` carries a watch\nrequest ID. PebbleKit JS saves a fresh session ID, cancels the previous response,\nand replies with `control`, operation `dictate`, and the same request ID. Only\nthen does the watch start dictation. The watch rejects stale acknowledgments,\nincluding those superseded by a local navigation or notification revision, and\ntimes out after eight seconds. Ordinary `local.dictate` keeps the current session.\n\n`input` with action `local.weather` invokes the existing local weather capability\non the phone. Calendar is a local placeholder. Todos use the phone collection capability (`add` with quoted `value`, `list`, and `archive`), backed by canonical server records. Notifications\nuses a separate native list; arrival of an alert opens it without incrementing\nthe navigation revision that protects pending capability commands.\n\n### Request failures\n\nThe server normalizes a narrowly defined model formatting mistake before strict\nvalidation: an unquoted trailing display-text attribute containing spaces (for\nexample `title=File search results`) is quoted. It does not relax request parsing,\nrepair command arguments, or guess around malformed quotes or ambiguous attributes.\nOther failures are emitted as a terminal PAM `error message=\"Request failed: ...\"`,\nincluding when only the header or a partial screen has already streamed.\n\nThe phone sends `answer begin` before response status/render messages; the watch\nbinds that phone response ID immediately, so a failure before `render begin` is\naccepted. Error status clears loading and incomplete-screen indicators, cancels\nsuccess vibration, and rejects subsequent render/status traffic for that request.\nThe next request can start normally. A 135-second watch watchdog clears Thinking\nif the phone never completes delivery; it does not overwrite a newer screen or\nan alert. Phone transport timeouts normally report the failure sooner.\n\nThe dashboard maps Up to Notifications, Down to Todos, and Select to dictation.\nHolding Talk to codey or Select opens a reusable animated overlay menu; outside\ntaps and Back dismiss it without changing the dashboard. New Chat lives in this\nmenu. Todo rows use `choice` with `meta` containing `todo=true`, text in `value`,\nand the checked flag for archived items. Horizontal touch drags or long Up/Down\npan text; short Up/Down scroll the list. Checking archives, unchecking restores.\nLists are transient eight-record pages. The phone resolves short aliases against the exact view token and displayed revision; no native collection store exists.\n\nTerminal errors replace the content with a scrollable Request failed screen,\nincluding the reason and Try again / Dashboard actions. Transport HTTP 0,\n401/403, and other HTTP failures have distinct explanations. Non-PAM HTML error\nbodies are not fed to the PAM parser.\n\n### Dashboard weather summaries\n\nThe phone sends `bridge operation=weather` with current temperature/unit in\n`Value`, low/high in `Subtitle`, and `icon=<condition>` in `Meta`. The native\nhost caches these fields independently of the current screen and patches only\nthe dashboard weather tile. This channel neither starts nor completes an agent\nrequest. A native `capability_event operation=weather action=refresh` every 15\nminutes requests a background update; startup and saved settings also refresh.\nThe phone caches validated fetched data for up to an hour. Weather failures leave\nthe current screen alone. Current Open-Meteo `is_day` selects day/night icons.\n\nTodos and Calendar enable the native time status bar. Todos have no add control:\nwhole-phrase local regex matching accepts add/create/make/set/put down plus\ntodo/to-do/to do/task, preserving the trailing task text. The public Pebble SDK\nsupports Timeline pins and launches from pins, but no direct open-Timeline call;\nCalendar remains a placeholder.\n\n### Deferred local actions and range controls\n\nA selectable row can declare `action=local.run capability=reminder seconds=86400\ntask=\"Send a card\"`. Nothing runs while rendering; selection creates a native\nreminder without phone/model traffic. Supported capability types are timer,\nreminder and alarm; seconds are 1..604800 and task labels at most 71 UTF-8 bytes.\n\n`field type=slider|dial` declares min, max, step and value integers (0 <= min <\nmax <= 604800), plus an optional unit label. A local field uses `seconds=\"$value\"`.\nDragging only adjusts; `action=local.submit control=<field-id>` confirms. Select\non a field opens the button-operated number picker, whose Select confirms and\nBack cancels. A dial winds through the range clockwise/counterclockwise without\njumping at noon. An ordinary field action sends the confirmed value to the agent.\nInteractive metadata must fit 220 bytes; the bridge rejects oversized declarations.\nFor existing interactive definitions, patches may update only title or an in-range\nvalue; replace the screen to change ranges or actions.\n\nEvery generated form/question should include `action=local.answer` titled\n\"Dictate answer\". The phone inserts a fallback for choice/form layouts or screens\ncontaining choice/field elements if omitted; reserve one of 48 slots. Its\n`input.kind=dictate-answer` bypasses local speech regexes and goes to the same\nagent thread with screen context. Local actions do not generate a model turn.\n\nThe maintained advanced examples live in the server's\n`internal/agent/skills/pam-ui/` package. On startup the server installs it under\n`<state-directory>/skills/pam-ui/`, points the base prompt to SKILL.md, and supplies\nfull fallback guidance when file-reading tools are disabled. The Codex app-server\nmust share that filesystem. Native notification and timer behavior is unchanged.\n\n## Notes capabilities\n\nUse `capability type=note command=add value=\"Call Jane\"` to request a real save,\nand `capability type=note command=list` to browse. Existing-record edits use the\nrecord picker and its revision-scoped Append / Replace entire note actions.\nText matches and invented IDs cannot authorize an edit. Body pages stay pinned\nto one revision, and displayed chunks are never submitted as a full replacement.\nSee [collections](collections.md) for server ownership and durability handoff.\n\n## Collection protocol version 1\n\nAppMessage keys 0–12 retain their values. New keys are:\n\n| Number | Name | Meaning |\n|---|---|---|\n| 13 | CollectionProtocol | Version 1 |\n| 14 | BridgeSession | Phone-issued bridge session |\n| 15 | EventSequence | Monotonic event identity; retransmissions reuse it |\n| 16 | ViewToken | Exact alias/revision mapping |\n| 17 | DeliveryState | accepted_phone, accepted_server, synced, needs_attention, rejected |\n| 18 | ErrorCode | Bounded machine-readable error |\n\n`bridge operation=collections` supplies protocol/session readiness. `collection-view`\nsets the token for the matching render request. Lists instead use one\n`collection-list` message: Operation is `note` or `task`, Value contains up to eight\nnewline-separated titles (71 UTF-8 bytes each; embedded whitespace is normalized),\nViewToken binds `r0` through `r7` to the exact phone records/revisions, and Meta has\none delivery-state character per row (`p` pending server, `s` synced, `b` backend\npending, `d` saved on server). Flags are completed=1, next page=2, stale=4,\npartial=8, first active page=16. Subtitle carries the overall status. Only first\nactive pages replace the persistent title preview. Preview rows have no mutation\nor read aliases until a live response arrives. All list messages are guarded by\nthe same request/navigation checks as render messages. Existing `capability_event` messages\nwith operation `note` or `todo` carry list/read/edit/append/complete/restore actions.\nThe phone resolves an alias only within that exact view. It checks an existing\nreceipt before rejecting an expired view, so retransmission cannot target a reused\nrow. `collection-ack` carries the original session/event and delivery state.\nThe native app retains and retries an unacknowledged mutation in RAM only.\n\nJSON collection routes, schemas, and recovery are documented in\n[the collection specification](notes-todos-backend-sync-spec.md),\n[JSON schema](collections-api.schema.json), and [operations](collections-server-operations.md).\nAll routes require bearer authentication. Mutation revisions/sequences are decimal\nstrings. Snapshot pages are fixed; body pages are UTF-8 safe and revision-pinned.\nManagement uses a single-use `/v1/integration-sessions` ticket and server cookies.\nIts authenticated POST accepts `{public_url, provider}` from phone settings. The\nHTTPS base (including any proxy prefix) is bound to the ticket/session, not inferred\nfrom forwarded headers or stored as a mutable global URL. The provider choice\nopens that service’s setup section; authentication and activation remain explicit.\nManagement sessions use secure cookies,\nnever a provider token in a phone settings fragment.\n",
+      "content": "Source: `docs/protocol.md`\n\n# Pebble Agent Markup 1\n\nPAM is a UTF-8, newline-framed tree protocol for dynamic watch interfaces and capability calls. It is not JSON, TOML, YAML, or Markdown.\n\n## Why this format\n\nTOML tables are pleasant for static configuration but do not cleanly express ordered, repeated UI children while they are still arriving. YAML is broad and difficult to parse safely in the Pebble phone runtime. XML is streamable but verbose and requires a substantially larger parser.\n\nPAM has four properties that matter here:\n\n1. A newline commits exactly one node. No later token can change how that line parses.\n2. Two-space indentation supplies parent/child hierarchy, and a child can only follow an already-emitted parent.\n3. Attributes are bounded `name=value` tokens with one quoting/escaping rule.\n4. The parser has no aliases, executable tags, implicit typing, or ambiguous scalars.\n\nAs soon as this arrives:\n\n```pam\npam version=1\nscreen id=results layout=list title=Results\n  item id=first title=\"First result\"\n```\n\nthe watch can show the screen and first row. It does not wait for `done`.\n\n## Lexical grammar\n\n```text\ndocument  = header, newline, { node, newline } ;\nheader    = \"pam version=1\" ;\nnode      = indent, kind, { space, attribute } ;\nindent    = { \"  \" } ;\nkind      = lowercase-letter, { lowercase-letter | digit | \"_\" | \"-\" } ;\nattribute = name, \"=\", (bare-value | quoted-value) ;\n```\n\n- Indentation is exactly two spaces per level. Tabs and skipped levels are errors.\n- Blank lines and lines whose first non-space character is `#` are ignored.\n- Bare values contain no whitespace.\n- Single or double quotes may delimit values.\n- Quoted escapes are `\\\\`, `\\\"`, `\\'`, `\\n`, `\\r`, `\\t`, and `\\uXXXX`.\n- Duplicate attributes on one line are errors.\n- The current implementation accepts at most 2,048 bytes per agent line and eight hierarchy levels.\n\nAttributes remain strings at the protocol boundary. Schema consumers explicitly parse booleans and numbers.\n\n## Root nodes\n\n### `screen`\n\nBegins a new screen and replaces the previous agent screen immediately.\n\nRequired attributes:\n\n- `id` — stable identifier, at most 31 UTF-8 bytes on the watch.\n- `layout` — one of the layouts below.\n\nCommon optional attributes:\n\n- `title`, `subtitle`\n- `status=true` — show Pebble's time/status bar.\n- `actionbar=true` — reserve a right action rail for Up/Select/Down bindings.\n- `columns=1..4` — grid column count; defaults to two.\n\n### `patch`\n\nUpdates an existing element. The model merges the supplied attributes with the existing element before forwarding the patch, so omitted fields remain intact.\n\n```pam\npatch target=download value=63 subtitle=\"63 percent\"\n```\n\n### `remove`\n\n```pam\nremove target=stale-row\n```\n\n### `done`\n\nMarks the active screen complete and removes its streaming indicator. It does not close the screen.\n\n### `error`\n\n```pam\nerror message=\"I couldn't complete that request\"\n```\n\n### `capability`\n\nInvokes a registered phone-side or watch-side module. See [Capabilities](#capabilities).\n\n## Layouts\n\n- `text` — long prose, explanations, and logs; scrolls by default.\n- `list` / `menu` — Pebble-style rows and sections with row selection.\n- `grid` — compact choices, app launchers, and numeric tiles with grid selection.\n- `card` — a focused fact plus supporting metrics or items.\n- `progress` — ongoing work, countdowns, and progress bars.\n- `form` — fields, toggles, and submit actions.\n- `choice` — radio/check-style decisions.\n- `modal` — alerts, confirmations, and important decisions.\n\nThese cover Pebble's standard menu/list, scrolling text, card, status bar, action bar, choice dialog, progress, form, and number-input idioms. The renderer adapts geometry to rectangular and round displays.\n\n## Screen elements\n\nEvery addressable element should have a unique `id`. If it does not, the phone assigns a response-local ID, but explicit IDs are required for patching and are strongly recommended.\n\n### Content\n\n```pam\n  section id=nearby title=Nearby\n  item id=cafe title=\"Coffee shop\" subtitle=\"0.2 mi\" action=place.open\n  text id=summary value=\"A paragraph that wraps and scrolls.\"\n  metric id=heart-rate label=\"Heart rate\" value=\"72 bpm\"\n  image id=notice title=\"Heads up\" value=warning icon=warning\n  spacer id=gap height=16\n```\n\nSupported symbolic image icons are `info`, `check`, `warning`, `sun`/`weather`, `timer`, `close`, `up`, `down`, `left`, and `right`. The image element is deliberately symbolic: arbitrary remote bitmaps are not accepted into the watch heap.\n\n### Progress\n\n```pam\n  progress id=download title=Downloading value=35 min=0 max=100\n```\n\n`value`, `min`, and `max` are integers.\n\n### Forms and choices\n\n```pam\nscreen id=settings layout=form title=Settings\n  field id=servings title=Servings value=2 type=number min=1 max=12 step=1 action=settings.servings\n  choice id=metric title=Metric checked=true action=settings.units.metric\n  choice id=imperial title=Imperial action=settings.units.imperial\n  action id=save title=Save action=settings.save primary=true\ndone\n```\n\nA selected numeric field opens Pebble's native `NumberWindow`. Its confirmed value is returned as an input event.\n\n### Flags\n\nAll selectable elements accept:\n\n- `disabled=true`\n- `checked=true`\n- `selected=true`\n- `primary=true`\n- `destructive=true`\n\n## Input bindings\n\nAn element's `action` is emitted when the user selects or taps it. A `bind` maps a physical or gesture input without drawing another content row:\n\n```pam\n  bind id=older input=up action=page.previous title=Older icon=up\n  bind id=open input=select action=result.open title=Open icon=check\n  bind id=newer input=down action=page.next title=Newer icon=down\n  bind id=back-swipe input=swipe-right action=navigate.back\n```\n\nInputs are:\n\n- Buttons: `up`, `select`, `down`, `back`\n- Touch: `tap`, `swipe-left`, `swipe-right`, `swipe-up`, `swipe-down`\n\nIf Up or Down has no binding, it navigates/selects or scrolls. If Back has no binding, it closes the current window. A right swipe without a binding follows Pebble's Back convention.\n\nLong Select is not bindable. It always starts dictation, regardless of a short-Select binding.\n\n### Touch hotspots\n\nNormal visual elements are automatically tappable. Invisible percentage-based regions are available for custom layouts:\n\n```pam\n  hotspot id=map-west x=0 y=20 width=50 height=80 action=map.west\n```\n\nCoordinates are percentages of the full display. Prefer element taps unless a genuine free-form region is necessary.\n\n## Capabilities\n\nCapabilities are root nodes so they can execute as soon as their line arrives. The registry allows additional modules without a protocol change.\n\n### Timer\n\n```pam\ncapability type=timer command=start id=tea title=\"Tea\" duration=5m\ncapability type=timer command=pause id=tea\ncapability type=timer command=resume id=tea\ncapability type=timer command=cancel id=tea\ncapability type=timer command=show id=tea\n```\n\nDurations accept an integer number of seconds or `s`, `m`, `h`, and `d` suffixes. Timers persist and schedule a wakeup.\n\n### Stopwatch\n\n```pam\ncapability type=stopwatch command=start id=run title=\"Run\"\ncapability type=stopwatch command=pause id=run\ncapability type=stopwatch command=resume id=run\ncapability type=stopwatch command=lap id=run\ncapability type=stopwatch command=reset id=run\ncapability type=stopwatch command=show id=run\n```\n\n### Weather\n\nFetch at the phone's current location:\n\n```pam\ncapability type=weather command=current id=weather location=\"Current location\"\n```\n\nOr let the agent supply already-known data without a second network request:\n\n```pam\ncapability type=weather command=show id=weather location=\"London\" temperature=18 unit=\"°C\" condition=Rain high=20 low=14 wind=\"12 km/h\"\n```\n\nLatitude and longitude can be supplied as `latitude` and `longitude`. Weather networking runs in a phone registry module and emits a normal card screen.\n\n### Reminder\n\n```pam\ncapability type=reminder command=schedule id=medicine title=\"Take medicine\" subtitle=\"With food\" in=2h\ncapability type=reminder command=schedule id=meeting title=\"Meeting\" at=1788201000\ncapability type=reminder command=list\ncapability type=reminder command=cancel id=meeting\ncapability type=reminder command=cancel_all\n```\n\n`at` is a Unix timestamp in seconds; `in` is a duration from 1 second to 7 days.\n`alarm` is an alias of `reminder`. Four timers and four alarms/reminders are\npersisted independently, including unacknowledged notifications. Use a unique\nID shorter than 32 bytes for each new alert. Each new creation command allocates\na separate alert even if the model reuses an ID; collisions receive a unique\nsuffix. Use `show` to open an existing alert, or `replace=true` to replace it.\nThe phone supplies a persisted delivery sequence in `Index` for capability\nmessages. A retry retains that sequence and cannot restart or duplicate its\nalert. The watch persists this delivery identity separately from the model ID.\nTimer and reminder/alarm support `show`, `list`, `ack`, `cancel`, and\n`cancel_all` (the latter only affects its own category). Timer also supports\n`start`, `pause`, and `resume`; alarm/reminder use `schedule`.\n\nFinished alerts appear in the native dashboard and buzz repeatedly until\nacknowledged or snoozed ten minutes. Local completion does not trigger an agent\nturn. Back returns home without canceling. The native scheduler multiplexes all\ndeadlines onto one system wakeup; when wakeup scheduling fails, it warns that\nAgent must stay open. The native watch sends `ready value=local-active`; the\nphone sends `MessageType=bridge` with connection/configuration status instead\nof streaming an onboarding screen over the local dashboard.\n\n## Answer arrival notification\n\nThe phone sends `MessageType=answer Operation=begin` when a query starts.\nAfter a successful response has finished parsing and any phone capability has\nfinished, it queues `MessageType=answer Operation=complete`, its `RequestId`,\nand `Flags=1` when the `answerVibrate`\nsetting is enabled (`0` when disabled). This setting defaults to on and appears\nas \"Answer arrived vibration\" on the phone settings page. The watch tracks the\nrequest from its begin message and emits one short pulse on completion, even\nif the user has returned to the dashboard. It checks `quiet_time_is_active()`\nat delivery time and suppresses the pulse during Quiet Time. Duplicate or stale\ncompletion messages do not vibrate. Startup screens, local timer events,\ntransport failures, and malformed responses do not send this notification.\n\n## Limits and failure behavior\n\n- The watch stores up to 48 elements per screen.\n- Text values are capped at 319 bytes on the watch. Larger values are streamed in UTF-8-safe append chunks and truncated at the final watch buffer boundary.\n- Titles, subtitles, IDs, actions, and metadata have smaller fixed limits declared in `agent_ui.h`.\n- Unknown kinds/layouts and invalid hierarchy produce a visible protocol error rather than partially executing an unrecognized node.\n- A new response supersedes queued operations from an older request. The watch also rejects stale request IDs.\n- Capability commands are allowlisted by registries; PAM cannot call arbitrary native functions.\n\n\n### Dashboard controls\n\n`input` with operation `new-chat` and action `local.new-chat` carries a watch\nrequest ID. PebbleKit JS saves a fresh session ID, cancels the previous response,\nand replies with `control`, operation `dictate`, and the same request ID. Only\nthen does the watch start dictation. The watch rejects stale acknowledgments,\nincluding those superseded by a local navigation or notification revision, and\ntimes out after eight seconds. Ordinary `local.dictate` keeps the current session.\n\n`input` with action `local.weather` invokes the existing local weather capability\non the phone. Calendar is a local placeholder. Todos use the phone collection capability (`add` with quoted `value`, `list`, and `archive`), backed by canonical server records. Notifications\nuses a separate native list; arrival of an alert opens it without incrementing\nthe navigation revision that protects pending capability commands.\n\n### Request failures\n\nThe server normalizes a narrowly defined model formatting mistake before strict\nvalidation: an unquoted trailing display-text attribute containing spaces (for\nexample `title=File search results`) is quoted. It does not relax request parsing,\nrepair command arguments, or guess around malformed quotes or ambiguous attributes.\nOther failures are emitted as a terminal PAM `error message=\"Request failed: ...\"`,\nincluding when only the header or a partial screen has already streamed.\n\nThe phone sends `answer begin` before response status/render messages; the watch\nbinds that phone response ID immediately, so a failure before `render begin` is\naccepted. Error status clears loading and incomplete-screen indicators, cancels\nsuccess vibration, and rejects subsequent render/status traffic for that request.\nThe next request can start normally. A 135-second watch watchdog clears Thinking\nif the phone never completes delivery; it does not overwrite a newer screen or\nan alert. Phone transport timeouts normally report the failure sooner.\n\nThe dashboard maps Up to Notifications, Down to Todos, and Select to dictation.\nHolding Talk to codey or Select opens a reusable animated overlay menu; outside\ntaps and Back dismiss it without changing the dashboard. New Chat lives in this\nmenu. Todo rows use `choice` with `meta` containing `todo=true`, text in `value`,\nand the checked flag for archived items. Horizontal touch drags or long Up/Down\npan text; short Up/Down scroll the list. Checking archives, unchecking restores.\nLists are transient eight-record pages. The phone resolves short aliases against the exact view token and displayed revision; no native collection store exists.\n\nTerminal errors replace the content with a scrollable Request failed screen,\nincluding the reason and Try again / Dashboard actions. Transport HTTP 0,\n401/403, and other HTTP failures have distinct explanations. Non-PAM HTML error\nbodies are not fed to the PAM parser.\n\n### Dashboard weather summaries\n\nThe phone sends `bridge operation=weather` with current temperature/unit in\n`Value`, low/high in `Subtitle`, and `icon=<condition>` in `Meta`. The native\nhost caches these fields independently of the current screen and patches only\nthe dashboard weather tile. This channel neither starts nor completes an agent\nrequest. A native `capability_event operation=weather action=refresh` every 15\nminutes requests a background update; startup and saved settings also refresh.\nThe phone caches validated fetched data for up to an hour. Weather failures leave\nthe current screen alone. Current Open-Meteo `is_day` selects day/night icons.\n\nTodos and Calendar enable the native time status bar. Todos have no add control:\nwhole-phrase local regex matching accepts add/create/make/set/put down plus\ntodo/to-do/to do/task, preserving the trailing task text. The public Pebble SDK\nsupports Timeline pins and launches from pins, but no direct open-Timeline call;\nCalendar remains a placeholder.\n\n### Deferred local actions and range controls\n\nA selectable row can declare `action=local.run capability=reminder seconds=86400\ntask=\"Send a card\"`. Nothing runs while rendering; selection creates a native\nreminder without phone/model traffic. Supported capability types are timer,\nreminder and alarm; seconds are 1..604800 and task labels at most 71 UTF-8 bytes.\n\n`field type=slider|dial` declares min, max, step and value integers (0 <= min <\nmax <= 604800), plus an optional unit label. A local field uses `seconds=\"$value\"`.\nDragging only adjusts; `action=local.submit control=<field-id>` confirms. Select\non a field opens the button-operated number picker, whose Select confirms and\nBack cancels. A dial winds through the range clockwise/counterclockwise without\njumping at noon. An ordinary field action sends the confirmed value to the agent.\nInteractive metadata must fit 220 bytes; the bridge rejects oversized declarations.\nFor existing interactive definitions, patches may update only title or an in-range\nvalue; replace the screen to change ranges or actions.\n\nEvery generated form/question should include `action=local.answer` titled\n\"Dictate answer\". The phone inserts a fallback for choice/form layouts or screens\ncontaining choice/field elements if omitted; reserve one of 48 slots. Its\n`input.kind=dictate-answer` bypasses local speech regexes and goes to the same\nagent thread with screen context. Local actions do not generate a model turn.\n\nThe maintained advanced examples live in the server's\n`internal/agent/skills/pam-ui/` package. On startup the server installs it under\n`<state-directory>/skills/pam-ui/`, points the base prompt to SKILL.md, and supplies\nfull fallback guidance when file-reading tools are disabled. The Codex app-server\nmust share that filesystem. Native notification and timer behavior is unchanged.\n\n## Notes capabilities\n\nUse `capability type=note command=add value=\"Call Jane\"` to request a real save,\nand `capability type=note command=list` to browse. Existing-record edits use the\nrecord picker and its revision-scoped Append / Replace entire note actions.\nText matches and invented IDs cannot authorize an edit. Body pages stay pinned\nto one revision, and displayed chunks are never submitted as a full replacement.\nSee [collections](collections.md) for server ownership and durability handoff.\n\n## Collection protocol version 1\n\nAppMessage keys 0–12 retain their values. New keys are:\n\n| Number | Name | Meaning |\n|---|---|---|\n| 13 | CollectionProtocol | Version 1 |\n| 14 | BridgeSession | Phone-issued bridge session |\n| 15 | EventSequence | Monotonic event identity; retransmissions reuse it |\n| 16 | ViewToken | Exact alias/revision mapping |\n| 17 | DeliveryState | accepted_phone, accepted_server, synced, needs_attention, rejected |\n| 18 | ErrorCode | Bounded machine-readable error |\n\n`bridge operation=collections` supplies protocol/session readiness. `collection-view`\nsets the token for the matching render request. Lists instead use one\n`collection-list` message: Operation is `note` or `task`, Value contains up to eight\nnewline-separated titles (71 UTF-8 bytes each; embedded whitespace is normalized),\nViewToken binds `r0` through `r7` to the exact phone records/revisions, and Meta has\none delivery-state character per row (`p` pending server, `s` synced, `b` backend\npending, `d` saved on server). Flags are completed=1, next page=2, stale=4,\npartial=8, first active page=16. Subtitle carries the overall status. Only first\nactive pages replace the persistent title preview. Preview rows have no mutation\nor read aliases until a live response arrives. All list messages are guarded by\nthe same request/navigation checks as render messages. Existing `capability_event` messages\nwith operation `note` or `todo` carry list/read/edit/append/complete/restore actions.\nThe phone resolves an alias only within that exact view. It checks an existing\nreceipt before rejecting an expired view, so retransmission cannot target a reused\nrow. `collection-ack` carries the original session/event and delivery state.\nThe native app retains and retries an unacknowledged mutation in RAM only.\n\nJSON collection routes, schemas, and recovery are documented in\n[the collection specification](notes-todos-backend-sync-spec.md),\n[JSON schema](collections-api.schema.json), and [operations](collections-server-operations.md).\nAll routes require bearer authentication. Mutation revisions/sequences are decimal\nstrings. Snapshot pages are fixed; body pages are UTF-8 safe and revision-pinned.\nManagement uses a single-use `/v1/integration-sessions` ticket and server cookies.\nIts authenticated POST accepts `{public_url, provider, collection_id}` from phone settings. The\nHTTPS base (including any proxy prefix) is bound to the ticket/session, not inferred\nfrom forwarded headers or stored as a mutable global URL. The provider choice\nopens that service’s setup section for the selected collection; authentication and activation remain explicit.\nManagement sessions use secure cookies,\nnever a provider token in a phone settings fragment.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -759,7 +773,7 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-14T02:28:04.001107014Z"
+      "modified_at": "2026-09-14T03:02:04.202788060Z"
     },
     {
       "id": "01a091eb-4958-7731-a829-5a501e760d31",
@@ -818,10 +832,10 @@
     {
       "id": "01a091eb-4925-72e2-a4c7-6c4fc5b284e8",
       "slug": "reference/readme",
-      "version": 23,
+      "version": 24,
       "doc_type": "reference",
       "title": "README.md",
-      "content": "# codey\n\nA voice-driven assistant for **Pebble Time 2** and **Pebble Round 2**.\nSpeak to your watch and get answers as lists, cards, forms, and other interactive screens.\nTimers, alarms, reminders, todos, notes, and weather are built in.\n\ncodey includes a watchapp and a self-hosted service that uses your Codex login.\nYou run the service on your own computer or server.\nOther Pebble models are not currently supported.\n\n## Get started\n\nYou need a supported watch paired with the Pebble mobile app, an internet-connected phone, and a computer running an installed, signed-in Codex CLI under the same user account as the service.\n\n### Run the agent service\n\nInstall the service on Linux or Apple Silicon macOS:\n\n```sh\ncurl -fsSL https://github.com/nick1udwig/pebble-agent/releases/latest/download/install.sh | bash\n```\n\nOn Linux, the installer offers to start a systemd user service and saves its generated bearer token in `~/.config/codey/environment` (or under `$XDG_CONFIG_HOME`).\nOtherwise, it prints manual startup instructions.\n\nFor private access from your phone over Wi-Fi or cellular, follow the [Tailscale setup](docs/server.md#private-phone-access-with-tailscale).\nIt gives you an HTTPS endpoint while keeping the backend on `127.0.0.1:8787`.\nSee [server setup](docs/server.md) for networking, manual startup, and configuration.\n\n### Install and connect the watchapp\n\n1. Install the codey `.pbw` through the paired Pebble mobile app.\n   To build the bundle yourself, see [Development](#development).\n2. Open **codey** in the phone app's watchapp list and tap its settings gear.\n3. Enter your server base URL (for example, `https://YOUR-SERVER/codey`) and bearer token, then tap **Save & close**.\n4. Launch **codey** on the watch.\n   The dashboard should say **codey connected**.\n\nThe phone needs internet access to open the settings page.\nUse HTTPS or WSS; unencrypted connections are only suitable for trusted private development networks.\n\n## Everyday use\n\nPress **Select** on the dashboard to talk.\nTry “start a five-minute timer,” “remind me in an hour to check the oven,” “to-do buy milk,” or “what's the weather?”\nCommon commands run locally; other requests go to your agent.\n\n- **Up** opens Notifications, where you can check requests and open completed answers.\n- **Down** opens Todos.\n  Notes are available by tapping, then holding the same tile.\n- **Hold Select** on the dashboard to choose **New Chat**; on other screens, it starts dictation.\n- **Back** returns home; pressing it again exits the app.\n- **Touch controls** generally need two taps to activate.\n  Drag lists or text directly to scroll.\n\nRequests can keep running while you use another screen.\nOpen Notifications to check again after the completion notification window ends.\nLocal lists work offline; voice and weather need the phone.\n\nSee the [user guide](docs/user-guide.md) for gestures, alarms and snoozing, notes, settings, and troubleshooting.\n\n## Development\n\nThe app uses C on the watch, JavaScript for the phone bridge, and Go for the agent service.\nInstall Node.js, Go 1.24+, and the Repebble SDK with Emery and Gabbro support, then run:\n\n```sh\nnpm test\nnpm run build:watch\nnpm run build:server\n```\n\nOutputs are `build/codey.pbw` and `build/codey-server`.\nNo npm runtime dependencies need installing.\n\nThe [developer guide](DEVS.md) covers the source layout, local demo server, UI changes, protocol, and testing.\nFor backend configuration and deployment, use [server setup](docs/server.md).\n\n## Privacy\n\nAgent requests go through your server to Codex.\nServer logs at `~/.pebble-agent/server.log` include prompts and responses; treat them and their backups as sensitive.\nWeather sends the phone's coordinates to Open-Meteo.\nThe bearer token is stored on the phone, so use an endpoint you trust.\n",
+      "content": "Source: `README.md`\n\n# codey\n\nA voice-driven assistant for **Pebble Time 2** and **Pebble Round 2**.\nSpeak to your watch and get answers as lists, cards, forms, and other interactive screens.\nTimers, alarms, reminders, todos, notes, and weather are built in.\n\ncodey includes a watchapp and a self-hosted service that uses your Codex login.\nYou run the service on your own computer or server.\nOther Pebble models are not currently supported.\n\n## Get started\n\nYou need a supported watch paired with the Pebble mobile app, an internet-connected phone, and a computer running an installed, signed-in Codex CLI under the same user account as the service.\n\n### Run the agent service\n\nInstall the service on Linux or Apple Silicon macOS:\n\n```sh\ncurl -fsSL https://github.com/nick1udwig/pebble-agent/releases/latest/download/install.sh | bash\n```\n\nOn Linux, the installer offers to start a systemd user service and saves its generated bearer token in `~/.config/codey/environment` (or under `$XDG_CONFIG_HOME`).\nOtherwise, it prints manual startup instructions.\n\nFor private access from your phone over Wi-Fi or cellular, follow the [Tailscale setup](docs/server.md#private-phone-access-with-tailscale).\nIt gives you an HTTPS endpoint while keeping the backend on `127.0.0.1:8787`.\nSee [server setup](docs/server.md) for networking, manual startup, and configuration.\n\n### Install and connect the watchapp\n\n1. Install the codey `.pbw` through the paired Pebble mobile app.\n   To build the bundle yourself, see [Development](#development).\n2. Open **codey** in the phone app's watchapp list and tap its settings gear.\n3. Enter your server base URL (for example, `https://YOUR-SERVER/codey`) and bearer token, then tap **Save & close**.\n4. Launch **codey** on the watch.\n   The dashboard should say **codey connected**.\n\nThe phone needs internet access to open the settings page.\nUse HTTPS or WSS; unencrypted connections are only suitable for trusted private development networks.\n\n## Backend sync setup\n\nNotes and to-dos default to **Server only**: they are stored in `~/.codey/data`\nwithout an external account. Configure them independently in phone settings:\n\n| Collection | Choices | Authentication |\n| --- | --- | --- |\n| To-dos | Server only, Todoist, Google Tasks | None, Todoist API token, Google OAuth |\n| Notes | Server only, Nextcloud Notes | None, Nextcloud username and app password |\n\nSelect a service under **To-do sync setup** or **Notes sync setup**. The instructions\nbelow that selector change to match your choice. Tap **Save & open To-do setup**\nor **Save & open Notes setup** to open that collection's authenticated server page.\nThe phone supplies the HTTPS server address automatically; no `public_url` setting\nis required. The dropdowns remember which setup to open, not the active binding.\nSaving alone does not switch an existing backend.\n\n- **Todoist:** enter your Todoist API token on the server setup page, connect,\n  select a project, preview, and activate the destination.\n- **Nextcloud Notes:** enter the HTTPS Nextcloud base URL (including its installation\n  subpath, if any), username, and an app password on the server setup page. Choose\n  a category, preview, and activate. The Nextcloud Notes app must be available.\n  For a private Nextcloud hostname, add `\"private_hosts\": [\"cloud.example\"]` to\n  `~/.codey/integrations.json` and restart codey.\n- **Google Tasks:** obtain a Google OAuth web client with access to the Tasks API\n  and register the exact callback `<your-codey-HTTPS-base>/integrations/oauth/callback`.\n  Put the following in `~/.codey/integrations.json` (merge with any existing config),\n  restrict its permissions to `0600`, and restart codey:\n\n  ```json\n  {\n    \"oauth\": {\n      \"googletasks\": {\n        \"client_id\": \"YOUR_CLIENT_ID\",\n        \"client_secret\": \"YOUR_CLIENT_SECRET\",\n        \"redirect_url\": \"https://YOUR-SERVER/codey/integrations/oauth/callback\"\n      }\n    }\n  }\n  ```\n\n  Then open **To-do setup**, authorize Google, choose a task list, preview, and\n  activate. The server loads this file automatically; no extra startup flag is\n  needed. Provider tokens are encrypted on the server. Do not commit this file.\n- **Server only:** no setup is required for a new collection. To disconnect an\n  existing backend, open that collection's setup and choose **Use Server only**.\n  This preserves server and remote records; pending delivery may need an explicit\n  stop decision.\n\nExisting server records are exported to a backend only when you select the export\noption during setup. See [server-side configuration and recovery](docs/collections-server-operations.md)\nfor OAuth, private-host configuration, backups, and interrupted deliveries.\n\n## Everyday use\n\nPress **Select** on the dashboard to talk.\nTry “start a five-minute timer,” “remind me in an hour to check the oven,” “to-do buy milk,” or “what's the weather?”\nCommon commands run locally; other requests go to your agent.\n\n- **Up** opens Notifications, where you can check requests and open completed answers.\n- **Down** opens Todos.\n  Notes are available by tapping, then holding the same tile.\n- **Hold Select** on the dashboard to choose **New Chat**; on other screens, it starts dictation.\n- **Back** returns home; pressing it again exits the app.\n- **Touch controls** generally need two taps to activate.\n  Drag lists or text directly to scroll.\n\nRequests can keep running while you use another screen.\nOpen Notifications to check again after the completion notification window ends.\nLocal lists work offline; voice and weather need the phone.\n\nSee the [user guide](docs/user-guide.md) for gestures, alarms and snoozing, notes, settings, and troubleshooting.\n\n## Development\n\nThe app uses C on the watch, JavaScript for the phone bridge, and Go for the agent service.\nInstall Node.js, Go 1.24+, and the Repebble SDK with Emery and Gabbro support, then run:\n\n```sh\nnpm test\nnpm run build:watch\nnpm run build:server\n```\n\nOutputs are `build/codey.pbw` and `build/codey-server`.\nNo npm runtime dependencies need installing.\n\nThe [developer guide](DEVS.md) covers the source layout, local demo server, UI changes, protocol, and testing.\nFor backend configuration and deployment, use [server setup](docs/server.md).\n\n## Privacy\n\nAgent requests go through your server to Codex.\nServer logs at `~/.pebble-agent/server.log` include prompts and responses; treat them and their backups as sensitive.\nWeather sends the phone's coordinates to Open-Meteo.\nThe bearer token is stored on the phone, so use an endpoint you trust.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -831,10 +845,523 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-13T17:47:20.512106254Z"
+      "modified_at": "2026-09-14T03:02:04.202788060Z"
     }
   ],
   "commits": [
+    {
+      "id": "01a09ddd-5986-7e81-84b9-1a4c9d6052af",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Separate notes and todo backend setup and document provider authentication",
+      "created_at": "2026-09-14T03:02:04.202788060Z",
+      "changes": [
+        {
+          "document_id": "01a09dda-ebb0-7531-ba7c-63bb5c3cb1de",
+          "slug": "issues/separate-notes-and-todos-backend-setup",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "5cc4c9bbc301da68b4c5e2092f053b2ff34cfb6822c5b95f5a6710240811bab5",
+          "doc_type": "task",
+          "title": "Separate note and to-do backend setup with server-only defaults"
+        },
+        {
+          "document_id": "01a09805-4759-7923-a05c-5f27bab32e2d",
+          "slug": "reference/docs/collections",
+          "change_type": "modified",
+          "previous_commit_id": "01a09dbe-3a63-7d43-8b9e-b176d92ca252",
+          "previous_version": 6,
+          "new_version": 7,
+          "hunks": [
+            {
+              "old_start": 22,
+              "old_count": 7,
+              "new_start": 22,
+              "new_count": 9,
+              "context": "## Setup",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "explicitly enabled. The server creates one To-dos and one Notes collection."
+                },
+                {
+                  "op": "context",
+                  "content": "Collection APIs remain available when Codex is unavailable."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "delete",
+                  "content": "Choose a **Sync service to configure**, then **Save & manage sync services**."
+                },
+                {
+                  "op": "add",
+                  "content": "Choose independently under **To-do sync setup** or **Notes sync setup**; each"
+                },
+                {
+                  "op": "add",
+                  "content": "defaults to **Server only**. Read the instructions shown for that selection, then"
+                },
+                {
+                  "op": "add",
+                  "content": "choose **Save & open To-do setup** or **Save & open Notes setup**."
+                },
+                {
+                  "op": "context",
+                  "content": "The phone sends its HTTPS server URL and selected service to create a short-lived"
+                },
+                {
+                  "op": "context",
+                  "content": "management session; no separate public URL configuration is required."
+                },
+                {
+                  "op": "context",
+                  "content": "Select Server only, Todoist, Google Tasks, or Nextcloud Notes; authenticate,"
+                }
+              ]
+            },
+            {
+              "old_start": 24,
+              "old_count": 7,
+              "new_start": 26,
+              "new_count": 10,
+              "context": "## Setup",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Choose a **Sync service to configure**, then **Save & manage sync services**."
+                },
+                {
+                  "op": "context",
+                  "content": "The phone sends its HTTPS server URL and selected service to create a short-lived"
+                },
+                {
+                  "op": "delete",
+                  "content": "management session; no separate public URL configuration is required."
+                },
+                {
+                  "op": "add",
+                  "content": "management session scoped to that collection; no separate public URL configuration"
+                },
+                {
+                  "op": "add",
+                  "content": "is required. Setup preferences are not active bindings: activate or disconnect on"
+                },
+                {
+                  "op": "add",
+                  "content": "the server page. See [backend setup](../README.md#backend-sync-setup) for credentials"
+                },
+                {
+                  "op": "add",
+                  "content": "and Google OAuth configuration."
+                },
+                {
+                  "op": "context",
+                  "content": "Select Server only, Todoist, Google Tasks, or Nextcloud Notes; authenticate,"
+                },
+                {
+                  "op": "context",
+                  "content": "discover a project/list/category, preview the records, then activate it. Existing"
+                },
+                {
+                  "op": "context",
+                  "content": "server records are exported only when explicitly selected. Provider secrets are"
+                }
+              ]
+            }
+          ],
+          "content_hash": "b59dedd2625ebc5145f6f4ecd8a8fd717e524098344dd5898f1fce770d69ee56",
+          "previous_hash": "93eab6ec5d9f685aae3d574fa174a2f93f04890c46a0dcac1e2f50cc914a9615",
+          "doc_type": "reference",
+          "title": "docs/collections.md"
+        },
+        {
+          "document_id": "01a091eb-494b-70e2-a1ae-cedae4248f70",
+          "slug": "reference/docs/protocol",
+          "change_type": "modified",
+          "previous_commit_id": "01a09dbe-3a63-7d43-8b9e-b176d92ca252",
+          "previous_version": 14,
+          "new_version": 15,
+          "hunks": [
+            {
+              "old_start": 416,
+              "old_count": 7,
+              "new_start": 416,
+              "new_count": 7,
+              "context": "## Collection protocol version 1",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "All routes require bearer authentication. Mutation revisions/sequences are decimal"
+                },
+                {
+                  "op": "context",
+                  "content": "strings. Snapshot pages are fixed; body pages are UTF-8 safe and revision-pinned."
+                },
+                {
+                  "op": "context",
+                  "content": "Management uses a single-use `/v1/integration-sessions` ticket and server cookies."
+                },
+                {
+                  "op": "delete",
+                  "content": "Its authenticated POST accepts `{public_url, provider}` from phone settings. The"
+                },
+                {
+                  "op": "add",
+                  "content": "Its authenticated POST accepts `{public_url, provider, collection_id}` from phone settings. The"
+                },
+                {
+                  "op": "context",
+                  "content": "HTTPS base (including any proxy prefix) is bound to the ticket/session, not inferred"
+                },
+                {
+                  "op": "context",
+                  "content": "from forwarded headers or stored as a mutable global URL. The provider choice"
+                },
+                {
+                  "op": "context",
+                  "content": "opens that service’s setup section; authentication and activation remain explicit."
+                }
+              ]
+            },
+            {
+              "old_start": 419,
+              "old_count": 6,
+              "new_start": 419,
+              "new_count": 6,
+              "context": "## Collection protocol version 1",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "Its authenticated POST accepts `{public_url, provider}` from phone settings. The"
+                },
+                {
+                  "op": "context",
+                  "content": "HTTPS base (including any proxy prefix) is bound to the ticket/session, not inferred"
+                },
+                {
+                  "op": "context",
+                  "content": "from forwarded headers or stored as a mutable global URL. The provider choice"
+                },
+                {
+                  "op": "delete",
+                  "content": "opens that service’s setup section; authentication and activation remain explicit."
+                },
+                {
+                  "op": "add",
+                  "content": "opens that service’s setup section for the selected collection; authentication and activation remain explicit."
+                },
+                {
+                  "op": "context",
+                  "content": "Management sessions use secure cookies,"
+                },
+                {
+                  "op": "context",
+                  "content": "never a provider token in a phone settings fragment."
+                }
+              ]
+            }
+          ],
+          "content_hash": "ccc1accdbb6444addd7e00c39187af6c31d7c40bb52087c43241e724eb316857",
+          "previous_hash": "9d33bb18a824de6ebb5d50ce2b5177d415b1db21c0abd8c42bfe8d696d4969dc",
+          "doc_type": "reference",
+          "title": "docs/protocol.md"
+        },
+        {
+          "document_id": "01a091eb-4925-72e2-a4c7-6c4fc5b284e8",
+          "slug": "reference/readme",
+          "change_type": "modified",
+          "previous_commit_id": "01a09be1-7c80-74a1-a40c-82d1b7878077",
+          "previous_version": 23,
+          "new_version": 24,
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 3,
+              "new_start": 1,
+              "new_count": 5,
+              "lines": [
+                {
+                  "op": "add",
+                  "content": "Source: `README.md`"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "# codey"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "A voice-driven assistant for **Pebble Time 2** and **Pebble Round 2**."
+                }
+              ]
+            },
+            {
+              "old_start": 39,
+              "old_count": 6,
+              "new_start": 41,
+              "new_count": 59,
+              "context": "### Install and connect the watchapp",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "The phone needs internet access to open the settings page."
+                },
+                {
+                  "op": "context",
+                  "content": "Use HTTPS or WSS; unencrypted connections are only suitable for trusted private development networks."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "## Backend sync setup"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Notes and to-dos default to **Server only**: they are stored in `~/.codey/data`"
+                },
+                {
+                  "op": "add",
+                  "content": "without an external account. Configure them independently in phone settings:"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "| Collection | Choices | Authentication |"
+                },
+                {
+                  "op": "add",
+                  "content": "| --- | --- | --- |"
+                },
+                {
+                  "op": "add",
+                  "content": "| To-dos | Server only, Todoist, Google Tasks | None, Todoist API token, Google OAuth |"
+                },
+                {
+                  "op": "add",
+                  "content": "| Notes | Server only, Nextcloud Notes | None, Nextcloud username and app password |"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Select a service under **To-do sync setup** or **Notes sync setup**. The instructions"
+                },
+                {
+                  "op": "add",
+                  "content": "below that selector change to match your choice. Tap **Save & open To-do setup**"
+                },
+                {
+                  "op": "add",
+                  "content": "or **Save & open Notes setup** to open that collection's authenticated server page."
+                },
+                {
+                  "op": "add",
+                  "content": "The phone supplies the HTTPS server address automatically; no `public_url` setting"
+                },
+                {
+                  "op": "add",
+                  "content": "is required. The dropdowns remember which setup to open, not the active binding."
+                },
+                {
+                  "op": "add",
+                  "content": "Saving alone does not switch an existing backend."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "- **Todoist:** enter your Todoist API token on the server setup page, connect,"
+                },
+                {
+                  "op": "add",
+                  "content": "  select a project, preview, and activate the destination."
+                },
+                {
+                  "op": "add",
+                  "content": "- **Nextcloud Notes:** enter the HTTPS Nextcloud base URL (including its installation"
+                },
+                {
+                  "op": "add",
+                  "content": "  subpath, if any), username, and an app password on the server setup page. Choose"
+                },
+                {
+                  "op": "add",
+                  "content": "  a category, preview, and activate. The Nextcloud Notes app must be available."
+                },
+                {
+                  "op": "add",
+                  "content": "  For a private Nextcloud hostname, add `\"private_hosts\": [\"cloud.example\"]` to"
+                },
+                {
+                  "op": "add",
+                  "content": "  `~/.codey/integrations.json` and restart codey."
+                },
+                {
+                  "op": "add",
+                  "content": "- **Google Tasks:** obtain a Google OAuth web client with access to the Tasks API"
+                },
+                {
+                  "op": "add",
+                  "content": "  and register the exact callback `<your-codey-HTTPS-base>/integrations/oauth/callback`."
+                },
+                {
+                  "op": "add",
+                  "content": "  Put the following in `~/.codey/integrations.json` (merge with any existing config),"
+                },
+                {
+                  "op": "add",
+                  "content": "  restrict its permissions to `0600`, and restart codey:"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "  ```json"
+                },
+                {
+                  "op": "add",
+                  "content": "  {"
+                },
+                {
+                  "op": "add",
+                  "content": "    \"oauth\": {"
+                },
+                {
+                  "op": "add",
+                  "content": "      \"googletasks\": {"
+                },
+                {
+                  "op": "add",
+                  "content": "        \"client_id\": \"YOUR_CLIENT_ID\","
+                },
+                {
+                  "op": "add",
+                  "content": "        \"client_secret\": \"YOUR_CLIENT_SECRET\","
+                },
+                {
+                  "op": "add",
+                  "content": "        \"redirect_url\": \"https://YOUR-SERVER/codey/integrations/oauth/callback\""
+                },
+                {
+                  "op": "add",
+                  "content": "      }"
+                },
+                {
+                  "op": "add",
+                  "content": "    }"
+                },
+                {
+                  "op": "add",
+                  "content": "  }"
+                },
+                {
+                  "op": "add",
+                  "content": "  ```"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "  Then open **To-do setup**, authorize Google, choose a task list, preview, and"
+                },
+                {
+                  "op": "add",
+                  "content": "  activate. The server loads this file automatically; no extra startup flag is"
+                },
+                {
+                  "op": "add",
+                  "content": "  needed. Provider tokens are encrypted on the server. Do not commit this file."
+                },
+                {
+                  "op": "add",
+                  "content": "- **Server only:** no setup is required for a new collection. To disconnect an"
+                },
+                {
+                  "op": "add",
+                  "content": "  existing backend, open that collection's setup and choose **Use Server only**."
+                },
+                {
+                  "op": "add",
+                  "content": "  This preserves server and remote records; pending delivery may need an explicit"
+                },
+                {
+                  "op": "add",
+                  "content": "  stop decision."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Existing server records are exported to a backend only when you select the export"
+                },
+                {
+                  "op": "add",
+                  "content": "option during setup. See [server-side configuration and recovery](docs/collections-server-operations.md)"
+                },
+                {
+                  "op": "add",
+                  "content": "for OAuth, private-host configuration, backups, and interrupted deliveries."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "## Everyday use"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Press **Select** on the dashboard to talk."
+                }
+              ]
+            }
+          ],
+          "content_hash": "a9c4ed1d113c3746f3f946d68b60f73917c55537fbe745d89b30e2061e6a540a",
+          "previous_hash": "f0403ca3ade61962795ef2daa3ae6e405c61e986bb88b6643fb86f3004daaa24",
+          "doc_type": "reference",
+          "title": "README.md"
+        }
+      ]
+    },
     {
       "id": "01a09dbe-3a63-7d43-8b9e-b176d92ca252",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

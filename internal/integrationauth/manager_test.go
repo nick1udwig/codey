@@ -36,7 +36,7 @@ func TestEncryptedSecretsSingleUseTicketAndCSRF(t *testing.T) {
 	if e != nil || creds.Token != secret {
 		t.Fatal(e)
 	}
-	ticket, e := m.Ticket("", "")
+	ticket, e := m.Ticket("", "", "")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -97,15 +97,15 @@ func TestPhoneURLIsBoundToEachManagementSession(t *testing.T) {
 		t.Fatal(e)
 	}
 	for _, base := range []string{"http://example.test", "https://user:secret@example.test", "https://example.test?redirect=x"} {
-		if _, e = m.Ticket(base, ""); e == nil {
+		if _, e = m.Ticket(base, "", ""); e == nil {
 			t.Fatal("accepted invalid base", base)
 		}
 	}
-	first, e := m.Ticket("https://first.test/codey", "todoist")
+	first, e := m.Ticket("https://first.test/codey", "todoist", "")
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = m.Ticket("https://second.test/other", ""); e != nil {
+	if _, e = m.Ticket("https://second.test/other", "", ""); e != nil {
 		t.Fatal(e)
 	}
 	w := httptest.NewRecorder()
@@ -119,5 +119,38 @@ func TestPhoneURLIsBoundToEachManagementSession(t *testing.T) {
 	m.ServeHTTP(w, r)
 	if !strings.Contains(w.Body.String(), `action="https://first.test/codey/integrations"`) || !strings.Contains(w.Body.String(), `id="todoist"`) {
 		t.Fatal("wrong session base or missing selected provider")
+	}
+}
+
+func TestCollectionSetupIsScopedAndRejectsWrongProviderKind(t *testing.T) {
+	dir := t.TempDir()
+	store, e := collectionstore.Open(dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer store.Close()
+	m, e := New(store, dir, Config{}, map[string]p.Adapter{"todoist": p.Todoist{}, "nextcloudnotes": p.Nextcloud{}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = m.Ticket("https://example.test", "todoist", "col_note"); e == nil {
+		t.Fatal("task provider accepted for notes")
+	}
+	for _, col := range []string{"col_note", "col_task"} {
+		ticket, e := m.Ticket("https://example.test", "server", col)
+		if e != nil {
+			t.Fatal(e)
+		}
+		w := httptest.NewRecorder()
+		m.ServeHTTP(w, httptest.NewRequest("GET", ticket, nil))
+		cookie := w.Result().Cookies()[0]
+		r := httptest.NewRequest("GET", "/integrations", nil)
+		r.AddCookie(cookie)
+		w = httptest.NewRecorder()
+		m.ServeHTTP(w, r)
+		body := w.Body.String()
+		if strings.Contains(body, `name="provider" value="todoist"`) != (col == "col_task") || strings.Contains(body, `name="provider" value="nextcloudnotes"`) != (col == "col_note") {
+			t.Fatal("mixed collection forms")
+		}
 	}
 }

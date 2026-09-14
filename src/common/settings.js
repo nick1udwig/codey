@@ -7,7 +7,8 @@ var CONFIG_URL = "https://nick1udwig.github.io/pebble-agent/config/";
 
 var DEFAULTS = Object.freeze({
   endpoint: "",
-  syncProvider: "",
+  todoSyncProvider: "server",
+  noteSyncProvider: "server",
   collectionDevelopmentHTTP: false,
   token: "",
   units: "auto",
@@ -33,7 +34,8 @@ function copyDefaults(value) {
   });
   settings.endpoint = Endpoints.normalize(settings.endpoint) || "";
   settings.collectionDevelopmentHTTP = source.collectionDevelopmentHTTP === true;
-  settings.syncProvider = ["", "server", "todoist", "googletasks", "nextcloudnotes"].indexOf(source.syncProvider) >= 0 ? source.syncProvider : "";
+  settings.todoSyncProvider = ["server", "todoist", "googletasks"].indexOf(source.todoSyncProvider)>=0?source.todoSyncProvider:"server";
+  settings.noteSyncProvider = ["server", "nextcloudnotes"].indexOf(source.noteSyncProvider)>=0?source.noteSyncProvider:"server";
   settings.token = String(settings.token || "").trim();
   settings.units = settings.units === "imperial" || settings.units === "metric" ? settings.units : "auto";
   settings.locationLabel = String(settings.locationLabel || DEFAULTS.locationLabel).slice(0, 64);
@@ -95,7 +97,7 @@ function parseConfigResponse(response) {
     // Preserve the action only while handling this submission. save() and
     // buildConfigUrl() strip it because it is not a persistent preference.
     if (source && source.recoverCollections === true) normalized.recoverCollections=true;
-    if (source && source.manageIntegrations === true) normalized.manageIntegrations=true;
+    if (source && ["task","note"].indexOf(source.manageCollection)>=0) { normalized.manageIntegrations=true; normalized.manageCollection=source.manageCollection; }
     if (source && source.newSession === true) { normalized.newSession = true; }
     return normalized;
   } catch (error) {

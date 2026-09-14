@@ -176,14 +176,15 @@ func (s *Server) integrationAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/v1/integration-sessions" && r.Method == "POST" && s.config.IntegrationTicket != nil {
 		var input struct {
-			PublicURL string `json:"public_url"`
-			Provider  string `json:"provider"`
+			PublicURL  string `json:"public_url"`
+			Collection string `json:"collection_id"`
+			Provider   string `json:"provider"`
 		}
 		if e := collectionDecode(w, r, &input); e != nil {
 			collectionError(w, e)
 			return
 		}
-		u, e := s.config.IntegrationTicket(input.PublicURL, input.Provider)
+		u, e := s.config.IntegrationTicket(input.PublicURL, input.Provider, input.Collection)
 		if e != nil {
 			collectionError(w, e)
 			return

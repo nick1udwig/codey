@@ -2,6 +2,7 @@ package integrationauth
 
 import (
 	"fmt"
+
 	c "github.com/nick1udwig/pebble-agent/internal/collections"
 	p "github.com/nick1udwig/pebble-agent/internal/providers"
 	"html/template"
@@ -26,6 +27,14 @@ func (m *Manager) page(w http.ResponseWriter, s session, message string, extra m
 	if e != nil {
 		http.Error(w, "Collection storage unavailable", 503)
 		return
+	}
+	if s.Collection != "" {
+		for _, col := range cols {
+			if col.ID == s.Collection {
+				cols = []c.Collection{col}
+				break
+			}
+		}
 	}
 	status, _ := m.Store.Status()
 	bindings, _ := m.Store.Bindings()

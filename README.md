@@ -39,6 +39,59 @@ See [server setup](docs/server.md) for networking, manual startup, and configura
 The phone needs internet access to open the settings page.
 Use HTTPS or WSS; unencrypted connections are only suitable for trusted private development networks.
 
+## Backend sync setup
+
+Notes and to-dos default to **Server only**: they are stored in `~/.codey/data`
+without an external account. Configure them independently in phone settings:
+
+| Collection | Choices | Authentication |
+| --- | --- | --- |
+| To-dos | Server only, Todoist, Google Tasks | None, Todoist API token, Google OAuth |
+| Notes | Server only, Nextcloud Notes | None, Nextcloud username and app password |
+
+Select a service under **To-do sync setup** or **Notes sync setup**. The instructions
+below that selector change to match your choice. Tap **Save & open To-do setup**
+or **Save & open Notes setup** to open that collection's authenticated server page.
+The phone supplies the HTTPS server address automatically; no `public_url` setting
+is required. The dropdowns remember which setup to open, not the active binding.
+Saving alone does not switch an existing backend.
+
+- **Todoist:** enter your Todoist API token on the server setup page, connect,
+  select a project, preview, and activate the destination.
+- **Nextcloud Notes:** enter the HTTPS Nextcloud base URL (including its installation
+  subpath, if any), username, and an app password on the server setup page. Choose
+  a category, preview, and activate. The Nextcloud Notes app must be available.
+  For a private Nextcloud hostname, add `"private_hosts": ["cloud.example"]` to
+  `~/.codey/integrations.json` and restart codey.
+- **Google Tasks:** obtain a Google OAuth web client with access to the Tasks API
+  and register the exact callback `<your-codey-HTTPS-base>/integrations/oauth/callback`.
+  Put the following in `~/.codey/integrations.json` (merge with any existing config),
+  restrict its permissions to `0600`, and restart codey:
+
+  ```json
+  {
+    "oauth": {
+      "googletasks": {
+        "client_id": "YOUR_CLIENT_ID",
+        "client_secret": "YOUR_CLIENT_SECRET",
+        "redirect_url": "https://YOUR-SERVER/codey/integrations/oauth/callback"
+      }
+    }
+  }
+  ```
+
+  Then open **To-do setup**, authorize Google, choose a task list, preview, and
+  activate. The server loads this file automatically; no extra startup flag is
+  needed. Provider tokens are encrypted on the server. Do not commit this file.
+- **Server only:** no setup is required for a new collection. To disconnect an
+  existing backend, open that collection's setup and choose **Use Server only**.
+  This preserves server and remote records; pending delivery may need an explicit
+  stop decision.
+
+Existing server records are exported to a backend only when you select the export
+option during setup. See [server-side configuration and recovery](docs/collections-server-operations.md)
+for OAuth, private-host configuration, backups, and interrupted deliveries.
+
 ## Everyday use
 
 Press **Select** on the dashboard to talk.

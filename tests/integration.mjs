@@ -66,7 +66,7 @@ function request(port, { method = "POST", body = "" } = {}) {
 function runConfig(hash, bridge, XHR) {
   const ids = ["settings", "endpoint", "token", "units", "timeout", "location-label", "status", "codex-model", "codex-effort", "fast-mode", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review", "answer-vibrate", "tap-animation"];
   const elements = {};
-  ids.push("sync-provider","token-status","new-session","collection-development-http","manage-integrations","recover-collections");
+  ids.push("todo-sync-provider","note-sync-provider","todo-sync-help","note-sync-help","manage-todos","manage-notes","token-status","new-session","collection-development-http","recover-collections");
   let submit;
   ids.forEach(id => {
     elements[id] = {
@@ -82,6 +82,7 @@ function runConfig(hash, bridge, XHR) {
       }
     };
   });
+  elements.settings.requestSubmit=()=>submit({preventDefault(){}});
   const location = { hash, href: "https://config.test/" + hash };
   const document = {
     location: location.href,
@@ -208,7 +209,7 @@ test("configuration page hydrates state and closes with normalized form values",
   const saved = JSON.parse(decodeURIComponent(harness.location.href.split("#")[1]));
   assert.deepEqual(saved, {
     endpoint: "https://new.test/agent",
-    syncProvider:"",collectionDevelopmentHTTP:false,
+    todoSyncProvider:"server",noteSyncProvider:"server",collectionDevelopmentHTTP:false,
     token: "secret",
     units: "metric",
     locationLabel: "Current location",
@@ -216,6 +217,22 @@ test("configuration page hydrates state and closes with normalized form values",
     codexModel: "gpt-5.6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
     networkAccess: false, shellAccess: false, autoReview: false, answerVibrate: true, tapAnimation: true
   });
+});
+
+test("sync setup defaults to server only and keeps notes and todos independent", () => {
+ let saved;const h=runConfig("",{submit(s){saved=s;}});
+ assert.equal(h.elements["todo-sync-provider"].value,"server");
+ assert.equal(h.elements["note-sync-provider"].value,"server");
+ h.elements["todo-sync-provider"].value="googletasks";
+ h.elements["todo-sync-provider"].handlers.change();
+ assert.match(h.elements["todo-sync-help"].textContent,/OAuth client/);
+ assert.match(h.elements["note-sync-help"].textContent,/No external account/);
+ h.elements["manage-todos"].handlers.click();
+ assert.equal(saved.manageCollection,"task");assert.equal(saved.todoSyncProvider,"googletasks");assert.equal(saved.noteSyncProvider,"server");
+ h.elements["note-sync-provider"].value="nextcloudnotes";
+ h.elements["note-sync-provider"].handlers.change();assert.match(h.elements["note-sync-help"].textContent,/app password/);
+ h.elements["manage-notes"].handlers.click();assert.equal(saved.manageCollection,"note");
+ h.submit({preventDefault(){}});assert.equal(saved.manageCollection,undefined);
 });
 
 test("management setup errors are visible in the reopened settings page", () => {

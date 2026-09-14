@@ -33,15 +33,17 @@ type Config struct {
 	PrivateHosts []string               `json:"private_hosts"`
 }
 type ticket struct {
-	Expires  time.Time
-	Base     string
-	Provider string
+	Collection string
+	Expires    time.Time
+	Base       string
+	Provider   string
 }
 type session struct {
-	Base     string
-	Provider string
-	CSRF     string
-	Expires  time.Time
+	Collection string
+	Base       string
+	Provider   string
+	CSRF       string
+	Expires    time.Time
 }
 type candidate struct {
 	Binding     p.Binding
@@ -210,7 +212,7 @@ func (m *Manager) Descriptors() []p.Descriptor {
 	}
 	return out
 }
-func (m *Manager) Ticket(base, provider string) (string, error) {
+func (m *Manager) Ticket(base, provider, collection string) (string, error) {
 	if base == "" {
 		base = m.Config.PublicURL
 	}
@@ -219,6 +221,12 @@ func (m *Manager) Ticket(base, provider string) (string, error) {
 	}
 	if provider != "" && provider != "server" && m.Adapters[provider] == nil {
 		return "", c.Fail("invalid_input", "Unknown sync service")
+	}
+	if collection != "" && collection != "col_task" && collection != "col_note" {
+		return "", c.Fail("invalid_input", "Unknown collection")
+	}
+	if a := m.Adapters[provider]; a != nil && collection != "" && "col_"+a.Describe().Kind != collection {
+		return "", c.Fail("invalid_input", "Service does not support this collection")
 	}
 	base = strings.TrimRight(base, "/")
 	m.mu.Lock()
@@ -229,11 +237,11 @@ func (m *Manager) Ticket(base, provider string) (string, error) {
 		}
 	}
 	ticket := c.ID("ticket_")
-	m.tickets[ticket] = ticketInfo(base, provider)
+	m.tickets[ticket] = ticketInfo(base, provider, collection)
 	return base + "/integrations?ticket=" + url.QueryEscape(ticket), nil
 }
-func ticketInfo(base, provider string) ticket {
-	return ticket{Expires: time.Now().Add(5 * time.Minute), Base: base, Provider: provider}
+func ticketInfo(base, provider, collection string) ticket {
+	return ticket{Collection: collection, Expires: time.Now().Add(5 * time.Minute), Base: base, Provider: provider}
 }
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
@@ -255,7 +263,7 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		id := c.ID("session_")
-		m.sessions[id] = session{Base: issued.Base, Provider: issued.Provider, CSRF: c.ID("csrf_"), Expires: time.Now().Add(30 * time.Minute)}
+		m.sessions[id] = session{Collection: issued.Collection, Base: issued.Base, Provider: issued.Provider, CSRF: c.ID("csrf_"), Expires: time.Now().Add(30 * time.Minute)}
 		m.mu.Unlock()
 		http.SetCookie(w, &http.Cookie{Name: "codey_integrations", Value: id, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, MaxAge: 1800})
 		http.Redirect(w, r, issued.Base+"/integrations#"+url.QueryEscape(issued.Provider), http.StatusSeeOther)
