@@ -36,7 +36,7 @@ func TestEncryptedSecretsSingleUseTicketAndCSRF(t *testing.T) {
 	if e != nil || creds.Token != secret {
 		t.Fatal(e)
 	}
-	ticket, e := m.Ticket()
+	ticket, e := m.Ticket("", "")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -82,5 +82,42 @@ func TestEncryptedSecretsSingleUseTicketAndCSRF(t *testing.T) {
 	}
 	if _, e = New(store, dir, Config{}, nil); e == nil {
 		t.Fatal("silently replaced missing encryption key")
+	}
+}
+
+func TestPhoneURLIsBoundToEachManagementSession(t *testing.T) {
+	dir := t.TempDir()
+	store, e := collectionstore.Open(dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer store.Close()
+	m, e := New(store, dir, Config{}, map[string]p.Adapter{"todoist": p.Todoist{}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, base := range []string{"http://example.test", "https://user:secret@example.test", "https://example.test?redirect=x"} {
+		if _, e = m.Ticket(base, ""); e == nil {
+			t.Fatal("accepted invalid base", base)
+		}
+	}
+	first, e := m.Ticket("https://first.test/codey", "todoist")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = m.Ticket("https://second.test/other", ""); e != nil {
+		t.Fatal(e)
+	}
+	w := httptest.NewRecorder()
+	m.ServeHTTP(w, httptest.NewRequest("GET", first, nil))
+	if w.Code != 303 || w.Header().Get("Location") != "https://first.test/codey/integrations#todoist" {
+		t.Fatal(w.Code, w.Header().Get("Location"))
+	}
+	r := httptest.NewRequest("GET", "/integrations", nil)
+	r.AddCookie(w.Result().Cookies()[0])
+	w = httptest.NewRecorder()
+	m.ServeHTTP(w, r)
+	if !strings.Contains(w.Body.String(), `action="https://first.test/codey/integrations"`) || !strings.Contains(w.Body.String(), `id="todoist"`) {
+		t.Fatal("wrong session base or missing selected provider")
 	}
 }

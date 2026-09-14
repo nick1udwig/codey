@@ -20,8 +20,9 @@ HTTPS is required unless **Allow HTTP for local development collections** is
 explicitly enabled. The server creates one To-dos and one Notes collection.
 Collection APIs remain available when Codex is unavailable.
 
-Choose **Save & manage sync services** in phone settings to open a short-lived
-server management session. The operator must configure its HTTPS `public_url`.
+Choose a **Sync service to configure**, then **Save & manage sync services**.
+The phone sends its HTTPS server URL and selected service to create a short-lived
+management session; no separate public URL configuration is required.
 Select Server only, Todoist, Google Tasks, or Nextcloud Notes; authenticate,
 discover a project/list/category, preview the records, then activate it. Existing
 server records are exported only when explicitly selected. Provider secrets are

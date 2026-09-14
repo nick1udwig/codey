@@ -4,11 +4,18 @@
 
 `codey-server --data-dir /absolute/private/path` stores `collections.db` with
 SQLite WAL, foreign keys, a busy timeout, and `synchronous=FULL`. The default is
-`~/.pebble-agent/data`. Keep this directory outside the agent workspace. Set
+`~/.codey/data`. Keep this directory outside the agent workspace. Set
 `CODEY_TOKEN`; collection endpoints reject unauthenticated requests even if the
 legacy agent endpoint permits localhost without a token.
 
-Optional `--integrations-config /absolute/private/integrations.json` reads:
+The phone sends its HTTPS server URL and selected sync service to the authenticated
+management-session endpoint. No operator `public_url` is required. The supplied
+base is tied to that individual ticket/session, including reverse-proxy prefixes.
+
+Optional advanced configuration is loaded automatically from
+`~/.codey/integrations.json` if present. `--integrations-config` overrides the path.
+This is only needed for operator OAuth application credentials, private Nextcloud
+hosts, or an optional default URL for older clients. The file accepts:
 
 ```json
 {
@@ -38,10 +45,16 @@ Todoist also accepts a personal API token. Nextcloud accepts an app password and
 username; it does not require a hosted OAuth application.
 
 Use a TLS reverse proxy which strips the configured prefix before forwarding.
-Set `public_url` to the same public base configured on the phone. Redirects from
+The phone server URL must use HTTPS. Redirects from
 provider endpoints are refused. Explicitly allow private DNS hosts for self-hosted
 Nextcloud; link-local/metadata destinations are denied. Preserve Nextcloud's base
 path. Provider failures do not stop canonical reads/writes or agent requests.
+
+If management setup fails, the settings page reopens with the server error.
+Development HTTP permission for collection API calls does not enable HTTP browser
+management sessions. Selecting a provider opens its setup section; authenticate,
+preview a destination, then activate it. Merely choosing a provider in phone
+settings does not switch or export existing records.
 
 ## Backup and restore
 

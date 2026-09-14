@@ -36,3 +36,28 @@ func TestCollectionsRequireAuthAndWorkWithoutAgent(t *testing.T) {
 		t.Fatal(response, e)
 	}
 }
+
+func TestManagementURLAndProviderRequireAuthenticatedPhone(t *testing.T) {
+	calls := 0
+	s := New(Config{Token: "t", IntegrationTicket: func(base, provider string) (string, error) {
+		calls++
+		if base != "https://example.test/codey" || provider != "todoist" {
+			t.Fatal(base, provider)
+		}
+		return base + "/integrations?ticket=test", nil
+	}})
+	for _, authenticated := range []bool{false, true} {
+		r := httptest.NewRequest("POST", "/v1/integration-sessions", strings.NewReader(`{"public_url":"https://example.test/codey","provider":"todoist"}`))
+		if authenticated {
+			r.Header.Set("Authorization", "Bearer t")
+		}
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if authenticated && w.Code != 200 || !authenticated && w.Code != 401 {
+			t.Fatal(w.Code)
+		}
+	}
+	if calls != 1 {
+		t.Fatal(calls)
+	}
+}

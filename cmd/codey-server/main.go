@@ -71,12 +71,16 @@ func run(arguments []string) error {
 	}
 	flags := flag.NewFlagSet("codey-server", flag.ContinueOnError)
 	var config options
-	flags.StringVar(&config.integrationsConfig, "integrations-config", "", "operator integration configuration JSON, outside the agent workspace")
 	userHome, err := os.UserHomeDir()
 	if err != nil {
 		return err
 	}
-	flags.StringVar(&config.dataDir, "data-dir", filepath.Join(userHome, ".pebble-agent", "data"), "durable collections directory")
+	integrationDefault := filepath.Join(userHome, ".codey", "integrations.json")
+	if _, err := os.Stat(integrationDefault); os.IsNotExist(err) {
+		integrationDefault = ""
+	}
+	flags.StringVar(&config.integrationsConfig, "integrations-config", integrationDefault, "operator integration configuration JSON, outside the agent workspace")
+	flags.StringVar(&config.dataDir, "data-dir", filepath.Join(userHome, ".codey", "data"), "durable collections directory")
 	flags.StringVar(&config.backup, "collections-backup", "", "write a consistent collections backup and exit")
 	flags.BoolVar(&config.restoreEpoch, "collections-restored", false, "rotate store epoch and pause providers after restoring a backup, then exit")
 	flags.StringVar(&config.listen, "listen", environment("CODEY_LISTEN", "127.0.0.1:8787"), "HTTP listen address")
@@ -273,19 +277,15 @@ type paths struct {
 }
 
 func defaultPaths() (paths, error) {
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		return paths{}, fmt.Errorf("find user cache directory: %w", err)
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return paths{}, fmt.Errorf("find user home directory: %w", err)
 	}
-	root := filepath.Join(cache, "pebble-agent")
+	root := filepath.Join(home, ".codey")
 	return paths{
 		state:     filepath.Join(root, "sessions.json"),
 		workspace: filepath.Join(root, "workspace"),
-		log:       filepath.Join(home, ".pebble-agent", "server.log"),
+		log:       filepath.Join(root, "server.log"),
 	}, nil
 }
 

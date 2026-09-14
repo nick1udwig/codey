@@ -35,7 +35,7 @@ The demo server remains a deterministic transport fixture.
 The Go server under `cmd/codey-server` is the actual self-hosted agent.
 Point the phone settings at a URL the paired phone can reach; `127.0.0.1` on a development computer is not the phone's loopback address.
 
-For runtime debugging, inspect `~/.pebble-agent/server.log` first, followed by `server.log.1` through `server.log.5` if the incident has rotated.
+For runtime debugging, inspect `~/.codey/server.log` first, followed by `server.log.1` through `server.log.5` if the incident has rotated.
 The server mirrors stderr there and rotates each file at 10 MiB.
 These files contain complete Codex app-server inputs and outputs and are sensitive.
 A completed PAM response followed by a watchapp exit requires Pebble watch logs because that failure is downstream of the Go server.
@@ -267,7 +267,7 @@ The server installs it beside its state on startup; restart an updated server to
 ## Rename compatibility
 
 The project and watchapp are named codey; builds produce `codey.pbw` and `codey-server`.
-The watch UUID, phone storage keys, server state directory, and `~/.pebble-agent/server.log` retain their existing identities so updates keep conversations, jobs, and settings. The backend-sync development upgrade deliberately does not migrate legacy notes/to-dos.
+The watch UUID, phone storage keys, server state directory, and `~/.codey/server.log` retain their existing identities so updates keep conversations, jobs, and settings. The backend-sync development upgrade deliberately does not migrate legacy notes/to-dos.
 `CODEY_*` environment variables take precedence over legacy `PEBBLE_AGENT_*` variables.
 The installer uses `~/.config/codey/environment` and `codey.service`, reusing the legacy token and disabling the old service when upgrading.
 GitHub repository URLs, the Go module path, and the hosted settings URL still use `nick1udwig/pebble-agent`; renaming the local project does not move those hosted resources.

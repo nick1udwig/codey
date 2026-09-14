@@ -27,7 +27,7 @@ type Config struct {
 	Collections         *collectionstore.Store
 	RefreshCollections  func()
 	Integrations        http.Handler
-	IntegrationTicket   func() (string, error)
+	IntegrationTicket   func(string, string) (string, error)
 	ProviderDescriptors func() any
 	Jobs                *jobs.Store
 	Responder           Responder

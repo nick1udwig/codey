@@ -413,5 +413,10 @@ JSON collection routes, schemas, and recovery are documented in
 [JSON schema](collections-api.schema.json), and [operations](collections-server-operations.md).
 All routes require bearer authentication. Mutation revisions/sequences are decimal
 strings. Snapshot pages are fixed; body pages are UTF-8 safe and revision-pinned.
-Management uses a single-use `/v1/integration-sessions` ticket and server cookies,
+Management uses a single-use `/v1/integration-sessions` ticket and server cookies.
+Its authenticated POST accepts `{public_url, provider}` from phone settings. The
+HTTPS base (including any proxy prefix) is bound to the ticket/session, not inferred
+from forwarded headers or stored as a mutable global URL. The provider choice
+opens that service’s setup section; authentication and activation remain explicit.
+Management sessions use secure cookies,
 never a provider token in a phone settings fragment.

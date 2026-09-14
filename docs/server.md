@@ -207,14 +207,14 @@ Phone endpoint bearer credentials are consumed at the HTTP/WebSocket boundary an
 Start runtime debugging with:
 
 ```text
-~/.pebble-agent/server.log
+~/.codey/server.log
 ```
 
 The server mirrors its structured stderr output into that file.
 Before a complete log record would take the active file past 10 MiB (10,485,760 bytes), it rotates the file.
 It retains five backups: `server.log.1` is newest and `server.log.5` is oldest.
 A single record larger than 10 MiB remains intact.
-The active log is created with mode `0600`, and a newly created `.pebble-agent` directory is private to the current user.
+The active log is created with mode `0600`, and a newly created `.codey` directory is private to the current user.
 
 Set `CODEY_LOG_FILE` or use `--log-file /absolute/path` to choose a different file.
 Use `--log-file -` to log only to stderr.
@@ -226,7 +226,7 @@ If they show a completed, valid PAM response but the watchapp exits, collect Peb
 ## Conversations and streaming
 
 The PAM `request.session` value and permission profile map to a persisted Codex thread.
-The default state file is the user cache directory's `pebble-agent/sessions.json`, written with mode `0600`; use `--state /absolute/path.json` to move it.
+The default state file is `~/.codey/sessions.json`, written with mode `0600`; use `--state /absolute/path.json` to move it.
 Restarting either service resumes the thread.
 If Codex no longer has a persisted thread, the mapping is discarded and a new one is created.
 
@@ -303,7 +303,8 @@ Common options include:
 --log-file /absolute/path/server.log
 ```
 
-The workspace is an otherwise empty directory by default.
+The workspace defaults to `~/.codey/workspace`. Collection data lives in
+`~/.codey/data`, job/session state in `~/.codey`, and logs in `~/.codey/server.log`.
 It becomes the writable root only when workspace writes are selected in phone settings.
 Read-only and workspace-write modes allow reads outside that root; no-user-files mode restricts reads to minimal runtime paths.
 

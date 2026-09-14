@@ -134,7 +134,7 @@ PebbleKit JS provides `localStorage` and networking but is documented to run wit
 
 ## 4. Server data model
 
-Use SQLite in a durable application-data directory, proposed default `~/.pebble-agent/data`, overridable by `--data-dir`. Do not store the authoritative collection database under `os.UserCacheDir()` or the agent's writable workspace. Use restrictive directory/file permissions.
+Use SQLite in a durable application-data directory, proposed default `~/.codey/data`, overridable by `--data-dir`. Do not store the authoritative collection database under `os.UserCacheDir()` or the agent's writable workspace. Use restrictive directory/file permissions.
 
 Use foreign keys, transactions, a busy timeout, and a documented crash-durability configuration. WAL with `synchronous=FULL` is the proposed baseline on a supported local filesystem. Do not treat copying a live `.db` file alone as a valid backup; use SQLite's backup facilities or a documented quiesced equivalent. [P-B, P-C]
 

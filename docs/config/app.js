@@ -3,6 +3,7 @@
 
   var Endpoints = window.CodeyEndpoints;
   var defaults = {
+    syncProvider:"",
     endpoint: "",
     collectionDevelopmentHTTP:false,
     token: "",
@@ -21,6 +22,7 @@
   var status = document.getElementById("status");
 
   var extraFields = {
+    syncProvider:document.getElementById("sync-provider"),
     collectionDevelopmentHTTP:document.getElementById("collection-development-http"),
     tapAnimation: document.getElementById("tap-animation"),
     answerVibrate: document.getElementById("answer-vibrate"),
@@ -60,6 +62,7 @@
   }
 
   var current = stateFromHash();
+  if(current.managementError) { status.textContent="Settings saved. Could not open sync services: "+current.managementError; }
   // A one-time action: never restore it from saved settings or URL state.
   var newSession = document.getElementById("new-session");
   newSession.checked = false;

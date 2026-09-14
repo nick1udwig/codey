@@ -15,13 +15,13 @@ func TestDefaultPathsPutLogsInUserHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(home, ".pebble-agent", "server.log"); got.log != want {
+	if want := filepath.Join(home, ".codey", "server.log"); got.log != want {
 		t.Fatalf("log path = %q, want %q", got.log, want)
 	}
-	if want := filepath.Join(cache, "pebble-agent", "sessions.json"); got.state != want {
+	if want := filepath.Join(home, ".codey", "sessions.json"); got.state != want {
 		t.Fatalf("state path = %q, want %q", got.state, want)
 	}
-	if want := filepath.Join(cache, "pebble-agent", "workspace"); got.workspace != want {
+	if want := filepath.Join(home, ".codey", "workspace"); got.workspace != want {
 		t.Fatalf("workspace path = %q, want %q", got.workspace, want)
 	}
 }

@@ -175,7 +175,15 @@ func (s *Server) integrationAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/v1/integration-sessions" && r.Method == "POST" && s.config.IntegrationTicket != nil {
-		u, e := s.config.IntegrationTicket()
+		var input struct {
+			PublicURL string `json:"public_url"`
+			Provider  string `json:"provider"`
+		}
+		if e := collectionDecode(w, r, &input); e != nil {
+			collectionError(w, e)
+			return
+		}
+		u, e := s.config.IntegrationTicket(input.PublicURL, input.Provider)
 		if e != nil {
 			collectionError(w, e)
 			return

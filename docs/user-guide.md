@@ -124,7 +124,7 @@ Unconfirmed delivery means the phone has not received an acknowledgement; checki
 Upgrade both the server and watch app for the job API.
 
 **Where are the server logs?**
-Start debugging with `~/.pebble-agent/server.log`.
+Start debugging with `~/.codey/server.log`.
 The server also writes the same records to stderr.
 It rotates the file at 10 MiB and retains five backups, from `server.log.1` (newest) through `server.log.5` (oldest).
 Set `CODEY_LOG_FILE` or pass `--log-file /absolute/path` to move it; pass `--log-file -` for stderr only.

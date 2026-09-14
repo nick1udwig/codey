@@ -32,9 +32,16 @@ type Config struct {
 	OAuth        map[string]OAuthConfig `json:"oauth"`
 	PrivateHosts []string               `json:"private_hosts"`
 }
+type ticket struct {
+	Expires  time.Time
+	Base     string
+	Provider string
+}
 type session struct {
-	CSRF    string
-	Expires time.Time
+	Base     string
+	Provider string
+	CSRF     string
+	Expires  time.Time
 }
 type candidate struct {
 	Binding     p.Binding
@@ -59,7 +66,7 @@ type Manager struct {
 	mu         sync.Mutex
 	refreshMu  sync.Mutex
 	aead       cipher.AEAD
-	tickets    map[string]time.Time
+	tickets    map[string]ticket
 	sessions   map[string]session
 	candidates map[string]candidate
 	states     map[string]oauthState
@@ -101,7 +108,7 @@ func New(store *collectionstore.Store, dir string, config Config, adapters map[s
 	if e != nil {
 		return nil, e
 	}
-	return &Manager{Store: store, Adapters: adapters, Config: config, HTTP: p.SafeClient(config.PrivateHosts), aead: aead, tickets: map[string]time.Time{}, sessions: map[string]session{}, candidates: map[string]candidate{}, states: map[string]oauthState{}}, nil
+	return &Manager{Store: store, Adapters: adapters, Config: config, HTTP: p.SafeClient(config.PrivateHosts), aead: aead, tickets: map[string]ticket{}, sessions: map[string]session{}, candidates: map[string]candidate{}, states: map[string]oauthState{}}, nil
 }
 func (m *Manager) SaveCredentials(id string, creds p.Credentials) error {
 	nonce := make([]byte, m.aead.NonceSize())
@@ -203,20 +210,30 @@ func (m *Manager) Descriptors() []p.Descriptor {
 	}
 	return out
 }
-func (m *Manager) Ticket() (string, error) {
-	if e := p.Endpoint(m.Config.PublicURL); e != nil {
-		return "", c.Fail("invalid_input", "Operator must configure HTTPS public_url for integration settings")
+func (m *Manager) Ticket(base, provider string) (string, error) {
+	if base == "" {
+		base = m.Config.PublicURL
 	}
+	if e := p.Endpoint(base); e != nil {
+		return "", c.Fail("invalid_input", "Use an HTTPS server URL in phone settings to manage sync services")
+	}
+	if provider != "" && provider != "server" && m.Adapters[provider] == nil {
+		return "", c.Fail("invalid_input", "Unknown sync service")
+	}
+	base = strings.TrimRight(base, "/")
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for k, t := range m.tickets {
-		if time.Now().After(t) {
+		if time.Now().After(t.Expires) {
 			delete(m.tickets, k)
 		}
 	}
 	ticket := c.ID("ticket_")
-	m.tickets[ticket] = time.Now().Add(5 * time.Minute)
-	return strings.TrimRight(m.Config.PublicURL, "/") + "/integrations?ticket=" + url.QueryEscape(ticket), nil
+	m.tickets[ticket] = ticketInfo(base, provider)
+	return base + "/integrations?ticket=" + url.QueryEscape(ticket), nil
+}
+func ticketInfo(base, provider string) ticket {
+	return ticket{Expires: time.Now().Add(5 * time.Minute), Base: base, Provider: provider}
 }
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
@@ -230,18 +247,18 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ticket := r.URL.Query().Get("ticket")
 	if ticket != "" && r.Method == "GET" {
 		m.mu.Lock()
-		expiry, ok := m.tickets[ticket]
+		issued, ok := m.tickets[ticket]
 		delete(m.tickets, ticket)
-		if !ok || time.Now().After(expiry) {
+		if !ok || time.Now().After(issued.Expires) {
 			m.mu.Unlock()
 			http.Error(w, "Ticket expired; reopen settings from the phone", 401)
 			return
 		}
 		id := c.ID("session_")
-		m.sessions[id] = session{CSRF: c.ID("csrf_"), Expires: time.Now().Add(30 * time.Minute)}
+		m.sessions[id] = session{Base: issued.Base, Provider: issued.Provider, CSRF: c.ID("csrf_"), Expires: time.Now().Add(30 * time.Minute)}
 		m.mu.Unlock()
 		http.SetCookie(w, &http.Cookie{Name: "codey_integrations", Value: id, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, MaxAge: 1800})
-		http.Redirect(w, r, strings.TrimRight(m.Config.PublicURL, "/")+"/integrations", http.StatusSeeOther)
+		http.Redirect(w, r, issued.Base+"/integrations#"+url.QueryEscape(issued.Provider), http.StatusSeeOther)
 		return
 	}
 	cookie, e := r.Cookie("codey_integrations")

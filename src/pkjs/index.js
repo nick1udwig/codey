@@ -620,7 +620,19 @@ Pebble.addEventListener("webviewclosed", function(event) {
   if (!updated.token) updated.token=settings.token;
   settings = Settings.save(updated);
   if(updated.recoverCollections&&collections)collections.recover(function(e){sendStatus(e?e.message:"Pending input archived for recovery. Reopen collections.",e?"error":"show");if(!e)syncCollections();});else syncCollections();
-  if(updated.manageIntegrations&&collections)collections.request("POST","/v1/integration-sessions",{},function(e,data){if(e){sendStatus(e.message,"error");return;}var base=collectionBase();if(!data.url||data.url.indexOf(base.replace(/\/$/,"")+"/integrations?ticket=")!==0){sendStatus("Invalid integration settings destination","error");return;}Pebble.openURL(data.url);});
+  if(updated.manageIntegrations){
+    function managementError(message){
+      sendStatus(message,"error");
+      Pebble.openURL(Settings.buildConfigUrl(settings,Date.now(),null,message));
+    }
+    if(!collections)managementError(collectionError||"Collections unavailable");
+    else collections.request("POST","/v1/integration-sessions",{public_url:collectionBase(),provider:settings.syncProvider},function(e,data){
+      if(e){managementError(e.message);return;}
+      var base=collectionBase();
+      if(!data.url||data.url.indexOf(base.replace(/\/$/,"")+"/integrations?ticket=")!==0){managementError("Sync settings returned an unexpected server URL.");return;}
+      Pebble.openURL(data.url);
+    });
+  }
   if (updated.newSession) { startNewSession(); }
   if (watchReady) { sendConnection(); refreshWeather(); sendPreferences(); dashboardStatus.refresh(); }
 });

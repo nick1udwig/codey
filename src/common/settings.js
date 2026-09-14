@@ -7,6 +7,7 @@ var CONFIG_URL = "https://nick1udwig.github.io/pebble-agent/config/";
 
 var DEFAULTS = Object.freeze({
   endpoint: "",
+  syncProvider: "",
   collectionDevelopmentHTTP: false,
   token: "",
   units: "auto",
@@ -32,6 +33,7 @@ function copyDefaults(value) {
   });
   settings.endpoint = Endpoints.normalize(settings.endpoint) || "";
   settings.collectionDevelopmentHTTP = source.collectionDevelopmentHTTP === true;
+  settings.syncProvider = ["", "server", "todoist", "googletasks", "nextcloudnotes"].indexOf(source.syncProvider) >= 0 ? source.syncProvider : "";
   settings.token = String(settings.token || "").trim();
   settings.units = settings.units === "imperial" || settings.units === "metric" ? settings.units : "auto";
   settings.locationLabel = String(settings.locationLabel || DEFAULTS.locationLabel).slice(0, 64);
@@ -71,9 +73,10 @@ function save(settings, storage) {
   return normalized;
 }
 
-function buildConfigUrl(settings, nonce, catalog) {
+function buildConfigUrl(settings, nonce, catalog, error) {
   var normalized = copyDefaults(settings);
   if (catalog) { normalized.codexCatalog = catalog; }
+  if (error) { normalized.managementError = String(error).slice(0, 500); }
   normalized.tokenConfigured = !!normalized.token;
   normalized.token = "";
   var state = encodeURIComponent(JSON.stringify(normalized));

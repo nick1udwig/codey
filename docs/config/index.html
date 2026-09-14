@@ -122,6 +122,8 @@
           <p>Notes, to-dos, and sync settings use the server URL above.</p>
           <label><input id="collection-development-http" type="checkbox">Allow HTTP for local development collections</label>
           <label><input id="recover-collections" type="checkbox"> Archive quarantined phone input on the original server for review, then re-enroll</label>
+          <label>Sync service to configure<select id="sync-provider"><option value="">All services</option><option value="server">Server only</option><option value="todoist">Todoist</option><option value="googletasks">Google Tasks</option><option value="nextcloudnotes">Nextcloud Notes</option></select></label>
+          <small>Choose a service, then open setup to sign in and activate its destination.</small>
           <button id="manage-integrations" type="button">Save &amp; manage sync services</button>
           <p>Choose Server only, Todoist, Google Tasks, or Nextcloud Notes. Provider credentials stay on the server.</p>
         </fieldset>

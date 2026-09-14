@@ -66,7 +66,7 @@ function request(port, { method = "POST", body = "" } = {}) {
 function runConfig(hash, bridge, XHR) {
   const ids = ["settings", "endpoint", "token", "units", "timeout", "location-label", "status", "codex-model", "codex-effort", "fast-mode", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review", "answer-vibrate", "tap-animation"];
   const elements = {};
-  ids.push("token-status","new-session","collection-development-http","manage-integrations","recover-collections");
+  ids.push("sync-provider","token-status","new-session","collection-development-http","manage-integrations","recover-collections");
   let submit;
   ids.forEach(id => {
     elements[id] = {
@@ -208,7 +208,7 @@ test("configuration page hydrates state and closes with normalized form values",
   const saved = JSON.parse(decodeURIComponent(harness.location.href.split("#")[1]));
   assert.deepEqual(saved, {
     endpoint: "https://new.test/agent",
-    collectionDevelopmentHTTP:false,
+    syncProvider:"",collectionDevelopmentHTTP:false,
     token: "secret",
     units: "metric",
     locationLabel: "Current location",
@@ -216,6 +216,12 @@ test("configuration page hydrates state and closes with normalized form values",
     codexModel: "gpt-5.6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
     networkAccess: false, shellAccess: false, autoReview: false, answerVibrate: true, tapAnimation: true
   });
+});
+
+test("management setup errors are visible in the reopened settings page", () => {
+ const h=runConfig("#"+encodeURIComponent(JSON.stringify({managementError:"Configure HTTPS public_url",tokenConfigured:true})));
+ assert.match(h.elements.status.textContent,/Could not open sync services: Configure HTTPS public_url/);
+ assert.equal(h.elements.token.value,"");
 });
 
 test("configuration page recovers from a bad hash and supports the native bridge", () => {
