@@ -1,7 +1,63 @@
 {
   "version": 1,
-  "created_at": "2026-09-15T22:44:43.648035771+00:00",
+  "created_at": "2026-09-15T22:56:06.187785695+00:00",
   "documents": [
+    {
+      "id": "01a0a748-dafa-7be0-821f-dd1725d8644f",
+      "slug": "issues/dashboard-telemetry-icon-offset",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Lower telemetry icons relative to text",
+      "content": "User clarified that icons are too high relative to the text; the previous text adjustment was in the wrong direction. Lower battery and brain artwork by two pixels, holding all text positions, fonts, and horizontal spacing fixed. Build validation covers Emery and Gabbro; visual alignment still needs confirmation on the watch.",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-15T22:56:06.151946736Z",
+      "modified_at": "2026-09-15T22:56:06.151946736Z"
+    },
+    {
+      "id": "01a0a747-1723-7403-9795-c75932a3d61e",
+      "slug": "issues/dashboard-telemetry-alignment",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Align dashboard telemetry text with icons",
+      "content": "Context: native percentage text appeared slightly above the battery and brain icons. Acceptance: lower both values and the percent sign by two pixels while preserving their font and horizontal spacing. Applied the shared vertical correction to all three text draws.",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-15T22:54:10.478532537Z",
+      "modified_at": "2026-09-15T22:54:10.478532537Z"
+    },
+    {
+      "id": "01a0a744-2e62-7fb1-a0d8-da0316abb19f",
+      "slug": "issues/dashboard-telemetry-proportions",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Restore proportional dashboard telemetry fonts",
+      "content": "Context: previous telemetry glyphs stretched vertically to fill space and were unreadable. Acceptance: normal native font proportions, largest font permitted by the combined width of two 100 values and the percent sign, gaps between icons and text, and no clock overlap. Replaced custom stretched glyph rendering with measured native Gothic bold fonts.",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-15T22:50:59.840084729Z",
+      "modified_at": "2026-09-15T22:50:59.840084729Z"
+    },
+    {
+      "id": "01a0a742-062e-7c21-a872-0b2485cba82b",
+      "slug": "issues/dashboard-telemetry-font-size",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Enlarge dashboard telemetry numbers",
+      "content": "Context: battery and brain quota numbers and the central percent sign were only seven pixels tall. Acceptance: use the space above the clock for larger digits, reserve three digits per metric, and keep the icons, numbers, percent sign, and clock separated on Emery and Gabbro. Implemented fitted pixel glyphs and a taller percent sign.",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-15T22:48:49.294754170Z",
+      "modified_at": "2026-09-15T22:48:49.294754170Z"
+    },
     {
       "id": "01a0a723-e802-7400-9d5c-d99b90f3fb4d",
       "slug": "issues/batch-collection-journal-receipts",
@@ -1129,6 +1185,78 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a0a748-e00f-7463-9292-021a489b2780",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Record corrected telemetry icon offset",
+      "created_at": "2026-09-15T22:56:06.151946736Z",
+      "changes": [
+        {
+          "document_id": "01a0a748-dafa-7be0-821f-dd1725d8644f",
+          "slug": "issues/dashboard-telemetry-icon-offset",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "1a522d392dce5e99d00116a6f0864598ed4e8d23b7932b7a8c680d162b38b832",
+          "doc_type": "task",
+          "title": "Lower telemetry icons relative to text"
+        }
+      ]
+    },
+    {
+      "id": "01a0a747-1c37-7ac1-a64a-d1ee66723fcd",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Record telemetry text alignment correction",
+      "created_at": "2026-09-15T22:54:10.478532537Z",
+      "changes": [
+        {
+          "document_id": "01a0a747-1723-7403-9795-c75932a3d61e",
+          "slug": "issues/dashboard-telemetry-alignment",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "46108a75da8f489f3974a879592a21a5029f26d6dc73de3989aa6616a45777f3",
+          "doc_type": "task",
+          "title": "Align dashboard telemetry text with icons"
+        }
+      ]
+    },
+    {
+      "id": "01a0a744-3389-7073-9b82-5d31390e10c6",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Record proportional telemetry font correction",
+      "created_at": "2026-09-15T22:50:59.840084729Z",
+      "changes": [
+        {
+          "document_id": "01a0a744-2e62-7fb1-a0d8-da0316abb19f",
+          "slug": "issues/dashboard-telemetry-proportions",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "88068345b5e445b54350db979ea138d2a1bb3a7eafa9ff9639dfdef37dbaa563",
+          "doc_type": "task",
+          "title": "Restore proportional dashboard telemetry fonts"
+        }
+      ]
+    },
+    {
+      "id": "01a0a742-3598-7431-8bed-973bcec485cb",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Document dashboard telemetry font enlargement",
+      "created_at": "2026-09-15T22:48:49.294754170Z",
+      "changes": [
+        {
+          "document_id": "01a0a742-062e-7c21-a872-0b2485cba82b",
+          "slug": "issues/dashboard-telemetry-font-size",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "c3465744e13a4201e2eda102e317ec55d563f7fdb6e6b419e67f57341ecbc1f9",
+          "doc_type": "task",
+          "title": "Enlarge dashboard telemetry numbers"
+        }
+      ]
+    },
     {
       "id": "01a0a73e-75af-73c2-af5f-ff9151c63420",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

@@ -879,19 +879,39 @@ static void prv_weather_icon(AgentUi *ui, GContext *ctx, const char *icon, int16
   }
 }
 
+// Use native font proportions. Width (including two three-digit values and
+// the percent sign) determines the largest font that fits this telemetry row.
+static GFont prv_dashboard_metric_font(GRect b) {
+  const char *keys[] = { FONT_KEY_GOTHIC_28_BOLD, FONT_KEY_GOTHIC_24_BOLD,
+                         FONT_KEY_GOTHIC_18_BOLD, FONT_KEY_GOTHIC_14_BOLD };
+  int available_height = (b.size.h - 42) / 2 - 12;
+  for (unsigned i = 0; i < sizeof(keys) / sizeof(keys[0]); ++i) {
+    GFont font = fonts_get_system_font(keys[i]);
+    GSize digits = graphics_text_layout_get_content_size("100", font, GRect(0,0,200,60),
+        GTextOverflowModeWordWrap, GTextAlignmentLeft);
+    GSize percent = graphics_text_layout_get_content_size("%", font, GRect(0,0,200,60),
+        GTextOverflowModeWordWrap, GTextAlignmentLeft);
+    if (2 * digits.w + percent.w + 8 <= b.size.w - 42 &&
+        digits.h <= available_height) { return font; }
+  }
+  return fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
+}
+
 // Small hand-drawn pictographs avoid relying on missing emoji font glyphs.
 static void prv_dashboard_battery(GContext *ctx,GRect b) {
-  int x=b.origin.x+5,y=b.origin.y+6;
+  int x=b.origin.x+5,y=b.origin.y+7;
   graphics_context_set_stroke_color(ctx,GColorBlack);graphics_context_set_fill_color(ctx,GColorBlack);
   BatteryChargeState battery=battery_state_service_peek();
   graphics_draw_rect(ctx,GRect(x,y+4,11,7));graphics_fill_rect(ctx,GRect(x+11,y+6,2,3),0,GCornerNone);
   graphics_fill_rect(ctx,GRect(x+2,y+6,7*battery.charge_percent/100,3),0,GCornerNone);
   char text[16];snprintf(text,sizeof(text),"%d",battery.charge_percent);
-  prv_pixel_text(ctx,text,x+15,y+4,1,1,GColorBlack);
+  GFont font = prv_dashboard_metric_font(b);
+  prv_draw_text(ctx,text,font,GRect(x+15,b.origin.y+5,(b.size.w-42)/2,30),
+                GTextAlignmentLeft,GColorBlack,GTextOverflowModeTrailingEllipsis);
 }
 
 static void prv_dashboard_quota(AgentUi *ui,GContext *ctx,GRect b) {
-  int x=b.origin.x+b.size.w-19,y=b.origin.y+6;
+  int x=b.origin.x+b.size.w-19,y=b.origin.y+7;
   char text[16];
   // Scalloped brain silhouette and short folds remain readable at 14 pixels.
   graphics_context_set_fill_color(ctx,PBL_IF_COLOR_ELSE(GColorMelon,GColorWhite));
@@ -906,11 +926,12 @@ static void prv_dashboard_quota(AgentUi *ui,GContext *ctx,GRect b) {
   graphics_draw_line(ctx,GPoint(x+2,y+6),GPoint(x+4,y+7));
   graphics_draw_line(ctx,GPoint(x+10,y+7),GPoint(x+12,y+6));
   if(ui->codex_remaining<0)snprintf(text,sizeof(text),"--");else snprintf(text,sizeof(text),"%d",ui->codex_remaining);
-  prv_pixel_text(ctx,text,x-3-(int)strlen(text)*6,y+4,1,1,GColorBlack);
-  int center=b.origin.x+(b.size.w-5)/2;
-  graphics_draw_rect(ctx,GRect(center,y+4,2,2));
-  graphics_draw_line(ctx,GPoint(center+4,y+4),GPoint(center,y+10));
-  graphics_draw_rect(ctx,GRect(center+3,y+9,2,2));
+  GFont font = prv_dashboard_metric_font(b);
+  int width = (b.size.w-42)/2;
+  prv_draw_text(ctx,text,font,GRect(x-3-width,b.origin.y+5,width,30),
+                GTextAlignmentRight,GColorBlack,GTextOverflowModeTrailingEllipsis);
+  prv_draw_text(ctx,"%",font,GRect(b.origin.x+20,b.origin.y+5,b.size.w-42,30),
+                GTextAlignmentCenter,GColorBlack,GTextOverflowModeTrailingEllipsis);
 }
 
 // Select the artwork from the active-thread count, including notification marks.
