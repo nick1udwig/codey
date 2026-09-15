@@ -8,6 +8,9 @@
 
 typedef int32_t WakeupId;
 typedef struct Window Window;
+typedef struct GBitmap GBitmap;
+GBitmap *gbitmap_create_with_resource(uint32_t resource);
+void gbitmap_destroy(GBitmap *bitmap);
 typedef void (*WakeupHandler)(WakeupId wakeup_id, int32_t cookie);
 
 void wakeup_service_subscribe(WakeupHandler handler);

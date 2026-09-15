@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "created_at": "2026-09-15T22:36:12.663242010+00:00",
+  "created_at": "2026-09-15T22:44:43.648035771+00:00",
   "documents": [
     {
       "id": "01a0a723-e802-7400-9d5c-d99b90f3fb4d",
@@ -61,16 +61,16 @@
     {
       "id": "01a0a723-e837-7f20-88e3-632d9e901675",
       "slug": "issues/reduce-dashboard-animation-redraw-cost",
-      "version": 1,
+      "version": 2,
       "doc_type": "task",
       "title": "Reduce static dashboard redraw work during request animation",
-      "content": "Context: efficiency audit of source baseline 200b0c6 on 2026-09-15. See docs/efficiency-audit.md for the full audit and measurement limits.\n\n[prv_activity_tick](../src/c/agent_ui.c#L2279) marks the full content layer dirty\nevery 30 ms for a short 20-frame animation. Each dashboard repaint invokes\n[prv_dashboard_codey](../src/c/agent_ui.c#L910), which allocates a row bitmap,\nreads the image header and palette, and reads/draws every image row.\nCurrent large artwork has 74 rows on Emery and 59 on Gabbro: **76 / 61 resource\nAPI reads per full dashboard paint**, or approximately **1,520 / 1,220** over\n20 paints. These count API calls, not physical flash transactions.\n\nAcceptance: instrument real repaint counts and CPU time; evaluate an overlay\nor bounded artwork cache with verified invalidation and heap headroom. Keep the\nshort animation, visual correctness, platform poses, and low-memory fallback.\nDo not assume a separate layer automatically avoids background redraws on the\nSDK. Cache only if measurements justify its retained memory cost.\nKB: `issues/reduce-dashboard-animation-redraw-cost`.",
+      "content": "Context: efficiency audit of source baseline 200b0c6 on 2026-09-15. See docs/efficiency-audit.md for the full audit and measurement limits.\n\n[prv_activity_tick](../src/c/agent_ui.c#L2279) marks the full content layer dirty\nevery 30 ms for a short 20-frame animation. Each dashboard repaint invokes\n[prv_dashboard_codey](../src/c/agent_ui.c#L910), which allocates a row bitmap,\nreads the image header and palette, and reads/draws every image row.\nCurrent large artwork has 74 rows on Emery and 59 on Gabbro: **76 / 61 resource\nAPI reads per full dashboard paint**, or approximately **1,520 / 1,220** over\n20 paints. These count API calls, not physical flash transactions.\n\nAcceptance: instrument real repaint counts and CPU time; evaluate an overlay\nor bounded artwork cache with verified invalidation and heap headroom. Keep the\nshort animation, visual correctness, platform poses, and low-memory fallback.\nDo not assume a separate layer automatically avoids background redraws on the\nSDK. Cache only if measurements justify its retained memory cost.\nKB: `issues/reduce-dashboard-animation-redraw-cost`.\n\nImplemented and validated: Added a single transient bitmap cache during request animation, with per-pose invalidation, low-memory row fallback, and cleanup on completion, navigation, disappearance, destruction and timer failure. Ten native ASan/UBSan suites pass, including load/release/failure/retry counts. Both SDK builds pass. Emulator/GDB checks on Emery/Gabbro show one full bitmap load and 76/62 app resource-range calls per animation, followed by a null cache; dashboard artwork and Gabbro pose switching render correctly. Full npm suite and focused Go race tests pass; CGO-disabled release server builds. All emulator/simulator/debugger processes were stopped and exit verified. Final aggregate sizes and LOC/freshness tradeoffs are documented.\n",
       "frontmatter": {
-        "status": "draft",
+        "status": "completed",
         "priority": "low"
       },
       "created_at": "2026-09-15T22:16:07.935019550Z",
-      "modified_at": "2026-09-15T22:16:07.935019550Z"
+      "modified_at": "2026-09-15T22:44:43.224905645Z"
     },
     {
       "id": "01a0a723-e810-7a22-a5fb-6834e83a4729",
@@ -117,16 +117,16 @@
     {
       "id": "01a0a723-e845-73e2-b2e7-a22b4bcd17b2",
       "slug": "reference/docs/efficiency-audit",
-      "version": 10,
+      "version": 11,
       "doc_type": "reference",
       "title": "docs/efficiency-audit.md",
-      "content": "Source: `docs/efficiency-audit.md`\n\n# Efficiency audit — 2026-09-15\n\nSource baseline: `200b0c6`. The original opportunity assessment follows; implementation results are recorded\nat the end of this document. Measurements below use local builds and synthetic\ndata, not personal server logs or physical battery measurements.\n\n## Recommended order\n\n| Priority | Opportunity | Expected benefit | Scope |\n| --- | --- | --- | --- |\n| 1 | Remove write-only native element fields | 2,496 bytes less permanent watch heap; fewer copies | Small |\n| 1 | Remove unused icons and exclude other-platform artwork | 4,180 / 6,056 bytes less resource data on Emery / Gabbro; six fewer bitmap allocations | Small |\n| 1 | Bound opened phone job history | Stop unbounded retained results and whole-history save growth | Medium; preserve acknowledgment/replay |\n| 1 | Commit collection receipts as one batch | Up to 20 full journal writes become one per response | Medium; preserve durability |\n| 2 | Adapt idle polling and share dashboard status work | Fewer HTTP/Bluetooth requests and server RPCs | Medium |\n| 2 | Store immutable snapshot rows with bounded page reads | Avoid decoding all summaries to return eight records | Medium |\n| 2 | Remove bridge dead state and separate request serialization | Less JS allocation, bundle code, and maintenance | Small/medium |\n| 3 | Avoid redrawing static dashboard artwork during animation | Fewer resource reads, allocations, and drawing calls | Measure target rendering first |\n\n## 1. Remove write-only element fields\n\n[AgentUiElement](../src/c/agent_ui.c#L53) stores `kind_name[16]`,\n`parent_id[32]`, and `index` for each of 48 slots. Source references only declare\nand assign these fields; rendering uses `kind`, array order, and other fields.\nThey are not persisted. Keep the incoming protocol fields accepted; remove the\nunused retained copies and assignments.\n\nGDB inspection of the Emery ELF: `sizeof(AgentUi) = 42888`,\n`sizeof(AgentUiElement) = 868`, and the element array occupies 41,664 bytes.\nThe unused fields total 52 bytes per slot, giving an expected **2,496-byte**\nheap reduction before further redesign. Confirm the resulting struct layout on\nboth targets. Most remaining memory is bounded text storage; consider a string\npool only after measuring actual occupancy and accounting for patch/append\ncapacity, fragmentation, and allocation failures.\n\nAcceptance: remove only unread retained state; preserve add/patch/layout/input\nbehavior and 48-element capacity; build both targets and compare struct sizes.\nKB: `issues/remove-write-only-watch-fields`.\n\n## 2. Remove unused and wrong-platform image resources\n\n[Icon initialization](../src/c/agent_ui.c#L2109) allocates 13 bitmaps for the\nentire app lifetime. All calls to `prv_dashboard_icon` can select only indices\n0, 1, 2, 4, 8, 9, and 12. The six unused resources are `DASH_CHAT`,\n`DASH_TIMER`, `DASH_ALARM`, `DASH_BELL`, `DASH_BELL_SMALL`, and\n`DASH_TODOS_SMALL`. Their unique resource payloads total **820 bytes**.\n\n[package.json](../package.json) also includes both large Emery and Gabbro poses\nin each target. The renderer selects only its own platform's pair. Opposite\nplatform payloads occupy **3,360 bytes on Emery** and **5,236 on Gabbro**.\nTogether, these removals would reduce each 14,643-byte resource pack by\n**4,180 bytes (28.5%) / 6,056 bytes (41.4%)**. These are resource-pack savings,\nnot executable text savings or compressed PBW savings. Values come from actual\npack entries; `.reso` file sizes include serialization overhead and overstate\nthe savings. The pack's reserved table is fixed size.\n\nAcceptance: remove six unused loads/resources, scope large artwork to its\ntarget, verify both resource packs and dashboard/notification visuals, preserve\nall reachable icon roles, and measure heap before/after. Replace numeric icon\nindices with named roles while changing the table.\nKB: `issues/prune-watch-artwork`.\n\n## 3. Bound retained phone jobs\n\n[Jobs.acknowledge](../src/common/jobs.js#L131) marks a job opened but retains\nits result, request body, and command bookkeeping forever. `save()` serializes\nthe entire array; the 24-job submission limit only counts unopened jobs.\n[The bridge](../src/pkjs/index.js#L531) sends only unopened jobs to the watch.\n\nA fixture using the real `Jobs` class, in-memory storage, and a stubbed `http`\nmethod acknowledged 100 jobs with 16 KiB results. It retained **100 entries,\nzero unopened**, and **1,649,701 bytes per subsequent save**. This establishes\nunbounded storage/serialization growth; it is not a phone heap measurement.\n\nAcceptance: bound opened history and remove unnecessary large payloads after\nsafe handoff; retain pending acknowledgment retries and minimal replay identity\nas needed. Verify late long-wait responses, duplicate retrieval, restart,\nfailed local writes, failed server acknowledgments, command idempotency, and\n24 genuinely pending jobs. Do not delete unacknowledged results indiscriminately.\nKB: `issues/bound-opened-phone-jobs`.\n\n## 4. Batch durable journal receipts\n\n[Client.drain and recover](../src/common/collections/client.js#L19) loop over\nresults and call [Journal.receipt](../src/common/collections/journal.js#L24)\nseparately. Every call clones, serializes, checksums, writes, reads back, and\nvalidates the whole journal. Even unknown or nondurable receipts currently\nenter that write path.\n\nA real-Journal fixture with 20 pending notes, each with a 1 KiB body, then 20\ndurable applied receipts produced **20 storage writes / 2,072,804 UTF-8 bytes**\nof serialized envelopes. Final logical journal length was 100,743 characters.\nLocal Node processing took approximately 40 ms; storage was an in-memory mock.\n\nAcceptance: one verified two-slot commit for a changed response batch; zero\nwrites for an unchanged batch. Share this path between drain and recovery.\nPreserve operation dependencies, replay receipts, mixed results, quota failure,\nwrite/readback failure, and crash recovery. Measure writes/bytes per batch.\nKB: `issues/batch-collection-journal-receipts`.\n\n## 5. Reduce idle polling and repeated status scans\n\n[syncCollections](../src/pkjs/index.js#L43) calls `connect` every minute, which\nrequests sync identity and collection metadata: **120 HTTP requests/hour**\nwhile that loop runs successfully, before mutations. Count suppression already\navoids unchanged count messages, but does not avoid those requests.\n\n[The capability clock](../src/c/agent_capabilities.c#L63) also emits a status\nrequest every minute even outside the dashboard. Each\n[DashboardStatus](../internal/agent/status.go#L42) call requests quota, lists\nloaded threads, and reads each thread's status separately. With 100 loaded\nthreads in one page, that is **102 sequential RPCs per successful refresh**,\nwith complete RPC logging on the server. These are source-derived counts.\n\n[The provider engine](../internal/collectionsync/engine.go#L35) pulls all\nbindings each minute and after a wake. Google Tasks and Nextcloud enumerate\ntheir selected collections; CalDAV requests the full agenda window. Todoist\nalready uses a checkpoint, so avoid applying a blanket full-scan diagnosis.\n\nAcceptance: measure idle requests/bytes and RPC latency; add bounded freshness,\nbackoff, and shared in-flight status results; investigate provider incremental\nsupport before choosing APIs. Preserve immediate mutation upload, explicit\nrefresh, external thread visibility, identity checks/quarantine, date-window\nrollover, recurrence and safe deletion reconciliation. Verify disconnect,\nreconnect, changed credentials, and stale responses. Physical power measurement\nis needed to quantify battery improvement.\nKB: existing `issues/incremental-collection-refresh`, plus\n`issues/reduce-dashboard-status-scan-work`.\n\n## 6. Bound snapshot pagination work\n\n[snapshot](../internal/collectionstore/reads.go#L84) reads every record's JSON,\nprojects summaries, filters in Go, and persists one JSON array.\n[SnapshotPage](../internal/collectionstore/reads.go#L157) reloads and decodes\nthat entire array before slicing out a page. Paging all N records in groups of\neight therefore decodes roughly N × ceil(N/8) summaries.\n\nThe existing 100-note fixture (approximately 67 KiB per body), ten iterations,\nmeasured **15.48 ms / 268,221 allocated bytes per snapshot**. Indexed collection\ncounts already cost only **0.053 ms / 4,588 bytes**; they are not the priority.\nAlthough SQL removes bodies from output, it still processes the source JSON.\n\nAcceptance: retain small indexed summaries and store immutable snapshot rows\nby position, enabling bounded page queries. Preserve exact totals, stable\npagination across edits/deletion, cursor scope/expiry, chronological calendar\norder, timezone semantics, and complete canonical bodies. Benchmark first and\nlater pages at 100, 1,000, and 10,000 records. Do not substitute pagination over\nmutable current rows for immutable snapshots.\nKB: `issues/bound-collection-snapshot-page-cost`.\n\n## 7. Simplify the phone bridge and JS dependency graph\n\nIn [src/pkjs/index.js](../src/pkjs/index.js), `sendNoteMessage` has no callers;\n`activePipeline` is assigned but never read; the instantiated `AgentClient`\nonly receives `abort()` calls and never sends anything. Remote work uses\n`jobManager.submit`. `requestAgent` still builds a parser/model pipeline before\ndetermining whether input is local, allocating an unused pipeline for remote\njobs and retaining it through `activePipeline`.\n\n[jobs.js](../src/common/jobs.js#L4) imports `buildRequest` from the whole\n236-line transport module. Extract the shared request serializer so the watch\nbridge does not pull HTTP/WebSocket transport implementations into its bundle.\nThe transport remains exported by [the library](../src/common/index.js#L9) and\nhas tests; it is not globally dead code.\n\nAcceptance: remove bridge-only dead code/state, allocate pipelines where used,\nshare the request serializer, preserve the public library and transport tests,\nand compare generated JS size and local/remote dispatch behavior. Avoid replacing\nclear code with compressed one-line implementations to claim LOC savings.\nKB: `issues/simplify-phone-bridge-dependencies`.\n\n## 8. Reduce dashboard work during request animation\n\n[prv_activity_tick](../src/c/agent_ui.c#L2279) marks the full content layer dirty\nevery 30 ms for a short 20-frame animation. Each dashboard repaint invokes\n[prv_dashboard_codey](../src/c/agent_ui.c#L910), which allocates a row bitmap,\nreads the image header and palette, and reads/draws every image row.\nCurrent large artwork has 74 rows on Emery and 59 on Gabbro: **76 / 61 resource\nAPI reads per full dashboard paint**, or approximately **1,520 / 1,220** over\n20 paints. These count API calls, not physical flash transactions.\n\nAcceptance: instrument real repaint counts and CPU time; evaluate an overlay\nor bounded artwork cache with verified invalidation and heap headroom. Keep the\nshort animation, visual correctness, platform poses, and low-memory fallback.\nDo not assume a separate layer automatically avoids background redraws on the\nSDK. Cache only if measurements justify its retained memory cost.\nKB: `issues/reduce-dashboard-animation-redraw-cost`.\n\n## Validation and existing optimizations\n\n- `pebble build` passes for Emery and Gabbro. Executable binaries are 61,448 /\n  61,960 bytes; resource packs are 14,643 bytes each; generated JS is 127,857 bytes.\n- ELF text/data/BSS: Emery 60,710 / 424 / 740 bytes; Gabbro 61,222 / 424 / 740.\n  Heap allocations, including `AgentUi`, are additional to BSS.\n- `go test ./internal/collectionstore -run '^$' -bench\n  'Benchmark(CollectionCounts|NoteSnapshot)$' -benchtime=10x -benchmem` passes.\n- A server release-style build with `CGO_ENABLED=0`, `-trimpath`, and\n  `-ldflags='-s -w'` passes. Release CI already uses these size flags; stripping\n  is not a new opportunity. Watch builds already use `-Os` and section GC.\n- Existing minute redraw coalescing, bounded job long-waits, indexed counts,\n  summary-only collection responses, and unchanged preview/count suppression\n  should be preserved.\n- No emulator was started or used. Battery percentages and production CPU/RSS\n  reductions remain unmeasured. No runtime behavior changed, so this audit ran\n  builds, focused existing benchmarks, and synthetic probes rather than a full\n  behavioral regression suite.\n\n## Implementation results\n\n- **remove-write-only-watch-fields**: Removed three unread retained fields and their copies without changing protocol acceptance or capacity. Both watch builds and all nine native ASan/UBSan suites pass. On both targets AgentUi shrank from 42,888 to 40,392 bytes (2,496 bytes saved), and executable text/data shrank by 60 bytes.\n\n- **prune-watch-artwork**: Removed six unused bitmap loads and resource entries, introduced named icon roles, and limited each large pose pair to its target. Both SDK builds pass; pack inspection confirms nine resources per target and no opposite-platform artwork. Emery resources are 10,463 bytes (-4,180); Gabbro 8,587 (-6,056); executable footprint saves another 64 bytes per target, with six fewer bitmap allocations and 24 fewer pointer bytes. Final rendering verification is combined with the animation change.\n\n- **bound-opened-phone-jobs**: Opened jobs now durably replace delivered payloads with small acknowledgment receipts; successful/expired acknowledgments remove them, and reconnect/pane-open/submission retries preserve failed acknowledgments. A bounded receipt backlog prevents indefinite growth. Fixed terminal-result persistence rollback as well. 96 phone tests pass, including late responses, duplicate acknowledgment, restart, failed receipt/cleanup writes, 100 x 16 KiB results ending in a two-byte empty history, and the 24-pending-job limit.\n\n- **batch-collection-journal-receipts**: Drain and recovery now share one batch receipt transaction, cloning/writing only changed durable known receipts. The original 20-note fixture now writes one envelope (104,750 bytes) instead of 20 (2,072,804 bytes), a 94.9% reduction. Collection tests and all 96 phone tests pass, including mixed durable/nondurable results, failure preserving the old journal, restart, unknown/no-op receipts, and retained replay metadata.\n\n- **simplify-phone-bridge-dependencies**: Removed unused bridge client, pipeline retention, note sender, and eager remote-request pipelines. Jobs and the public transport now reuse a standalone request serializer; the transport export stays compatible. All 96 phone tests (including HTTP/WebSocket and dispatch) and both watch builds pass. Generated JS contains no AgentClient transport implementation and is about 123.3 KB versus the original 127.9 KB, despite the new durability logic.\n\n- **bound-collection-snapshot-page-cost**: Added transactionally maintained body-free summaries and immutable snapshot rows indexed by position. Atomic schema upgrade preserves existing snapshots, cursor keys and server identities; expiry cascades row cleanup. Full Go suite passes, including upgrade, canonical edits/deletes, pinned pages, corrupt off-page isolation, cursor bounds and calendar/timezone tests. The 100 large-note snapshot improved from 15.48 ms/268,221 B to 6.84 ms/6,059 B; later eight-row pages at 100/1,000/10,000 records allocate about 20 KB independent of collection size (0.54/0.60/0.94 ms in this run). First-page Go allocations stay about 24 KB.\n\n- **reduce-dashboard-status-scan-work**: Dashboard status scans now share one cancellable-waiter-safe in-flight scan and a connection-generation-scoped cache (60 seconds; partial data 5 seconds). The watch requests minute status only on the dashboard and refreshes on return. Concurrency/race tests verify 20 callers use one scan, one cancellation leaves other callers intact, cache expiry, and isolated result pointers. Native tests cover leaving/returning home; both watch builds pass.\n\n- **incremental-collection-refresh**: Added coalesced adaptive phone polling (60 to 300 seconds), bounded provider scan cooldowns with binding invalidation and UTC day rollover, and immediate provider wake after accepted mutations. Explicit refresh bypasses cooldown; pending work still dispatches immediately. Existing Todoist incremental checkpoints and complete CalDAV/Google/Nextcloud enumeration/deletion semantics are preserved. Added stale credential response rejection. JS tests cover backoff, coalescing, stop/reconnect and credentials; provider tests cover an idle-hour bound of at most 16 scans versus 60, pending writes and explicit refresh, plus boundary deadlines. Race tests and watch builds pass. Steady unchanged phone metadata traffic falls from 120 to 24 requests/hour; physical battery savings are unmeasured.\n",
+      "content": "Source: `docs/efficiency-audit.md`\n\n# Efficiency audit — 2026-09-15\n\nSource baseline: `200b0c6`. The original opportunity assessment follows; implementation results are recorded\nat the end of this document. Measurements below use local builds and synthetic\ndata, not personal server logs or physical battery measurements.\n\n## Recommended order\n\n| Priority | Opportunity | Expected benefit | Scope |\n| --- | --- | --- | --- |\n| 1 | Remove write-only native element fields | 2,496 bytes less permanent watch heap; fewer copies | Small |\n| 1 | Remove unused icons and exclude other-platform artwork | 4,180 / 6,056 bytes less resource data on Emery / Gabbro; six fewer bitmap allocations | Small |\n| 1 | Bound opened phone job history | Stop unbounded retained results and whole-history save growth | Medium; preserve acknowledgment/replay |\n| 1 | Commit collection receipts as one batch | Up to 20 full journal writes become one per response | Medium; preserve durability |\n| 2 | Adapt idle polling and share dashboard status work | Fewer HTTP/Bluetooth requests and server RPCs | Medium |\n| 2 | Store immutable snapshot rows with bounded page reads | Avoid decoding all summaries to return eight records | Medium |\n| 2 | Remove bridge dead state and separate request serialization | Less JS allocation, bundle code, and maintenance | Small/medium |\n| 3 | Avoid redrawing static dashboard artwork during animation | Fewer resource reads, allocations, and drawing calls | Measure target rendering first |\n\n## 1. Remove write-only element fields\n\n[AgentUiElement](../src/c/agent_ui.c#L53) stores `kind_name[16]`,\n`parent_id[32]`, and `index` for each of 48 slots. Source references only declare\nand assign these fields; rendering uses `kind`, array order, and other fields.\nThey are not persisted. Keep the incoming protocol fields accepted; remove the\nunused retained copies and assignments.\n\nGDB inspection of the Emery ELF: `sizeof(AgentUi) = 42888`,\n`sizeof(AgentUiElement) = 868`, and the element array occupies 41,664 bytes.\nThe unused fields total 52 bytes per slot, giving an expected **2,496-byte**\nheap reduction before further redesign. Confirm the resulting struct layout on\nboth targets. Most remaining memory is bounded text storage; consider a string\npool only after measuring actual occupancy and accounting for patch/append\ncapacity, fragmentation, and allocation failures.\n\nAcceptance: remove only unread retained state; preserve add/patch/layout/input\nbehavior and 48-element capacity; build both targets and compare struct sizes.\nKB: `issues/remove-write-only-watch-fields`.\n\n## 2. Remove unused and wrong-platform image resources\n\n[Icon initialization](../src/c/agent_ui.c#L2109) allocates 13 bitmaps for the\nentire app lifetime. All calls to `prv_dashboard_icon` can select only indices\n0, 1, 2, 4, 8, 9, and 12. The six unused resources are `DASH_CHAT`,\n`DASH_TIMER`, `DASH_ALARM`, `DASH_BELL`, `DASH_BELL_SMALL`, and\n`DASH_TODOS_SMALL`. Their unique resource payloads total **820 bytes**.\n\n[package.json](../package.json) also includes both large Emery and Gabbro poses\nin each target. The renderer selects only its own platform's pair. Opposite\nplatform payloads occupy **3,360 bytes on Emery** and **5,236 on Gabbro**.\nTogether, these removals would reduce each 14,643-byte resource pack by\n**4,180 bytes (28.5%) / 6,056 bytes (41.4%)**. These are resource-pack savings,\nnot executable text savings or compressed PBW savings. Values come from actual\npack entries; `.reso` file sizes include serialization overhead and overstate\nthe savings. The pack's reserved table is fixed size.\n\nAcceptance: remove six unused loads/resources, scope large artwork to its\ntarget, verify both resource packs and dashboard/notification visuals, preserve\nall reachable icon roles, and measure heap before/after. Replace numeric icon\nindices with named roles while changing the table.\nKB: `issues/prune-watch-artwork`.\n\n## 3. Bound retained phone jobs\n\n[Jobs.acknowledge](../src/common/jobs.js#L131) marks a job opened but retains\nits result, request body, and command bookkeeping forever. `save()` serializes\nthe entire array; the 24-job submission limit only counts unopened jobs.\n[The bridge](../src/pkjs/index.js#L531) sends only unopened jobs to the watch.\n\nA fixture using the real `Jobs` class, in-memory storage, and a stubbed `http`\nmethod acknowledged 100 jobs with 16 KiB results. It retained **100 entries,\nzero unopened**, and **1,649,701 bytes per subsequent save**. This establishes\nunbounded storage/serialization growth; it is not a phone heap measurement.\n\nAcceptance: bound opened history and remove unnecessary large payloads after\nsafe handoff; retain pending acknowledgment retries and minimal replay identity\nas needed. Verify late long-wait responses, duplicate retrieval, restart,\nfailed local writes, failed server acknowledgments, command idempotency, and\n24 genuinely pending jobs. Do not delete unacknowledged results indiscriminately.\nKB: `issues/bound-opened-phone-jobs`.\n\n## 4. Batch durable journal receipts\n\n[Client.drain and recover](../src/common/collections/client.js#L19) loop over\nresults and call [Journal.receipt](../src/common/collections/journal.js#L24)\nseparately. Every call clones, serializes, checksums, writes, reads back, and\nvalidates the whole journal. Even unknown or nondurable receipts currently\nenter that write path.\n\nA real-Journal fixture with 20 pending notes, each with a 1 KiB body, then 20\ndurable applied receipts produced **20 storage writes / 2,072,804 UTF-8 bytes**\nof serialized envelopes. Final logical journal length was 100,743 characters.\nLocal Node processing took approximately 40 ms; storage was an in-memory mock.\n\nAcceptance: one verified two-slot commit for a changed response batch; zero\nwrites for an unchanged batch. Share this path between drain and recovery.\nPreserve operation dependencies, replay receipts, mixed results, quota failure,\nwrite/readback failure, and crash recovery. Measure writes/bytes per batch.\nKB: `issues/batch-collection-journal-receipts`.\n\n## 5. Reduce idle polling and repeated status scans\n\n[syncCollections](../src/pkjs/index.js#L43) calls `connect` every minute, which\nrequests sync identity and collection metadata: **120 HTTP requests/hour**\nwhile that loop runs successfully, before mutations. Count suppression already\navoids unchanged count messages, but does not avoid those requests.\n\n[The capability clock](../src/c/agent_capabilities.c#L63) also emits a status\nrequest every minute even outside the dashboard. Each\n[DashboardStatus](../internal/agent/status.go#L42) call requests quota, lists\nloaded threads, and reads each thread's status separately. With 100 loaded\nthreads in one page, that is **102 sequential RPCs per successful refresh**,\nwith complete RPC logging on the server. These are source-derived counts.\n\n[The provider engine](../internal/collectionsync/engine.go#L35) pulls all\nbindings each minute and after a wake. Google Tasks and Nextcloud enumerate\ntheir selected collections; CalDAV requests the full agenda window. Todoist\nalready uses a checkpoint, so avoid applying a blanket full-scan diagnosis.\n\nAcceptance: measure idle requests/bytes and RPC latency; add bounded freshness,\nbackoff, and shared in-flight status results; investigate provider incremental\nsupport before choosing APIs. Preserve immediate mutation upload, explicit\nrefresh, external thread visibility, identity checks/quarantine, date-window\nrollover, recurrence and safe deletion reconciliation. Verify disconnect,\nreconnect, changed credentials, and stale responses. Physical power measurement\nis needed to quantify battery improvement.\nKB: existing `issues/incremental-collection-refresh`, plus\n`issues/reduce-dashboard-status-scan-work`.\n\n## 6. Bound snapshot pagination work\n\n[snapshot](../internal/collectionstore/reads.go#L84) reads every record's JSON,\nprojects summaries, filters in Go, and persists one JSON array.\n[SnapshotPage](../internal/collectionstore/reads.go#L157) reloads and decodes\nthat entire array before slicing out a page. Paging all N records in groups of\neight therefore decodes roughly N × ceil(N/8) summaries.\n\nThe existing 100-note fixture (approximately 67 KiB per body), ten iterations,\nmeasured **15.48 ms / 268,221 allocated bytes per snapshot**. Indexed collection\ncounts already cost only **0.053 ms / 4,588 bytes**; they are not the priority.\nAlthough SQL removes bodies from output, it still processes the source JSON.\n\nAcceptance: retain small indexed summaries and store immutable snapshot rows\nby position, enabling bounded page queries. Preserve exact totals, stable\npagination across edits/deletion, cursor scope/expiry, chronological calendar\norder, timezone semantics, and complete canonical bodies. Benchmark first and\nlater pages at 100, 1,000, and 10,000 records. Do not substitute pagination over\nmutable current rows for immutable snapshots.\nKB: `issues/bound-collection-snapshot-page-cost`.\n\n## 7. Simplify the phone bridge and JS dependency graph\n\nIn [src/pkjs/index.js](../src/pkjs/index.js), `sendNoteMessage` has no callers;\n`activePipeline` is assigned but never read; the instantiated `AgentClient`\nonly receives `abort()` calls and never sends anything. Remote work uses\n`jobManager.submit`. `requestAgent` still builds a parser/model pipeline before\ndetermining whether input is local, allocating an unused pipeline for remote\njobs and retaining it through `activePipeline`.\n\n[jobs.js](../src/common/jobs.js#L4) imports `buildRequest` from the whole\n236-line transport module. Extract the shared request serializer so the watch\nbridge does not pull HTTP/WebSocket transport implementations into its bundle.\nThe transport remains exported by [the library](../src/common/index.js#L9) and\nhas tests; it is not globally dead code.\n\nAcceptance: remove bridge-only dead code/state, allocate pipelines where used,\nshare the request serializer, preserve the public library and transport tests,\nand compare generated JS size and local/remote dispatch behavior. Avoid replacing\nclear code with compressed one-line implementations to claim LOC savings.\nKB: `issues/simplify-phone-bridge-dependencies`.\n\n## 8. Reduce dashboard work during request animation\n\n[prv_activity_tick](../src/c/agent_ui.c#L2279) marks the full content layer dirty\nevery 30 ms for a short 20-frame animation. Each dashboard repaint invokes\n[prv_dashboard_codey](../src/c/agent_ui.c#L910), which allocates a row bitmap,\nreads the image header and palette, and reads/draws every image row.\nCurrent large artwork has 74 rows on Emery and 59 on Gabbro: **76 / 61 resource\nAPI reads per full dashboard paint**, or approximately **1,520 / 1,220** over\n20 paints. These count API calls, not physical flash transactions.\n\nAcceptance: instrument real repaint counts and CPU time; evaluate an overlay\nor bounded artwork cache with verified invalidation and heap headroom. Keep the\nshort animation, visual correctness, platform poses, and low-memory fallback.\nDo not assume a separate layer automatically avoids background redraws on the\nSDK. Cache only if measurements justify its retained memory cost.\nKB: `issues/reduce-dashboard-animation-redraw-cost`.\n\n## Original audit validation and existing optimizations\n\n- `pebble build` passes for Emery and Gabbro. Executable binaries are 61,448 /\n  61,960 bytes; resource packs are 14,643 bytes each; generated JS is 127,857 bytes.\n- ELF text/data/BSS: Emery 60,710 / 424 / 740 bytes; Gabbro 61,222 / 424 / 740.\n  Heap allocations, including `AgentUi`, are additional to BSS.\n- `go test ./internal/collectionstore -run '^$' -bench\n  'Benchmark(CollectionCounts|NoteSnapshot)$' -benchtime=10x -benchmem` passes.\n- A server release-style build with `CGO_ENABLED=0`, `-trimpath`, and\n  `-ldflags='-s -w'` passes. Release CI already uses these size flags; stripping\n  is not a new opportunity. Watch builds already use `-Os` and section GC.\n- Existing minute redraw coalescing, bounded job long-waits, indexed counts,\n  summary-only collection responses, and unchanged preview/count suppression\n  should be preserved.\n- No emulator was started or used. Battery percentages and production CPU/RSS\n  reductions remain unmeasured. No runtime behavior changed, so this audit ran\n  builds, focused existing benchmarks, and synthetic probes rather than a full\n  behavioral regression suite.\n\n## Implementation results\n\n- **remove-write-only-watch-fields**: Removed three unread retained fields and their copies without changing protocol acceptance or capacity. Both watch builds and all nine native ASan/UBSan suites pass. On both targets AgentUi shrank from 42,888 to 40,392 bytes (2,496 bytes saved), and executable text/data shrank by 60 bytes.\n\n- **prune-watch-artwork**: Removed six unused bitmap loads and resource entries, introduced named icon roles, and limited each large pose pair to its target. Both SDK builds pass; pack inspection confirms nine resources per target and no opposite-platform artwork. Emery resources are 10,463 bytes (-4,180); Gabbro 8,587 (-6,056); executable footprint saves another 64 bytes per target, with six fewer bitmap allocations and 24 fewer pointer bytes. Final rendering verification is combined with the animation change.\n\n- **bound-opened-phone-jobs**: Opened jobs now durably replace delivered payloads with small acknowledgment receipts; successful/expired acknowledgments remove them, and reconnect/pane-open/submission retries preserve failed acknowledgments. A bounded receipt backlog prevents indefinite growth. Fixed terminal-result persistence rollback as well. 96 phone tests pass, including late responses, duplicate acknowledgment, restart, failed receipt/cleanup writes, 100 x 16 KiB results ending in a two-byte empty history, and the 24-pending-job limit.\n\n- **batch-collection-journal-receipts**: Drain and recovery now share one batch receipt transaction, cloning/writing only changed durable known receipts. The original 20-note fixture now writes one envelope (104,750 bytes) instead of 20 (2,072,804 bytes), a 94.9% reduction. Collection tests and all 96 phone tests pass, including mixed durable/nondurable results, failure preserving the old journal, restart, unknown/no-op receipts, and retained replay metadata.\n\n- **simplify-phone-bridge-dependencies**: Removed unused bridge client, pipeline retention, note sender, and eager remote-request pipelines. Jobs and the public transport now reuse a standalone request serializer; the transport export stays compatible. All 96 phone tests (including HTTP/WebSocket and dispatch) and both watch builds pass. Generated JS contains no AgentClient transport implementation and is about 123.3 KB versus the original 127.9 KB, despite the new durability logic.\n\n- **bound-collection-snapshot-page-cost**: Added transactionally maintained body-free summaries and immutable snapshot rows indexed by position. Atomic schema upgrade preserves existing snapshots, cursor keys and server identities; expiry cascades row cleanup. Full Go suite passes, including upgrade, canonical edits/deletes, pinned pages, corrupt off-page isolation, cursor bounds and calendar/timezone tests. The 100 large-note snapshot improved from 15.48 ms/268,221 B to 6.84 ms/6,059 B; later eight-row pages at 100/1,000/10,000 records allocate about 20 KB independent of collection size (0.54/0.60/0.94 ms in this run). First-page Go allocations stay about 24 KB.\n\n- **reduce-dashboard-status-scan-work**: Dashboard status scans now share one cancellable-waiter-safe in-flight scan and a connection-generation-scoped cache (60 seconds; partial data 5 seconds). The watch requests minute status only on the dashboard and refreshes on return. Concurrency/race tests verify 20 callers use one scan, one cancellation leaves other callers intact, cache expiry, and isolated result pointers. Native tests cover leaving/returning home; both watch builds pass.\n\n- **incremental-collection-refresh**: Added coalesced adaptive phone polling (60 to 300 seconds), bounded provider scan cooldowns with binding invalidation and UTC day rollover, and immediate provider wake after accepted mutations. Explicit refresh bypasses cooldown; pending work still dispatches immediately. Existing Todoist incremental checkpoints and complete CalDAV/Google/Nextcloud enumeration/deletion semantics are preserved. Added stale credential response rejection. JS tests cover backoff, coalescing, stop/reconnect and credentials; provider tests cover an idle-hour bound of at most 16 scans versus 60, pending writes and explicit refresh, plus boundary deadlines. Race tests and watch builds pass. Steady unchanged phone metadata traffic falls from 120 to 24 requests/hour; physical battery savings are unmeasured.\n\n## Final aggregate results\n\nAll eight opportunities are implemented in separate Git commits. Compared with\n`200b0c6`:\n\n| Measurement | Before | After |\n| --- | ---: | ---: |\n| AgentUi allocation (both targets) | 42,888 B | 40,376 B |\n| Emery resource pack | 14,643 B | 10,463 B |\n| Gabbro resource pack | 14,643 B | 8,587 B |\n| Emery executable + resource pack | 76,091 B | 72,147 B |\n| Gabbro executable + resource pack | 76,603 B | 70,783 B |\n| Generated phone JS | 127,857 B | 125,037 B |\n| 20-receipt journal envelope bytes written | 2,072,804 B | 104,750 B |\n| Opened 100-job fixture after server acknowledgment | 1,649,701 B | 2 B (`[]`) |\n| Large-note snapshot allocated bytes | 268,221 B | 6,059 B |\n\nThe six unused bitmap allocations are additionally gone. Artwork caching uses\none temporary full pose during the roughly 600 ms animation and releases it\nafterward; it does not add a permanently retained full-size bitmap.\n\nTradeoffs: watch executables grow by 236 bytes each after all changes, while\ntotal executable-plus-resource sizes shrink by 3,944 / 5,820 bytes. The stripped\nlinux/amd64 server grows from 14,737,568 to 14,762,144 bytes. Production LOC grows\noverall because bounded storage, schema upgrade, cache coordination, and retry\nhandling require new logic; dead bridge/native state and duplicated request\nserialization were removed. Polling now permits up to five minutes of background\ncollection freshness, with explicit refresh and immediate pending writes retained.\n\nValidation: complete npm suite, focused Go race tests, both watch builds,\nCGO-disabled server build, snapshot scaling benchmarks, native cache tests and\nEmery/Gabbro visual and GDB checks. Emulators were killed and exit verified.\nNo physical battery or production CPU/RSS reduction is claimed.\n\n- **reduce-dashboard-animation-redraw-cost**: Added a single transient bitmap cache during request animation, with per-pose invalidation, low-memory row fallback, and cleanup on completion, navigation, disappearance, destruction and timer failure. Ten native ASan/UBSan suites pass, including load/release/failure/retry counts. Both SDK builds pass. Emulator/GDB checks on Emery/Gabbro show one full bitmap load and 76/62 app resource-range calls per animation, followed by a null cache; dashboard artwork and Gabbro pose switching render correctly. Full npm suite and focused Go race tests pass; CGO-disabled release server builds. All emulator/simulator/debugger processes were stopped and exit verified. Final aggregate sizes and LOC/freshness tradeoffs are documented.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium"
       },
       "created_at": "2026-09-15T22:16:07.935019550Z",
-      "modified_at": "2026-09-15T22:36:09.904867751Z"
+      "modified_at": "2026-09-15T22:44:43.224905645Z"
     },
     {
       "id": "01a0a714-2780-7d21-8f54-b87646dd7c2c",
@@ -1076,10 +1076,10 @@
     {
       "id": "01a091eb-4965-7451-8490-4bb90faa9ae5",
       "slug": "reference/docs/testing",
-      "version": 21,
+      "version": 22,
       "doc_type": "reference",
       "title": "docs/testing.md",
-      "content": "Source: `docs/testing.md`\n\n# Testing before hardware\n\nThe project has a useful pre-hardware test boundary. Parser, model, transport, phone bridge, backend fixture, configuration, watch compilation, most interaction logic, persistence, and wakeup behavior can be checked locally. Microphone quality, physical touch behavior, Bluetooth/phone integration, and real power timing still need devices.\n\n## Repeatable automated checks\n\nRun:\n\n```sh\nnpm test\nnpm run build:watch\n```\n\n`npm test` currently includes:\n\n- 92 JavaScript tests covering PAM at every chunk boundary, byte and hierarchy limits, all layouts/elements, patches/removals, UTF-8 AppMessage splitting, queue retry/staleness, HTTP and WebSocket cancellation/timeouts, settings, weather, the capability registry, writer output, onboarding, native dashboard preservation, and dictation input through the full PebbleKit-to-agent-to-render bridge.\n- Native C tests built with `-Wall -Wextra -Werror`, AddressSanitizer, and UndefinedBehaviorSanitizer. These cover metadata parsing and escaping, strict signed 32-bit bounds, bounded copies, and duration parsing/formatting.\n- 12 integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.\n- Go tests covering strict request/output PAM handling, output at arbitrary model-delta boundaries, invalid-model containment, persisted conversation threads, Codex RPC initialization and fallback order, real loopback HTTP and downstream WebSocket requests, and app-server stdio, WebSocket, and WebSocket-over-Unix-socket transports.\n\nThe watch build compiles and links the same sources for both target platforms. The current static footprint is 63,229 bytes on Emery and 63,693 bytes on Gabbro, leaving about 66 KiB of the 128 KiB RAM budget for heap.\n\n### Streaming efficiency regressions\n\nPhone tests verify that UTF-8 truncation stops after the requested prefix while\npreserving splitting behavior for Unicode, malformed surrogates, and small byte\nbudgets. Go tests cover bounded PAM line storage, maximum-length CRLF at every\nsplit, emitted-byte ownership across buffer reuse, emission failures, and strict\nvalidation around display-text repairs.\n\nRun the repeatable server benchmark with:\n\n```sh\ngo test ./internal/pam -run '^$' -bench BenchmarkOutputStream -benchmem -count=3\n```\n\nIt streams 48 text elements using one-byte, 32-byte, and whole-response chunks.\nOn the development host, buffering and normalization improvements reduced the\n32-byte case from about 47 to 33 microseconds and from 78,218 to 38,488 allocated\nbytes per response. These are host measurements, not device battery results.\n\n### Collection efficiency regressions\n\n```sh\ngo test ./internal/collectionstore -run '^$' -bench 'Benchmark(CollectionCounts|NoteSnapshot)$' -benchmem -benchtime=10x\n```\n\nThe fixture contains 100 notes with approximately 67 KiB bodies. A development-host\nrun before/after the read optimizations measured:\n\n| Operation | Before | After | Allocated bytes before → after |\n| --- | ---: | ---: | ---: |\n| Collection counts | 35.95 ms | 0.105 ms | 29,570,308 → 4,588 |\n| Note snapshot | 37.73 ms | 22.76 ms | 29,829,582 → 268,967 |\n\nThese are ten-iteration host measurements, not physical battery or Bluetooth\nlatency measurements. The index adds a small persistent database cost and is\nmaintained during record writes. Snapshot creation still scans the collection;\nit now avoids allocating full note bodies in Go.\n\nPhone tests cover one-request first pages, unchanged metadata/count suppression,\nwatch reconnects, count reconciliation, durable journal compaction and storage\nfailures. Store tests cover summary fields, intact canonical bodies, immutable\npagination after records change, and counts matching active snapshots. Native\nsanitizer tests verify zero writes for unchanged previews, three instead of ten\nwrites for a single changed title in eight rows, and invalidation/recovery after\nan interrupted write. Combining watch collection handlers reduced each watch's\ncode/data footprint by 905 bytes without adding BSS.\n\n## Emulator checks completed\n\n### Emery (rectangular)\n\n- Streamed dynamic screens containing every visible element type, then patched, appended, selected, scrolled, and removed content.\n- Exercised list, grid, card, progress, form, choice, modal, action-bar, status-bar, and symbolic-image rendering.\n- Opened a native number field, changed it using the declared step, confirmed it, and observed the semantic input sent to PebbleKit JS.\n- Started, paused, resumed, reset, replaced, and persisted timers/stopwatches. A timer exited in the background and relaunched the app at expiry. Replacing a timer no longer lets the old wakeup finish the new timer.\n- Scheduled a reminder, relaunched through its wakeup, acknowledged it, and verified its completion state.\n- Held Select through the app-wide long-click recognizer and entered the system dictation UI. The SDK simulator exercised the failure callback; successful transcription-to-agent delivery is covered by the phone-bridge test but remains a device check.\n- Repeated malformed and boundary-value render traffic without an app fault. App shutdown reported no retained heap allocation.\n\n### Gabbro (round/touch target)\n\n- Streamed a two-column grid and custom action rail on the round display.\n- Verified round-safe title/content insets and fully visible Up, Select, and Down symbols.\n- Replayed the dynamic render stress sequence without a native fault.\n- Compiled the touch-service code under `PBL_TOUCH`. The installed SDK's emulator had touch disabled at runtime, so taps, drags, hotspots, and swipes are not claimed as emulator passes.\n\n## Still requires hardware (and a paired phone)\n\n### Timer crash regression\n\nA physical Emery crash after dictation returned `duration=5s` was captured with\n`pebble logs --phone` (the default phone connection needs no IP). In the affected\nbuild, PC `0x5778` is inside newlib `strtol`, loading `_impure_ptr` through an\nabsolute address. That implementation is not safe in the relocated watchapp.\nDuration and reminder timestamp parsing now use the bounded native integer\nparser. Native sanitizer tests cover suffixes, signed limits, and overflow;\ncheck both watch ELF symbol tables for absence of `strtol` and `_impure_ptr`.\nHardware verification: dictate “Set a timer for 5 seconds”, then verify the\ncountdown and completion without an app fault while watch logging is attached.\n\n### Remaining device checks\n\nThe native scheduler suite now runs the real capability host and scheduler with\nmocked clock, persistence, wakeup and UI APIs under ASan/UBSan. It covers\nconcurrent timer/alarm expiry, repeated alerts, individual acknowledgment,\nsnooze, pause/resume, close/reopen recovery, capacity, failed storage/wakeups,\ncorrupt records, and stopwatch dashboard updates. Watch builds reject newlib\nstate symbols (`_impure_ptr`, `_ctype_`, etc.) that are unsafe in relocated\nwatchapps. Host sanitizer success alone cannot detect that class of bug.\n\nEmulator checks on Emery and Gabbro show simultaneous timer/alarm notifications,\nindependent acknowledgment, and an ongoing timer in the dashboard. The fixture\nuses the production scheduler and UI with seeded local commands.\n\nHardware acceptance for the dashboard update: create two timers and an alarm;\nBack to the dashboard and verify the running rows; cancel one timer with X;\nverify completion navigates to Notifications, repeated buzzing, independent\nacknowledgment and snooze. Close/reopen with active work and compare remaining\ntime. Assign a Quick Launch button and verify automatic dictation, while menu\nand wakeup launches show the dashboard. These hardware checks remain pending\nuntil exercised on the updated app.\n\n- A successful real microphone/dictation session, including cancellation, noisy speech, Unicode transcription, and permission/connectivity failures.\n- Physical tap targeting, drag scrolling, every swipe direction, action-rail taps, touch-disabled fallback, and edge behavior on both touch displays.\n- Bluetooth disconnect/reconnect, Android and iOS background behavior, configuration through the real phone app, HTTP buffering differences, WebSocket reconnects, authorization, and geolocation permission flows.\n- Haptic feel, reminder audibility/visibility, real wakeup accuracy across sleep/reboot/time-zone changes, and timer/reminder coexistence with other apps.\n- Battery use, long-running stopwatch drift, memory behavior over many conversations, and sunlight/low-light readability.\n\nDo not treat emulator wakeup timing, simulated dictation, or mouse-based touch as a substitute for the corresponding hardware checks.\n\nConcurrent-alert regressions cover reused model IDs, delivery retries before and\nafter relaunch, a 10-second timer\nexpiring while a 60-second timer is open, and alarm expiry over dashboard,\nremote response, stopwatch, and timer screens. Notification focus changes\npreserve outstanding capability commands while suppressing late render traffic.\n\n\n### Pixel dashboard regression\n\nThe generated resource bundle builds on Emery and Gabbro. The JS bridge suite\ncovers New Chat resetting/persisting a session before its dictation acknowledgment,\ncanceling old responses, keeping subsequent normal dictation in that session,\nand routing Weather locally without a model request. Native scheduler tests cover\nall five dashboard action bindings, the Calendar agenda request, phone-routed explicit task actions without collection persistence,\narchive/restore, counts, storage failure, capacity and text limits, opening and\nrefreshing the separate Notifications list, returning home, and concurrent expiry.\n\nBoth Emery and Gabbro dashboards were visually checked with the generated assets\nand fully visible cards. On Emery, Calendar,\nNotifications (with existing due timers/reminders), and Todos open via buttons.\nReal microphone transcription, physical touch, phone geolocation, and New Chat's\nend-to-end device handshake remain hardware checks.\n\nIf the phone simulator reports a successful installation but leaves the app menu\nempty, the SDK's packet installer works through `pebble repl --emulator emery`:\n\n```python\nfrom libpebble2.services.install import AppInstaller\nAppInstaller(pebble, 'build/codey.pbw').install()\n```\n\nNotification progress regression checks 0%, 25%, paused stability, resumed 50%,\n100% completion, removal after acknowledgment/cancellation, and seven-day duration\nbounds. The native scheduler sends explicit timer/alarm kind and elapsed percentage\nmetadata. The SDK radial primitive defines zero at 12 o’clock and clockwise growth;\nempty models draw no notification icons or labels.\n\n### Failure delivery regression\n\nRegression coverage replays the unquoted multiword screen title at every chunk\nsplit, verifies strict request parsing and rejection of ambiguous repairs, and\nchecks terminal error lines after a header or partial screen. Bridge tests ensure\nthat the original failure reason reaches the watch with the response-begin ID,\nis not replaced by “no screen,” does not emit success/idle notifications, and\nallows a subsequent request to succeed. Native response-state tests cover errors\nbefore any screen, stale IDs, terminal failure, pre-handshake timeout, and retry.\n\nTodo and failure regressions also cover local voice parsing with preserved case/Unicode and HTTP 0/401/503 explanations without HTML parser errors. Hardware checks: drag long todo text both ways, scroll a long checklist, hold Talk to open the menu, tap outside to dismiss, and dictate through both conversation options.\n\nThe revised dashboard and conversation overlay were visually checked on Emery and Gabbro. Emery button checks confirmed Back dismisses the overlay, Down opens Todos, and Up opens Notifications. Screenshots are in `docs/screenshots/`.\n\nTime-bar tests verify Todos and Calendar flags and absence of an Add item row. Weather tests cover summary values, day/night/precipitation icons, background refresh isolation, cache writes, timeouts, and retaining a new summary across dashboard navigation. `dashboard-weather-emery.png` uses an injected synthetic 58F moon forecast for layout verification, not live weather.\n\n### Interactive PAM controls\n\nRegression coverage includes local action construction and bounds, range snapping,\nclockwise/counterclockwise dial seam handling, generated dictation fallback,\ncustom answers bypassing regexes with screen context, server validation of skill\nexamples, and skill installation into a temporary state directory. Slider/dial\nscreens were rendered using an isolated emulator fixture; the slider confirmation\nopened a native five-minute timer without an agent request, then the synthetic\ntimer was canceled. See `pam-slider-emery.png` and `pam-dial-emery.png`. Physical\nslider/dial gestures and microphone answers still need hardware checks.\n\n## Background requests\n\n`internal/jobs` tests connection cancellation without worker cancellation,\nexplicit cancellation, duplicate submission, durable retrieval acknowledgements,\nrestart recovery, and retention. HTTP tests check authentication and job routes.\n`tests/jobs.js` covers the single bounded wait, no continued polling, manual\nrefresh/cancel, durable IDs, ambiguous-submission retries, and stale responses.\nThe bridge tests verify completion buzz messages without unsolicited rendering,\nmanual PAM retrieval, conversation context, stable capability invocation IDs,\nand acknowledgement only after watch presentation. Native tests cover job rows,\nstatus checks, cancel/dismiss actions, and watch persistence.\n\nOpening Notifications is covered by native tests for immediate Checking labels,\nfailed-check fallback, and no refresh loop during list rebuilds. JS tests cover\nall ongoing jobs, exclusion of terminal/retrieved jobs, overlapping pane opens,\ntransient checking state, and row-only bridge updates without unsolicited\nrendering or vibration.\n\n## Touchscreen arming\n\nThe native `touch_guard_test` exercises same-target double taps, one-use arming,\nexpiry, target changes, tap-then-hold and tap-then-drag, unarmed hold/drag rejection,\nmenu targets, screen/input resets, edge retargeting, and clock wrap. The watch\nhandler gates touchdown, movement and liftoff before any mutation or hold timer;\nphysical click handlers do not use the gate. Both Emery and Gabbro SDK builds\ncompile the touch integration. Physical touchscreen behavior still requires a\nhardware smoke test.\n\n## Minute refresh efficiency regression\n\nThe native suite checks the passive paint deadline (including clock wrap),\nimmediate user refresh, one idle host callback per minute, no separate stopwatch\ncallback, accurate elapsed values on interaction, unchanged-job write suppression,\nand one-shot job-check timeout behavior. Existing schedule tests retain exact\nshort deadlines, repeated alerts, wakeup failure fallback, and persistence.\nPhone tests cover fresh weather reuse, duplicate packet suppression, stale-cache\nfetching, and invalidation after unit changes. The full npm suite and both watch\nbuilds pass. Emery screenshots confirm dashboard and Todos clock rendering and\nphysical-button navigation; the emulator was shut down with `pebble kill`.\nPhysical display timing and battery savings still require hardware.\n\n## Notes, collection preference, and unlock ripple\n\nThe native sanitizer suite covers two-tap checkbox completion, note add/edit,\nexact-match ambiguity, stable IDs across edits/relaunches, capacity, write failure,\noperation replay, persisted tile preference, and archived todo identities.\nRipple tests cover half-width travel and reflected points at rectangular edges\nand the circular bezel, including grazing contacts. Phone tests cover note voice\nregexes, preserved text, and bypassing both agent and timer interpretation. Go PAM\ntests accept the note add/edit/list commands. The full suite passes (80 phone\ntests, seven integration tests, native cases, and all Go packages), and both watch\nbuilds pass. The PAM skill validator also passes.\n\nAn Emery fixture rendered the full note, Edit note action, and remembered Notes\ndashboard tile; screenshots were inspected and the emulator shut down. The SDK\nemulator does not provide validated touchscreen/dictation coverage: confirm on\nhardware that the first checkbox tap only ripples, the second archives, the next\ncontact stops the ripple immediately, guarded holds open the collection menu,\nand Edit note dictation replaces only the selected note.\n\n## Phone-owned Notes and ripple preference\n\nNotes storage tests now exercise the phone repository: complete Unicode bodies,\nsummary-only list pages, content pagination with lossless reconstruction, stable\nIDs and operation replay, and failed writes preserving prior data. Bridge tests\ncover on-demand list/read, quiet completion, echoed request tokens, and the\ndisabled ripple preference. Native tests verify list/read/page/edit requests write\nno note bodies. Settings-page tests cover default-on hydration and saving the\nripple toggle as false.\n\n## Dashboard telemetry and compatibility removal\n\nThe pre-alpha app reads only current storage/protocol formats. Watch-to-phone\nNotes migration, earlier schedule conversions, missing to-do ID backfilling, the\none-time wakeup upgrade, and old-watch onboarding have been removed.\n\nStatus tests cover the current multi-bucket quota API, paginated active-thread\ncounting without loading conversation turns, unavailable data, bearer auth,\nmethod checks, once-per-minute requests, and stale endpoint response rejection.\nThe full suite includes 83 phone tests, native sanitizer cases, seven integration\ntests, and all Go packages. Emulator screenshots verify dashboard layout; real\ntouch and dictation remain hardware checks.\n\n## Backend collection synchronization\n\n`npm test` includes the two-slot journal/replay/alias tests, native collection\npersistence checks, and Go transactional/provider fixtures. The shared engine\ntests include unknown delivery, interrupted enumeration, and late acknowledgments\nof older revisions. `pebble build` verifies Emery/Gabbro; server release targets\nremain linux/{amd64,386,arm,arm64} and darwin/arm64 with CGO disabled.\nAuthenticated provider accounts, real PebbleKit termination, OAuth browser return,\nand hardware remain separate qualification gates; see the operations runbook.\n\nCollection latency: phone logs report `collection read <kind> <action> ms=…`\n(HTTP/setup work before queuing the list) and `collection Bluetooth ack ms=…`\n(the compact list send until transport acknowledgment). These logs exclude titles\nand credentials. Watch cached previews require no network; verify initial loads,\nreopening after restart, empty collections, pagination, and offline refresh errors\non hardware. Local server timings do not measure phone networking or Bluetooth.\n\n### Collection and calendar regressions\n\nCalDAV fixtures cover discovery, Basic auth, calendar-query expansion, distinct\nrecurrence identities, all-day/timed creates, lost PUT responses and conditional\nretries, external-edit conflicts, cross-origin href rejection, and incomplete\nrecurrence data. Store tests check chronological paging, exact counts, event\nvalidation and reconciliation restricted to the observed window. Phone tests\ncheck immediate task completion from cached pages, event summaries/details, and\nagent animation only after remote dispatch. Setup tests exercise four-step\nprogress, service-specific fields, changing the destination, and independent\ndouble-tap/ripple preferences. Native tests cover single tap/hold and structural\nrefresh bypass after notifications.\n\nReal provider accounts, physical touch/holds, Bluetooth timing, and OS overlay\nreturn still require device verification. No claim of a sub-second phone or\nprovider response follows from the host fixtures.\n\nThe sync-engine regression also verifies that a remote resource observed after a\nlost create response is not imported as a duplicate before the conditional retry\nacknowledges its original canonical record. A headless Chromium check with mocked\nservices verified actual hidden-field CSS and all three inline setup paths.\n",
+      "content": "Source: `docs/testing.md`\n\n# Testing before hardware\n\nThe project has a useful pre-hardware test boundary. Parser, model, transport, phone bridge, backend fixture, configuration, watch compilation, most interaction logic, persistence, and wakeup behavior can be checked locally. Microphone quality, physical touch behavior, Bluetooth/phone integration, and real power timing still need devices.\n\n## Repeatable automated checks\n\nRun:\n\n```sh\nnpm test\nnpm run build:watch\n```\n\n`npm test` currently includes:\n\n- 92 JavaScript tests covering PAM at every chunk boundary, byte and hierarchy limits, all layouts/elements, patches/removals, UTF-8 AppMessage splitting, queue retry/staleness, HTTP and WebSocket cancellation/timeouts, settings, weather, the capability registry, writer output, onboarding, native dashboard preservation, and dictation input through the full PebbleKit-to-agent-to-render bridge.\n- Native C tests built with `-Wall -Wextra -Werror`, AddressSanitizer, and UndefinedBehaviorSanitizer. These cover metadata parsing and escaping, strict signed 32-bit bounds, bounded copies, and duration parsing/formatting.\n- 12 integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.\n- Go tests covering strict request/output PAM handling, output at arbitrary model-delta boundaries, invalid-model containment, persisted conversation threads, Codex RPC initialization and fallback order, real loopback HTTP and downstream WebSocket requests, and app-server stdio, WebSocket, and WebSocket-over-Unix-socket transports.\n\nThe watch build compiles and links the same sources for both target platforms. The current static footprint is 62,110 bytes on Emery and 62,622 bytes on Gabbro, leaving about 66 KiB of the 128 KiB RAM budget for heap.\n\n### Streaming efficiency regressions\n\nPhone tests verify that UTF-8 truncation stops after the requested prefix while\npreserving splitting behavior for Unicode, malformed surrogates, and small byte\nbudgets. Go tests cover bounded PAM line storage, maximum-length CRLF at every\nsplit, emitted-byte ownership across buffer reuse, emission failures, and strict\nvalidation around display-text repairs.\n\nRun the repeatable server benchmark with:\n\n```sh\ngo test ./internal/pam -run '^$' -bench BenchmarkOutputStream -benchmem -count=3\n```\n\nIt streams 48 text elements using one-byte, 32-byte, and whole-response chunks.\nOn the development host, buffering and normalization improvements reduced the\n32-byte case from about 47 to 33 microseconds and from 78,218 to 38,488 allocated\nbytes per response. These are host measurements, not device battery results.\n\n### Collection efficiency regressions\n\n```sh\ngo test ./internal/collectionstore -run '^$' -bench 'Benchmark(CollectionCounts|NoteSnapshot)$' -benchmem -benchtime=10x\n```\n\nThe fixture contains 100 notes with approximately 67 KiB bodies. A development-host\nrun before/after the read optimizations measured:\n\n| Operation | Before | After | Allocated bytes before → after |\n| --- | ---: | ---: | ---: |\n| Collection counts | 35.95 ms | 0.105 ms | 29,570,308 → 4,588 |\n| Note snapshot | 37.73 ms | 22.76 ms | 29,829,582 → 268,967 |\n\nThese are ten-iteration host measurements, not physical battery or Bluetooth\nlatency measurements. The index adds a small persistent database cost and is\nmaintained during record writes. Snapshot creation still scans the collection;\nit now avoids allocating full note bodies in Go.\n\nPhone tests cover one-request first pages, unchanged metadata/count suppression,\nwatch reconnects, count reconciliation, durable journal compaction and storage\nfailures. Store tests cover summary fields, intact canonical bodies, immutable\npagination after records change, and counts matching active snapshots. Native\nsanitizer tests verify zero writes for unchanged previews, three instead of ten\nwrites for a single changed title in eight rows, and invalidation/recovery after\nan interrupted write. Combining watch collection handlers reduced each watch's\ncode/data footprint by 905 bytes without adding BSS.\n\n## Emulator checks completed\n\n### Emery (rectangular)\n\n- Streamed dynamic screens containing every visible element type, then patched, appended, selected, scrolled, and removed content.\n- Exercised list, grid, card, progress, form, choice, modal, action-bar, status-bar, and symbolic-image rendering.\n- Opened a native number field, changed it using the declared step, confirmed it, and observed the semantic input sent to PebbleKit JS.\n- Started, paused, resumed, reset, replaced, and persisted timers/stopwatches. A timer exited in the background and relaunched the app at expiry. Replacing a timer no longer lets the old wakeup finish the new timer.\n- Scheduled a reminder, relaunched through its wakeup, acknowledged it, and verified its completion state.\n- Held Select through the app-wide long-click recognizer and entered the system dictation UI. The SDK simulator exercised the failure callback; successful transcription-to-agent delivery is covered by the phone-bridge test but remains a device check.\n- Repeated malformed and boundary-value render traffic without an app fault. App shutdown reported no retained heap allocation.\n\n### Gabbro (round/touch target)\n\n- Streamed a two-column grid and custom action rail on the round display.\n- Verified round-safe title/content insets and fully visible Up, Select, and Down symbols.\n- Replayed the dynamic render stress sequence without a native fault.\n- Compiled the touch-service code under `PBL_TOUCH`. The installed SDK's emulator had touch disabled at runtime, so taps, drags, hotspots, and swipes are not claimed as emulator passes.\n\n## Still requires hardware (and a paired phone)\n\n### Timer crash regression\n\nA physical Emery crash after dictation returned `duration=5s` was captured with\n`pebble logs --phone` (the default phone connection needs no IP). In the affected\nbuild, PC `0x5778` is inside newlib `strtol`, loading `_impure_ptr` through an\nabsolute address. That implementation is not safe in the relocated watchapp.\nDuration and reminder timestamp parsing now use the bounded native integer\nparser. Native sanitizer tests cover suffixes, signed limits, and overflow;\ncheck both watch ELF symbol tables for absence of `strtol` and `_impure_ptr`.\nHardware verification: dictate “Set a timer for 5 seconds”, then verify the\ncountdown and completion without an app fault while watch logging is attached.\n\n### Remaining device checks\n\nThe native scheduler suite now runs the real capability host and scheduler with\nmocked clock, persistence, wakeup and UI APIs under ASan/UBSan. It covers\nconcurrent timer/alarm expiry, repeated alerts, individual acknowledgment,\nsnooze, pause/resume, close/reopen recovery, capacity, failed storage/wakeups,\ncorrupt records, and stopwatch dashboard updates. Watch builds reject newlib\nstate symbols (`_impure_ptr`, `_ctype_`, etc.) that are unsafe in relocated\nwatchapps. Host sanitizer success alone cannot detect that class of bug.\n\nEmulator checks on Emery and Gabbro show simultaneous timer/alarm notifications,\nindependent acknowledgment, and an ongoing timer in the dashboard. The fixture\nuses the production scheduler and UI with seeded local commands.\n\nHardware acceptance for the dashboard update: create two timers and an alarm;\nBack to the dashboard and verify the running rows; cancel one timer with X;\nverify completion navigates to Notifications, repeated buzzing, independent\nacknowledgment and snooze. Close/reopen with active work and compare remaining\ntime. Assign a Quick Launch button and verify automatic dictation, while menu\nand wakeup launches show the dashboard. These hardware checks remain pending\nuntil exercised on the updated app.\n\n- A successful real microphone/dictation session, including cancellation, noisy speech, Unicode transcription, and permission/connectivity failures.\n- Physical tap targeting, drag scrolling, every swipe direction, action-rail taps, touch-disabled fallback, and edge behavior on both touch displays.\n- Bluetooth disconnect/reconnect, Android and iOS background behavior, configuration through the real phone app, HTTP buffering differences, WebSocket reconnects, authorization, and geolocation permission flows.\n- Haptic feel, reminder audibility/visibility, real wakeup accuracy across sleep/reboot/time-zone changes, and timer/reminder coexistence with other apps.\n- Battery use, long-running stopwatch drift, memory behavior over many conversations, and sunlight/low-light readability.\n\nDo not treat emulator wakeup timing, simulated dictation, or mouse-based touch as a substitute for the corresponding hardware checks.\n\nConcurrent-alert regressions cover reused model IDs, delivery retries before and\nafter relaunch, a 10-second timer\nexpiring while a 60-second timer is open, and alarm expiry over dashboard,\nremote response, stopwatch, and timer screens. Notification focus changes\npreserve outstanding capability commands while suppressing late render traffic.\n\n\n### Pixel dashboard regression\n\nThe generated resource bundle builds on Emery and Gabbro. The JS bridge suite\ncovers New Chat resetting/persisting a session before its dictation acknowledgment,\ncanceling old responses, keeping subsequent normal dictation in that session,\nand routing Weather locally without a model request. Native scheduler tests cover\nall five dashboard action bindings, the Calendar agenda request, phone-routed explicit task actions without collection persistence,\narchive/restore, counts, storage failure, capacity and text limits, opening and\nrefreshing the separate Notifications list, returning home, and concurrent expiry.\n\nBoth Emery and Gabbro dashboards were visually checked with the generated assets\nand fully visible cards. On Emery, Calendar,\nNotifications (with existing due timers/reminders), and Todos open via buttons.\nReal microphone transcription, physical touch, phone geolocation, and New Chat's\nend-to-end device handshake remain hardware checks.\n\nIf the phone simulator reports a successful installation but leaves the app menu\nempty, the SDK's packet installer works through `pebble repl --emulator emery`:\n\n```python\nfrom libpebble2.services.install import AppInstaller\nAppInstaller(pebble, 'build/codey.pbw').install()\n```\n\nNotification progress regression checks 0%, 25%, paused stability, resumed 50%,\n100% completion, removal after acknowledgment/cancellation, and seven-day duration\nbounds. The native scheduler sends explicit timer/alarm kind and elapsed percentage\nmetadata. The SDK radial primitive defines zero at 12 o’clock and clockwise growth;\nempty models draw no notification icons or labels.\n\n### Failure delivery regression\n\nRegression coverage replays the unquoted multiword screen title at every chunk\nsplit, verifies strict request parsing and rejection of ambiguous repairs, and\nchecks terminal error lines after a header or partial screen. Bridge tests ensure\nthat the original failure reason reaches the watch with the response-begin ID,\nis not replaced by “no screen,” does not emit success/idle notifications, and\nallows a subsequent request to succeed. Native response-state tests cover errors\nbefore any screen, stale IDs, terminal failure, pre-handshake timeout, and retry.\n\nTodo and failure regressions also cover local voice parsing with preserved case/Unicode and HTTP 0/401/503 explanations without HTML parser errors. Hardware checks: drag long todo text both ways, scroll a long checklist, hold Talk to open the menu, tap outside to dismiss, and dictate through both conversation options.\n\nThe revised dashboard and conversation overlay were visually checked on Emery and Gabbro. Emery button checks confirmed Back dismisses the overlay, Down opens Todos, and Up opens Notifications. Screenshots are in `docs/screenshots/`.\n\nTime-bar tests verify Todos and Calendar flags and absence of an Add item row. Weather tests cover summary values, day/night/precipitation icons, background refresh isolation, cache writes, timeouts, and retaining a new summary across dashboard navigation. `dashboard-weather-emery.png` uses an injected synthetic 58F moon forecast for layout verification, not live weather.\n\n### Interactive PAM controls\n\nRegression coverage includes local action construction and bounds, range snapping,\nclockwise/counterclockwise dial seam handling, generated dictation fallback,\ncustom answers bypassing regexes with screen context, server validation of skill\nexamples, and skill installation into a temporary state directory. Slider/dial\nscreens were rendered using an isolated emulator fixture; the slider confirmation\nopened a native five-minute timer without an agent request, then the synthetic\ntimer was canceled. See `pam-slider-emery.png` and `pam-dial-emery.png`. Physical\nslider/dial gestures and microphone answers still need hardware checks.\n\n## Background requests\n\n`internal/jobs` tests connection cancellation without worker cancellation,\nexplicit cancellation, duplicate submission, durable retrieval acknowledgements,\nrestart recovery, and retention. HTTP tests check authentication and job routes.\n`tests/jobs.js` covers the single bounded wait, no continued polling, manual\nrefresh/cancel, durable IDs, ambiguous-submission retries, and stale responses.\nThe bridge tests verify completion buzz messages without unsolicited rendering,\nmanual PAM retrieval, conversation context, stable capability invocation IDs,\nand acknowledgement only after watch presentation. Native tests cover job rows,\nstatus checks, cancel/dismiss actions, and watch persistence.\n\nOpening Notifications is covered by native tests for immediate Checking labels,\nfailed-check fallback, and no refresh loop during list rebuilds. JS tests cover\nall ongoing jobs, exclusion of terminal/retrieved jobs, overlapping pane opens,\ntransient checking state, and row-only bridge updates without unsolicited\nrendering or vibration.\n\n## Touchscreen arming\n\nThe native `touch_guard_test` exercises same-target double taps, one-use arming,\nexpiry, target changes, tap-then-hold and tap-then-drag, unarmed hold/drag rejection,\nmenu targets, screen/input resets, edge retargeting, and clock wrap. The watch\nhandler gates touchdown, movement and liftoff before any mutation or hold timer;\nphysical click handlers do not use the gate. Both Emery and Gabbro SDK builds\ncompile the touch integration. Physical touchscreen behavior still requires a\nhardware smoke test.\n\n## Minute refresh efficiency regression\n\nThe native suite checks the passive paint deadline (including clock wrap),\nimmediate user refresh, one idle host callback per minute, no separate stopwatch\ncallback, accurate elapsed values on interaction, unchanged-job write suppression,\nand one-shot job-check timeout behavior. Existing schedule tests retain exact\nshort deadlines, repeated alerts, wakeup failure fallback, and persistence.\nPhone tests cover fresh weather reuse, duplicate packet suppression, stale-cache\nfetching, and invalidation after unit changes. The full npm suite and both watch\nbuilds pass. Emery screenshots confirm dashboard and Todos clock rendering and\nphysical-button navigation; the emulator was shut down with `pebble kill`.\nPhysical display timing and battery savings still require hardware.\n\n## Notes, collection preference, and unlock ripple\n\nThe native sanitizer suite covers two-tap checkbox completion, note add/edit,\nexact-match ambiguity, stable IDs across edits/relaunches, capacity, write failure,\noperation replay, persisted tile preference, and archived todo identities.\nRipple tests cover half-width travel and reflected points at rectangular edges\nand the circular bezel, including grazing contacts. Phone tests cover note voice\nregexes, preserved text, and bypassing both agent and timer interpretation. Go PAM\ntests accept the note add/edit/list commands. The full suite passes (80 phone\ntests, seven integration tests, native cases, and all Go packages), and both watch\nbuilds pass. The PAM skill validator also passes.\n\nAn Emery fixture rendered the full note, Edit note action, and remembered Notes\ndashboard tile; screenshots were inspected and the emulator shut down. The SDK\nemulator does not provide validated touchscreen/dictation coverage: confirm on\nhardware that the first checkbox tap only ripples, the second archives, the next\ncontact stops the ripple immediately, guarded holds open the collection menu,\nand Edit note dictation replaces only the selected note.\n\n## Phone-owned Notes and ripple preference\n\nNotes storage tests now exercise the phone repository: complete Unicode bodies,\nsummary-only list pages, content pagination with lossless reconstruction, stable\nIDs and operation replay, and failed writes preserving prior data. Bridge tests\ncover on-demand list/read, quiet completion, echoed request tokens, and the\ndisabled ripple preference. Native tests verify list/read/page/edit requests write\nno note bodies. Settings-page tests cover default-on hydration and saving the\nripple toggle as false.\n\n## Dashboard telemetry and compatibility removal\n\nThe pre-alpha app reads only current storage/protocol formats. Watch-to-phone\nNotes migration, earlier schedule conversions, missing to-do ID backfilling, the\none-time wakeup upgrade, and old-watch onboarding have been removed.\n\nStatus tests cover the current multi-bucket quota API, paginated active-thread\ncounting without loading conversation turns, unavailable data, bearer auth,\nmethod checks, once-per-minute requests, and stale endpoint response rejection.\nThe full suite includes 83 phone tests, native sanitizer cases, seven integration\ntests, and all Go packages. Emulator screenshots verify dashboard layout; real\ntouch and dictation remain hardware checks.\n\n## Backend collection synchronization\n\n`npm test` includes the two-slot journal/replay/alias tests, native collection\npersistence checks, and Go transactional/provider fixtures. The shared engine\ntests include unknown delivery, interrupted enumeration, and late acknowledgments\nof older revisions. `pebble build` verifies Emery/Gabbro; server release targets\nremain linux/{amd64,386,arm,arm64} and darwin/arm64 with CGO disabled.\nAuthenticated provider accounts, real PebbleKit termination, OAuth browser return,\nand hardware remain separate qualification gates; see the operations runbook.\n\nCollection latency: phone logs report `collection read <kind> <action> ms=…`\n(HTTP/setup work before queuing the list) and `collection Bluetooth ack ms=…`\n(the compact list send until transport acknowledgment). These logs exclude titles\nand credentials. Watch cached previews require no network; verify initial loads,\nreopening after restart, empty collections, pagination, and offline refresh errors\non hardware. Local server timings do not measure phone networking or Bluetooth.\n\n### Collection and calendar regressions\n\nCalDAV fixtures cover discovery, Basic auth, calendar-query expansion, distinct\nrecurrence identities, all-day/timed creates, lost PUT responses and conditional\nretries, external-edit conflicts, cross-origin href rejection, and incomplete\nrecurrence data. Store tests check chronological paging, exact counts, event\nvalidation and reconciliation restricted to the observed window. Phone tests\ncheck immediate task completion from cached pages, event summaries/details, and\nagent animation only after remote dispatch. Setup tests exercise four-step\nprogress, service-specific fields, changing the destination, and independent\ndouble-tap/ripple preferences. Native tests cover single tap/hold and structural\nrefresh bypass after notifications.\n\nReal provider accounts, physical touch/holds, Bluetooth timing, and OS overlay\nreturn still require device verification. No claim of a sub-second phone or\nprovider response follows from the host fixtures.\n\nThe sync-engine regression also verifies that a remote resource observed after a\nlost create response is not imported as a duplicate before the conditional retry\nacknowledges its original canonical record. A headless Chromium check with mocked\nservices verified actual hidden-field CSS and all three inline setup paths.\n\n## Completed efficiency changes (2026-09-15)\n\nThe full `npm test` suite passes: 96 phone cases, collection regressions, ten\nnative ASan/UBSan executables, 12 integration cases, and all Go packages.\n`go test -race ./internal/agent ./internal/collectionsync ./internal/httpapi`\nalso passes. Both SDK targets and the CGO-disabled server release build pass.\n\nNew regressions cover durable job acknowledgment compaction and retry, batched\njournal writes, coalesced/backed-off polling, stale credentials, shared status\nscans with canceled callers, immediate mutation wakeups, snapshot schema upgrades\nand pinned pages, bounded page decoding, and bitmap cache allocation failures.\n\nEmery and Gabbro emulators rendered the retained dashboard icons and Codey poses.\nGDB counted one artwork bitmap load per request animation, with 76 / 62 calls\nto the app resource-range wrapper respectively; the audit predicted about\n1,520 / 1,220 row reads without caching. Both caches were null after the animation.\nThe temporary cache is also released on navigation, window disappearance,\nshutdown, or timer failure; failed bitmap allocation retains row rendering.\nThe native cache fixture verifies one load across 20 frames, pose invalidation,\nallocation failure without repeated retries, later retry, and complete cleanup.\nAll emulator, simulator, and debugger processes used for these checks exited.\n\nFinal measurements and implementation tradeoffs are in `efficiency-audit.md`.\nAPI-call counts and synthetic host timings do not measure physical battery use.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -1089,7 +1089,7 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-15T19:28:17.009631205Z"
+      "modified_at": "2026-09-15T22:44:43.224905645Z"
     },
     {
       "id": "01a091eb-4971-78b2-b568-152e2036ab39",
@@ -1129,6 +1129,467 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a0a73e-75af-73c2-af5f-ff9151c63420",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Complete reduce-dashboard-animation-redraw-cost",
+      "created_at": "2026-09-15T22:44:43.224905645Z",
+      "changes": [
+        {
+          "document_id": "01a0a723-e837-7f20-88e3-632d9e901675",
+          "slug": "issues/reduce-dashboard-animation-redraw-cost",
+          "change_type": "modified",
+          "previous_commit_id": "01a0a724-48b5-79d2-9951-5da9c8c760a0",
+          "previous_version": 1,
+          "new_version": 2,
+          "hunks": [
+            {
+              "old_start": 13,
+              "old_count": 4,
+              "new_start": 13,
+              "new_count": 6,
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "short animation, visual correctness, platform poses, and low-memory fallback."
+                },
+                {
+                  "op": "context",
+                  "content": "Do not assume a separate layer automatically avoids background redraws on the"
+                },
+                {
+                  "op": "context",
+                  "content": "SDK. Cache only if measurements justify its retained memory cost."
+                },
+                {
+                  "op": "delete",
+                  "content": "KB: `issues/reduce-dashboard-animation-redraw-cost`."
+                },
+                {
+                  "op": "add",
+                  "content": "KB: `issues/reduce-dashboard-animation-redraw-cost`."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Implemented and validated: Added a single transient bitmap cache during request animation, with per-pose invalidation, low-memory row fallback, and cleanup on completion, navigation, disappearance, destruction and timer failure. Ten native ASan/UBSan suites pass, including load/release/failure/retry counts. Both SDK builds pass. Emulator/GDB checks on Emery/Gabbro show one full bitmap load and 76/62 app resource-range calls per animation, followed by a null cache; dashboard artwork and Gabbro pose switching render correctly. Full npm suite and focused Go race tests pass; CGO-disabled release server builds. All emulator/simulator/debugger processes were stopped and exit verified. Final aggregate sizes and LOC/freshness tradeoffs are documented."
+                }
+              ]
+            }
+          ],
+          "metadata_changes": [
+            {
+              "field": "status",
+              "old_value": "draft",
+              "new_value": "completed"
+            }
+          ],
+          "content_hash": "2e689e2443ce8630ae27f31067ab698fd8f37fec876162bbf13b27616775a1cc",
+          "previous_hash": "d4e8ec37d9a6574f345a6cf4eeb783bad72551db7c4757ead0d030be9bfe5282",
+          "doc_type": "task",
+          "title": "Reduce static dashboard redraw work during request animation"
+        },
+        {
+          "document_id": "01a0a723-e845-73e2-b2e7-a22b4bcd17b2",
+          "slug": "reference/docs/efficiency-audit",
+          "change_type": "modified",
+          "previous_commit_id": "01a0a736-a7dd-7ed3-b044-6aaa0ba83e0c",
+          "previous_version": 10,
+          "new_version": 11,
+          "hunks": [
+            {
+              "old_start": 188,
+              "old_count": 7,
+              "new_start": 188,
+              "new_count": 7,
+              "context": "## 8. Reduce dashboard work during request animation",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "SDK. Cache only if measurements justify its retained memory cost."
+                },
+                {
+                  "op": "context",
+                  "content": "KB: `issues/reduce-dashboard-animation-redraw-cost`."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "delete",
+                  "content": "## Validation and existing optimizations"
+                },
+                {
+                  "op": "add",
+                  "content": "## Original audit validation and existing optimizations"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "- `pebble build` passes for Emery and Gabbro. Executable binaries are 61,448 /"
+                },
+                {
+                  "op": "context",
+                  "content": "  61,960 bytes; resource packs are 14,643 bytes each; generated JS is 127,857 bytes."
+                }
+              ]
+            },
+            {
+              "old_start": 224,
+              "old_count": 3,
+              "new_start": 224,
+              "new_count": 39,
+              "context": "## Implementation results",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "- **reduce-dashboard-status-scan-work**: Dashboard status scans now share one cancellable-waiter-safe in-flight scan and a connection-generation-scoped cache (60 seconds; partial data 5 seconds). The watch requests minute status only on the dashboard and refreshes on return. Concurrency/race tests verify 20 callers use one scan, one cancellation leaves other callers intact, cache expiry, and isolated result pointers. Native tests cover leaving/returning home; both watch builds pass."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "- **incremental-collection-refresh**: Added coalesced adaptive phone polling (60 to 300 seconds), bounded provider scan cooldowns with binding invalidation and UTC day rollover, and immediate provider wake after accepted mutations. Explicit refresh bypasses cooldown; pending work still dispatches immediately. Existing Todoist incremental checkpoints and complete CalDAV/Google/Nextcloud enumeration/deletion semantics are preserved. Added stale credential response rejection. JS tests cover backoff, coalescing, stop/reconnect and credentials; provider tests cover an idle-hour bound of at most 16 scans versus 60, pending writes and explicit refresh, plus boundary deadlines. Race tests and watch builds pass. Steady unchanged phone metadata traffic falls from 120 to 24 requests/hour; physical battery savings are unmeasured."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "## Final aggregate results"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "All eight opportunities are implemented in separate Git commits. Compared with"
+                },
+                {
+                  "op": "add",
+                  "content": "`200b0c6`:"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "| Measurement | Before | After |"
+                },
+                {
+                  "op": "add",
+                  "content": "| --- | ---: | ---: |"
+                },
+                {
+                  "op": "add",
+                  "content": "| AgentUi allocation (both targets) | 42,888 B | 40,376 B |"
+                },
+                {
+                  "op": "add",
+                  "content": "| Emery resource pack | 14,643 B | 10,463 B |"
+                },
+                {
+                  "op": "add",
+                  "content": "| Gabbro resource pack | 14,643 B | 8,587 B |"
+                },
+                {
+                  "op": "add",
+                  "content": "| Emery executable + resource pack | 76,091 B | 72,147 B |"
+                },
+                {
+                  "op": "add",
+                  "content": "| Gabbro executable + resource pack | 76,603 B | 70,783 B |"
+                },
+                {
+                  "op": "add",
+                  "content": "| Generated phone JS | 127,857 B | 125,037 B |"
+                },
+                {
+                  "op": "add",
+                  "content": "| 20-receipt journal envelope bytes written | 2,072,804 B | 104,750 B |"
+                },
+                {
+                  "op": "add",
+                  "content": "| Opened 100-job fixture after server acknowledgment | 1,649,701 B | 2 B (`[]`) |"
+                },
+                {
+                  "op": "add",
+                  "content": "| Large-note snapshot allocated bytes | 268,221 B | 6,059 B |"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "The six unused bitmap allocations are additionally gone. Artwork caching uses"
+                },
+                {
+                  "op": "add",
+                  "content": "one temporary full pose during the roughly 600 ms animation and releases it"
+                },
+                {
+                  "op": "add",
+                  "content": "afterward; it does not add a permanently retained full-size bitmap."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Tradeoffs: watch executables grow by 236 bytes each after all changes, while"
+                },
+                {
+                  "op": "add",
+                  "content": "total executable-plus-resource sizes shrink by 3,944 / 5,820 bytes. The stripped"
+                },
+                {
+                  "op": "add",
+                  "content": "linux/amd64 server grows from 14,737,568 to 14,762,144 bytes. Production LOC grows"
+                },
+                {
+                  "op": "add",
+                  "content": "overall because bounded storage, schema upgrade, cache coordination, and retry"
+                },
+                {
+                  "op": "add",
+                  "content": "handling require new logic; dead bridge/native state and duplicated request"
+                },
+                {
+                  "op": "add",
+                  "content": "serialization were removed. Polling now permits up to five minutes of background"
+                },
+                {
+                  "op": "add",
+                  "content": "collection freshness, with explicit refresh and immediate pending writes retained."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Validation: complete npm suite, focused Go race tests, both watch builds,"
+                },
+                {
+                  "op": "add",
+                  "content": "CGO-disabled server build, snapshot scaling benchmarks, native cache tests and"
+                },
+                {
+                  "op": "add",
+                  "content": "Emery/Gabbro visual and GDB checks. Emulators were killed and exit verified."
+                },
+                {
+                  "op": "add",
+                  "content": "No physical battery or production CPU/RSS reduction is claimed."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "- **reduce-dashboard-animation-redraw-cost**: Added a single transient bitmap cache during request animation, with per-pose invalidation, low-memory row fallback, and cleanup on completion, navigation, disappearance, destruction and timer failure. Ten native ASan/UBSan suites pass, including load/release/failure/retry counts. Both SDK builds pass. Emulator/GDB checks on Emery/Gabbro show one full bitmap load and 76/62 app resource-range calls per animation, followed by a null cache; dashboard artwork and Gabbro pose switching render correctly. Full npm suite and focused Go race tests pass; CGO-disabled release server builds. All emulator/simulator/debugger processes were stopped and exit verified. Final aggregate sizes and LOC/freshness tradeoffs are documented."
+                }
+              ]
+            }
+          ],
+          "content_hash": "5abe2bc95efbf9e66cd016d5450ac6bd783fd3748da82f61268807a732f464d6",
+          "previous_hash": "e25c1fbcea8c3f64ecb6232ce5d46b0bd6e4b80eb47cf2e6e7a2c44146954aaa",
+          "doc_type": "reference",
+          "title": "docs/efficiency-audit.md"
+        },
+        {
+          "document_id": "01a091eb-4965-7451-8490-4bb90faa9ae5",
+          "slug": "reference/docs/testing",
+          "change_type": "modified",
+          "previous_commit_id": "01a0a68a-a06a-7f81-90da-358859de7410",
+          "previous_version": 21,
+          "new_version": 22,
+          "hunks": [
+            {
+              "old_start": 20,
+              "old_count": 7,
+              "new_start": 20,
+              "new_count": 7,
+              "context": "## Repeatable automated checks",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "- 12 integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms."
+                },
+                {
+                  "op": "context",
+                  "content": "- Go tests covering strict request/output PAM handling, output at arbitrary model-delta boundaries, invalid-model containment, persisted conversation threads, Codex RPC initialization and fallback order, real loopback HTTP and downstream WebSocket requests, and app-server stdio, WebSocket, and WebSocket-over-Unix-socket transports."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "delete",
+                  "content": "The watch build compiles and links the same sources for both target platforms. The current static footprint is 63,229 bytes on Emery and 63,693 bytes on Gabbro, leaving about 66 KiB of the 128 KiB RAM budget for heap."
+                },
+                {
+                  "op": "add",
+                  "content": "The watch build compiles and links the same sources for both target platforms. The current static footprint is 62,110 bytes on Emery and 62,622 bytes on Gabbro, leaving about 66 KiB of the 128 KiB RAM budget for heap."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "### Streaming efficiency regressions"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                }
+              ]
+            },
+            {
+              "old_start": 317,
+              "old_count": 3,
+              "new_start": 317,
+              "new_count": 28,
+              "context": "### Collection and calendar regressions",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "lost create response is not imported as a duplicate before the conditional retry"
+                },
+                {
+                  "op": "context",
+                  "content": "acknowledges its original canonical record. A headless Chromium check with mocked"
+                },
+                {
+                  "op": "context",
+                  "content": "services verified actual hidden-field CSS and all three inline setup paths."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "## Completed efficiency changes (2026-09-15)"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "The full `npm test` suite passes: 96 phone cases, collection regressions, ten"
+                },
+                {
+                  "op": "add",
+                  "content": "native ASan/UBSan executables, 12 integration cases, and all Go packages."
+                },
+                {
+                  "op": "add",
+                  "content": "`go test -race ./internal/agent ./internal/collectionsync ./internal/httpapi`"
+                },
+                {
+                  "op": "add",
+                  "content": "also passes. Both SDK targets and the CGO-disabled server release build pass."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "New regressions cover durable job acknowledgment compaction and retry, batched"
+                },
+                {
+                  "op": "add",
+                  "content": "journal writes, coalesced/backed-off polling, stale credentials, shared status"
+                },
+                {
+                  "op": "add",
+                  "content": "scans with canceled callers, immediate mutation wakeups, snapshot schema upgrades"
+                },
+                {
+                  "op": "add",
+                  "content": "and pinned pages, bounded page decoding, and bitmap cache allocation failures."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Emery and Gabbro emulators rendered the retained dashboard icons and Codey poses."
+                },
+                {
+                  "op": "add",
+                  "content": "GDB counted one artwork bitmap load per request animation, with 76 / 62 calls"
+                },
+                {
+                  "op": "add",
+                  "content": "to the app resource-range wrapper respectively; the audit predicted about"
+                },
+                {
+                  "op": "add",
+                  "content": "1,520 / 1,220 row reads without caching. Both caches were null after the animation."
+                },
+                {
+                  "op": "add",
+                  "content": "The temporary cache is also released on navigation, window disappearance,"
+                },
+                {
+                  "op": "add",
+                  "content": "shutdown, or timer failure; failed bitmap allocation retains row rendering."
+                },
+                {
+                  "op": "add",
+                  "content": "The native cache fixture verifies one load across 20 frames, pose invalidation,"
+                },
+                {
+                  "op": "add",
+                  "content": "allocation failure without repeated retries, later retry, and complete cleanup."
+                },
+                {
+                  "op": "add",
+                  "content": "All emulator, simulator, and debugger processes used for these checks exited."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Final measurements and implementation tradeoffs are in `efficiency-audit.md`."
+                },
+                {
+                  "op": "add",
+                  "content": "API-call counts and synthetic host timings do not measure physical battery use."
+                }
+              ]
+            }
+          ],
+          "content_hash": "e5a51ac563c37d796b944291dbe9e9761f15afacac9bb3db28f93749cd3442c4",
+          "previous_hash": "1d8175ee6dc9d660ef0389bdafcc6d90c3303ca441c7ff7c3d01ec10501e819d",
+          "doc_type": "reference",
+          "title": "docs/testing.md"
+        }
+      ]
+    },
     {
       "id": "01a0a736-a7dd-7ed3-b044-6aaa0ba83e0c",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

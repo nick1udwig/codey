@@ -5,6 +5,7 @@
 #include "ripple.h"
 #include "refresh_policy.h"
 #include "timeline_ui.h"
+#include "artwork_cache.h"
 
 #include "agent_protocol.h"
 #include "../../resources/images/pixel-font-5x7.h"
@@ -90,6 +91,7 @@ struct AgentUi {
   bool dirty, root_dirty, input_active;
   NumberWindow *number_window;
   GBitmap *dashboard_icons[DashboardIconCount];
+  ArtworkCache artwork;
   AgentUiEventHandler event_handler;
   AgentUiDictationHandler dictation_handler;
   void *context;
@@ -143,6 +145,12 @@ struct AgentUi {
   int16_t touch_last_y;
 #endif
 };
+
+static void prv_stop_activity(AgentUi *ui) {
+  if (ui->activity_timer) { app_timer_cancel(ui->activity_timer); ui->activity_timer=NULL; }
+  ui->request_frame=0;
+  artwork_cache_clear(&ui->artwork);
+}
 
 #if defined(PBL_TOUCH)
 static void prv_stop_ripple(AgentUi *ui) {
@@ -917,6 +925,17 @@ static void prv_dashboard_codey(AgentUi *ui, GContext *ctx, GRect frame) {
 #else
   uint32_t resource = working ? RESOURCE_ID_DASH_CODEY_THINK_EMERY : RESOURCE_ID_DASH_CODEY_SLEEP_EMERY;
 #endif
+  if (ui->request_frame) {
+    GBitmap *bitmap=artwork_cache_get(&ui->artwork,resource);
+    if (bitmap) {
+      GRect bounds=gbitmap_get_bounds(bitmap);
+      GRect target=GRect(frame.origin.x+(frame.size.w-bounds.size.w)/2,
+                        frame.origin.y+(frame.size.h-bounds.size.h)/2,bounds.size.w,bounds.size.h);
+      graphics_context_set_compositing_mode(ctx,GCompOpSet);
+      graphics_draw_bitmap_in_rect(ctx,bitmap,target);
+      return;
+    }
+  }
   // Native 4-bit PBI resources: 12-byte header, padded rows, then 16 colors.
   // Stream one row at a time to keep the full-button artwork off the tight heap.
   ResHandle handle = resource_get_handle(resource);
@@ -2073,6 +2092,7 @@ static void prv_window_appear(Window *window) {
 static void prv_window_disappear(Window *window) {
   prv_reset_touch_guard(window_get_user_data(window));
   AgentUi *ui = window_get_user_data(window);
+  prv_stop_activity(ui);
 #if defined(PBL_TOUCH)
   prv_cancel_hold(ui);
   if (ui->touch_subscribed) {
@@ -2128,7 +2148,7 @@ void agent_ui_destroy(AgentUi *ui) {
   if (ui->touch_subscribed) { touch_service_unsubscribe(); }
 #endif
   if (ui->refresh_timer) { app_timer_cancel(ui->refresh_timer); }
-  if (ui->activity_timer) { app_timer_cancel(ui->activity_timer); }
+  prv_stop_activity(ui);
   if (ui->number_window) { number_window_destroy(ui->number_window); }
   if (ui->window) { window_destroy(ui->window); }
   for (int i = 0; i < DashboardIconCount; ++i) { if (ui->dashboard_icons[i]) { gbitmap_destroy(ui->dashboard_icons[i]); } }
@@ -2149,6 +2169,7 @@ void agent_ui_begin(AgentUi *ui, const char *screen_id, const char *layout, cons
                     const char *subtitle, const char *meta, int32_t flags) {
   if (!ui) { return; }
   ui->root_dirty=true;
+  if(!screen_id || strcmp(screen_id,"dashboard"))prv_stop_activity(ui);
 #if defined(PBL_TOUCH)
   prv_cancel_hold(ui);
   ui->touch_down = false;
@@ -2286,16 +2307,19 @@ static void prv_activity_tick(void *context) {
   if (ui->request_frame) {
     if (strcmp(ui->screen_id,"dashboard") != 0 || ++ui->request_frame > 20) { ui->request_frame = 0; }
   }
+  if (!ui->request_frame) artwork_cache_clear(&ui->artwork);
   ui->spinner_frame = (ui->spinner_frame + 1) % 12;
   if (ui->content_layer) { layer_mark_dirty(ui->content_layer); }
   if (ui->request_frame) {
-    ui->activity_timer = app_timer_register(ui->request_frame ? 30 : 80, prv_activity_tick, ui);
+    ui->activity_timer = app_timer_register(30, prv_activity_tick, ui);
+    if (!ui->activity_timer) prv_stop_activity(ui);
   }
 }
 void agent_ui_animate_request(AgentUi *ui) {
-  if (!ui) { return; }
+  if (!ui || !ui->loaded || strcmp(ui->screen_id,"dashboard")) { return; }
   ui->request_frame = 1;
   if (!ui->activity_timer) { ui->activity_timer = app_timer_register(30, prv_activity_tick, ui); }
+  if (!ui->activity_timer) prv_stop_activity(ui);
 }
 
 void agent_ui_set_status(AgentUi *ui, const char *status, bool is_error, bool loading) {

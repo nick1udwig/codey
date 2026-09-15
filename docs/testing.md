@@ -18,7 +18,7 @@ npm run build:watch
 - 12 integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.
 - Go tests covering strict request/output PAM handling, output at arbitrary model-delta boundaries, invalid-model containment, persisted conversation threads, Codex RPC initialization and fallback order, real loopback HTTP and downstream WebSocket requests, and app-server stdio, WebSocket, and WebSocket-over-Unix-socket transports.
 
-The watch build compiles and links the same sources for both target platforms. The current static footprint is 63,229 bytes on Emery and 63,693 bytes on Gabbro, leaving about 66 KiB of the 128 KiB RAM budget for heap.
+The watch build compiles and links the same sources for both target platforms. The current static footprint is 62,110 bytes on Emery and 62,622 bytes on Gabbro, leaving about 66 KiB of the 128 KiB RAM budget for heap.
 
 ### Streaming efficiency regressions
 
@@ -315,3 +315,28 @@ The sync-engine regression also verifies that a remote resource observed after a
 lost create response is not imported as a duplicate before the conditional retry
 acknowledges its original canonical record. A headless Chromium check with mocked
 services verified actual hidden-field CSS and all three inline setup paths.
+
+## Completed efficiency changes (2026-09-15)
+
+The full `npm test` suite passes: 96 phone cases, collection regressions, ten
+native ASan/UBSan executables, 12 integration cases, and all Go packages.
+`go test -race ./internal/agent ./internal/collectionsync ./internal/httpapi`
+also passes. Both SDK targets and the CGO-disabled server release build pass.
+
+New regressions cover durable job acknowledgment compaction and retry, batched
+journal writes, coalesced/backed-off polling, stale credentials, shared status
+scans with canceled callers, immediate mutation wakeups, snapshot schema upgrades
+and pinned pages, bounded page decoding, and bitmap cache allocation failures.
+
+Emery and Gabbro emulators rendered the retained dashboard icons and Codey poses.
+GDB counted one artwork bitmap load per request animation, with 76 / 62 calls
+to the app resource-range wrapper respectively; the audit predicted about
+1,520 / 1,220 row reads without caching. Both caches were null after the animation.
+The temporary cache is also released on navigation, window disappearance,
+shutdown, or timer failure; failed bitmap allocation retains row rendering.
+The native cache fixture verifies one load across 20 frames, pose invalidation,
+allocation failure without repeated retries, later retry, and complete cleanup.
+All emulator, simulator, and debugger processes used for these checks exited.
+
+Final measurements and implementation tradeoffs are in `efficiency-audit.md`.
+API-call counts and synthetic host timings do not measure physical battery use.

@@ -186,7 +186,7 @@ Do not assume a separate layer automatically avoids background redraws on the
 SDK. Cache only if measurements justify its retained memory cost.
 KB: `issues/reduce-dashboard-animation-redraw-cost`.
 
-## Validation and existing optimizations
+## Original audit validation and existing optimizations
 
 - `pebble build` passes for Emery and Gabbro. Executable binaries are 61,448 /
   61,960 bytes; resource packs are 14,643 bytes each; generated JS is 127,857 bytes.
@@ -222,3 +222,39 @@ KB: `issues/reduce-dashboard-animation-redraw-cost`.
 - **reduce-dashboard-status-scan-work**: Dashboard status scans now share one cancellable-waiter-safe in-flight scan and a connection-generation-scoped cache (60 seconds; partial data 5 seconds). The watch requests minute status only on the dashboard and refreshes on return. Concurrency/race tests verify 20 callers use one scan, one cancellation leaves other callers intact, cache expiry, and isolated result pointers. Native tests cover leaving/returning home; both watch builds pass.
 
 - **incremental-collection-refresh**: Added coalesced adaptive phone polling (60 to 300 seconds), bounded provider scan cooldowns with binding invalidation and UTC day rollover, and immediate provider wake after accepted mutations. Explicit refresh bypasses cooldown; pending work still dispatches immediately. Existing Todoist incremental checkpoints and complete CalDAV/Google/Nextcloud enumeration/deletion semantics are preserved. Added stale credential response rejection. JS tests cover backoff, coalescing, stop/reconnect and credentials; provider tests cover an idle-hour bound of at most 16 scans versus 60, pending writes and explicit refresh, plus boundary deadlines. Race tests and watch builds pass. Steady unchanged phone metadata traffic falls from 120 to 24 requests/hour; physical battery savings are unmeasured.
+
+## Final aggregate results
+
+All eight opportunities are implemented in separate Git commits. Compared with
+`200b0c6`:
+
+| Measurement | Before | After |
+| --- | ---: | ---: |
+| AgentUi allocation (both targets) | 42,888 B | 40,376 B |
+| Emery resource pack | 14,643 B | 10,463 B |
+| Gabbro resource pack | 14,643 B | 8,587 B |
+| Emery executable + resource pack | 76,091 B | 72,147 B |
+| Gabbro executable + resource pack | 76,603 B | 70,783 B |
+| Generated phone JS | 127,857 B | 125,037 B |
+| 20-receipt journal envelope bytes written | 2,072,804 B | 104,750 B |
+| Opened 100-job fixture after server acknowledgment | 1,649,701 B | 2 B (`[]`) |
+| Large-note snapshot allocated bytes | 268,221 B | 6,059 B |
+
+The six unused bitmap allocations are additionally gone. Artwork caching uses
+one temporary full pose during the roughly 600 ms animation and releases it
+afterward; it does not add a permanently retained full-size bitmap.
+
+Tradeoffs: watch executables grow by 236 bytes each after all changes, while
+total executable-plus-resource sizes shrink by 3,944 / 5,820 bytes. The stripped
+linux/amd64 server grows from 14,737,568 to 14,762,144 bytes. Production LOC grows
+overall because bounded storage, schema upgrade, cache coordination, and retry
+handling require new logic; dead bridge/native state and duplicated request
+serialization were removed. Polling now permits up to five minutes of background
+collection freshness, with explicit refresh and immediate pending writes retained.
+
+Validation: complete npm suite, focused Go race tests, both watch builds,
+CGO-disabled server build, snapshot scaling benchmarks, native cache tests and
+Emery/Gabbro visual and GDB checks. Emulators were killed and exit verified.
+No physical battery or production CPU/RSS reduction is claimed.
+
+- **reduce-dashboard-animation-redraw-cost**: Added a single transient bitmap cache during request animation, with per-pose invalidation, low-memory row fallback, and cleanup on completion, navigation, disappearance, destruction and timer failure. Ten native ASan/UBSan suites pass, including load/release/failure/retry counts. Both SDK builds pass. Emulator/GDB checks on Emery/Gabbro show one full bitmap load and 76/62 app resource-range calls per animation, followed by a null cache; dashboard artwork and Gabbro pose switching render correctly. Full npm suite and focused Go race tests pass; CGO-disabled release server builds. All emulator/simulator/debugger processes were stopped and exit verified. Final aggregate sizes and LOC/freshness tradeoffs are documented.
