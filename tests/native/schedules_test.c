@@ -193,6 +193,13 @@ static void test_collection_previews(void) {
   collection_preview_receive(caps,2,"Sep 15 12:00 · Lunch",16,"Saved","d");
   assert(!strcmp(ui.screen,"calendar"));assert(!strcmp(ui.elements[element("r0")].action,"local.event.open"));
   collection_preview_set_count(2,13);assert(collection_preview_show(caps,2));assert(!ui.elements[element("r0")].action[0]);
+  collection_preview_receive_timeline(caps,"Lunch",16,"Saved","s","day=2026-09-15 time=12:00 start=43200 end=46800");
+  assert(collection_preview_show(caps,2));assert(strstr(ui.elements[element("r0")].meta,"time=12:00"));
+  int saved_writes=writes;
+  collection_preview_receive_timeline(caps,"Lunch",16,"Saved","s","day=2026-09-15 time=12:00 start=43200 end=46800");
+  assert(writes==saved_writes);
+  collection_preview_receive_timeline(caps,"Lunch",16,"Saved","s","day=2026-09-15 time=13:00 start=46800 end=50400");
+  assert(collection_preview_show(caps,2));assert(strstr(ui.elements[element("r0")].meta,"time=13:00"));
   event(caps,"local.home");assert(!strcmp(ui.elements[element("todos")].action,"local.todos"));assert(!strcmp(ui.elements[element("todos")].value,"21"));
   storage[4491].size=0;assert(!collection_preview_show(caps,true));
   agent_capabilities_destroy(caps);

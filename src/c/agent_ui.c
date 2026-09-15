@@ -4,6 +4,7 @@
 #include "scroll_gesture.h"
 #include "ripple.h"
 #include "refresh_policy.h"
+#include "timeline_ui.h"
 
 #include "agent_protocol.h"
 #include "../../resources/images/pixel-font-5x7.h"
@@ -417,9 +418,29 @@ static void prv_calculate_layout(AgentUi *ui) {
     scroll_layer_set_content_size(ui->scroll_layer, GSize(ui->viewport_width, ui->content_height));
     return;
   }
+  if (!strcmp(ui->screen_id,"calendar")) {
+    int y=timeline_top_inset();
+    char previous_day[16]="";
+    int rail=timeline_sidebar_width(ui->viewport_width);
+    for(index=0;index<ui->element_count;index++) {
+      AgentUiElement *e=&ui->elements[index];e->frame=GRectZero;
+      if(!prv_is_rendered(e))continue;
+      char day[16]="";agent_protocol_meta_get(e->meta,"day",day,sizeof(day));
+      if(day[0]&&strcmp(day,previous_day)){y+=30;agent_protocol_copy(previous_day,sizeof(previous_day),day);}
+      bool card=e->id[0]=='r'&&e->id[1]>='0'&&e->id[1]<='7';
+      int height=card?(index==ui->selected_element?timeline_expanded_height(ui->viewport_height):timeline_compact_height(ui->viewport_height)):48;
+      e->frame=GRect(timeline_left_inset(),y,ui->viewport_width-rail-timeline_left_inset()-8,height);y+=height;
+    }
+    // Last event can still snap to the top with room for its preview/footer.
+    ui->content_height=AGENT_MAX(ui->viewport_height,y+ui->viewport_height-48);
+    layer_set_frame(ui->content_layer,GRect(0,0,ui->viewport_width,ui->content_height));
+    scroll_layer_set_content_size(ui->scroll_layer,GSize(ui->viewport_width,ui->content_height));
+    return;
+  }
   inset = prv_horizontal_inset();
   width = AGENT_MAX(40, ui->viewport_width - inset * 2);
   y = ui->title[0] ? AGENT_UI_HEADER_HEIGHT + 4 : 5;
+  if(!strcmp(ui->screen_id,"event-detail"))y=100;
 #if defined(PBL_ROUND)
   // Keep a titleless first row below the narrow crown of a round display.
   if (!ui->title[0]) { y = 20; }
@@ -472,6 +493,7 @@ static void prv_calculate_layout(AgentUi *ui) {
 }
 
 static void prv_relayout_root(AgentUi *ui);
+static void prv_ensure_visible(AgentUi *ui, bool animated);
 static uint32_t prv_now_ms(void) {
   time_t seconds; uint16_t milliseconds; time_ms(&seconds,&milliseconds);
   return (uint32_t)seconds*1000u+milliseconds;
@@ -484,6 +506,7 @@ static void prv_paint(void *context) {
   if(!ui->loaded || !ui->complete || !ui->dirty)return;
   uint32_t delay=refresh_policy_screen_delay(&ui->refresh_policy,prv_now_ms(),prv_input_active(ui),ui->root_dirty);
   if(delay){ui->refresh_timer=app_timer_register(delay,prv_paint,ui);return;}
+  bool new_screen=ui->root_dirty;
   if (ui->root_dirty) {
     if (ui->number_window) {
       if (window_stack_get_top_window() == number_window_get_window(ui->number_window)) {
@@ -498,6 +521,7 @@ static void prv_paint(void *context) {
     prv_relayout_root(ui);
   }
   prv_calculate_layout(ui);
+  if(new_screen&&!strcmp(ui->screen_id,"calendar"))prv_ensure_visible(ui,false);
   layer_mark_dirty(ui->content_layer);
   layer_mark_dirty(ui->action_bar_layer);
   layer_mark_dirty(ui->status_bar_layer);
@@ -1046,6 +1070,35 @@ static void prv_content_update_proc(Layer *layer, GContext *ctx) {
   bool dashboard = strcmp(ui->screen_id, "dashboard") == 0;
   graphics_context_set_fill_color(ctx, dashboard ? GColorBlack : GColorWhite);
   graphics_fill_rect(ctx, layer_get_bounds(layer), 0, GCornerNone);
+  if(!strcmp(ui->screen_id,"calendar")) {
+    GPoint offset=scroll_layer_get_content_offset(ui->scroll_layer);
+    timeline_ui_sidebar(ctx,GRect(0,-offset.y,ui->viewport_width,ui->viewport_height));
+    char previous_day[16]="";
+    for(index=0;index<ui->element_count;index++) {
+      AgentUiElement *e=&ui->elements[index];
+      if(!prv_is_rendered(e))continue;
+      char day[16]="";agent_protocol_meta_get(e->meta,"day",day,sizeof(day));
+      if(day[0]&&strcmp(day,previous_day)) {
+        if(e->frame.origin.y>=-offset.y&&e->frame.origin.y-30<-offset.y+ui->viewport_height)
+          timeline_ui_day(ctx,GRect(e->frame.origin.x,e->frame.origin.y-30,e->frame.size.w,30),day);
+        agent_protocol_copy(previous_day,sizeof(previous_day),day);
+      }
+      if(e->frame.origin.y+e->frame.size.h<=-offset.y||e->frame.origin.y>=-offset.y+ui->viewport_height)continue;
+      bool card=e->id[0]=='r'&&e->id[1]>='0'&&e->id[1]<='7';
+      if(card) {
+        timeline_ui_card(ctx,e->frame,e->title,e->meta,index==ui->selected_element,(e->flags&AGENT_UI_FLAG_DISABLED)!=0);
+        if(index+1<ui->element_count)timeline_ui_relationship(ctx,e->frame.origin.x+14,
+            e->frame.origin.y+e->frame.size.h-22,e->meta,ui->elements[index+1].meta);
+      }else prv_draw_element(ui,ctx,e,index==ui->selected_element);
+    }
+    const char *status=ui->status[0]?ui->status:ui->subtitle;
+    if(status[0] && strcmp(status,"Saved on server")) {
+      GRect footer=GRect(0,-offset.y+ui->viewport_height-23,ui->viewport_width-timeline_sidebar_width(ui->viewport_width),23);
+      graphics_context_set_fill_color(ctx,GColorWhite);graphics_fill_rect(ctx,footer,0,GCornerNone);
+      prv_draw_text(ctx,status,fonts_get_system_font(FONT_KEY_GOTHIC_14),footer,GTextAlignmentCenter,GColorBlack,GTextOverflowModeTrailingEllipsis);
+    }
+    return;
+  }
   if (dashboard) {
     prv_draw_dashboard(ui, ctx);
     if (ui->request_frame) {
@@ -1060,7 +1113,9 @@ static void prv_content_update_proc(Layer *layer, GContext *ctx) {
     }
   }
 
-  if (ui->title[0]) {
+  if(!strcmp(ui->screen_id,"event-detail")) {
+    timeline_ui_detail_header(ctx,GRect(0,0,ui->viewport_width,96),ui->title);
+  } else if (ui->title[0]) {
     int16_t header_inset = prv_header_inset();
     prv_draw_text(ctx, ui->title, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
                   GRect(header_inset, 1, ui->viewport_width - header_inset * 2, 31),
@@ -1078,7 +1133,9 @@ static void prv_content_update_proc(Layer *layer, GContext *ctx) {
 
   for (index = 0; !dashboard && index < ui->element_count; index += 1) {
     AgentUiElement *element = &ui->elements[index];
-    if (prv_is_rendered(element)) {
+    int top=-scroll_layer_get_content_offset(ui->scroll_layer).y;
+    if (prv_is_rendered(element) && element->frame.origin.y+element->frame.size.h>top &&
+        element->frame.origin.y<top+ui->viewport_height) {
       prv_draw_element(ui, ctx, element, ui->selected_element == index && prv_is_selectable(element));
     }
   }
@@ -1222,7 +1279,9 @@ static void prv_relayout_root(AgentUi *ui) {
   if (!ui || !ui->loaded) { return; }
   root = window_get_root_layer(ui->window);
   bounds = layer_get_bounds(root);
+  scroll_layer_set_shadow_hidden(ui->scroll_layer,!strcmp(ui->screen_id,"calendar")||!strcmp(ui->screen_id,"event-detail"));
   status_visible = (ui->screen_flags & AGENT_UI_FLAG_STATUS) != 0;
+  if(!strcmp(ui->screen_id,"calendar"))status_visible=false;
   action_visible = prv_has_action_bar(ui);
   top = status_visible ? STATUS_BAR_LAYER_HEIGHT : 0;
 #if defined(PBL_ROUND)
@@ -1265,6 +1324,15 @@ static void prv_ensure_visible(AgentUi *ui, bool animated) {
   visible_top = -offset.y;
   visible_bottom = visible_top + ui->viewport_height;
   next_y = offset.y;
+  if(!strcmp(ui->screen_id,"calendar")) {
+    int top=element->frame.origin.y;
+    char day[16]="",prev[16]="";agent_protocol_meta_get(element->meta,"day",day,sizeof(day));
+    if(ui->selected_element>0)agent_protocol_meta_get(ui->elements[ui->selected_element-1].meta,"day",prev,sizeof(prev));
+    if(day[0]&&strcmp(day,prev))top-=30;
+    int focus_inset=timeline_top_inset()?timeline_top_inset()+30:0;
+    scroll_layer_set_content_offset(ui->scroll_layer,GPoint(0,-AGENT_MAX(0,top-focus_inset)),animated);
+    return;
+  }
   if (element->frame.origin.y < visible_top) {
     next_y = -element->frame.origin.y;
   } else if (element->frame.origin.y + element->frame.size.h > visible_bottom) {
@@ -1289,6 +1357,13 @@ static void prv_move_selection(AgentUi *ui, int direction) {
   int16_t step = direction;
   int16_t columns;
   if (!ui) { return; }
+  if(!strcmp(ui->screen_id,"calendar")) {
+    AgentUiElement *binding=prv_find_binding(ui,direction>0?"timeline-next":"timeline-previous");
+    bool edge=direction<0?ui->selected_element==0:
+      ui->selected_element>=0 && ui->selected_element+1<ui->element_count &&
+      !strcmp(ui->elements[ui->selected_element+1].id,"next");
+    if(binding&&edge){prv_emit_binding(ui,direction>0?"down":"up",binding);return;}
+  }
   if (ui->layout == AgentUiLayoutGrid) {
     columns = (int16_t)AGENT_MAX(1, AGENT_MIN(4, agent_protocol_meta_get_int(ui->meta, "columns", 2)));
     step = direction * columns;
@@ -1303,7 +1378,15 @@ static void prv_move_selection(AgentUi *ui, int direction) {
     index += direction > 0 ? 1 : -1;
   }
   if (index < 0 || index >= ui->element_count) {
+    if(!strcmp(ui->screen_id,"calendar"))return;
     prv_scroll(ui, direction > 0 ? -42 : 42, true);
+    return;
+  }
+  if(!strcmp(ui->screen_id,"calendar")) {
+    ui->selected_element=index;
+    prv_calculate_layout(ui);
+    prv_ensure_visible(ui,true);
+    layer_mark_dirty(ui->content_layer);
     return;
   }
   // Read the content between actions instead of jumping over it.
@@ -1742,6 +1825,14 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
       return;
     }
   } else if (event->type == TouchEvent_Liftoff && scroll_gesture_up(&ui->scroll_gesture)) {
+    if(!strcmp(ui->screen_id,"calendar")) {
+      int top=-scroll_layer_get_content_offset(ui->scroll_layer).y,best=-1,distance=32767;
+      for(int i=0;i<ui->element_count;i++)if(prv_is_selectable(&ui->elements[i])) {
+        int d=abs(ui->elements[i].frame.origin.y-top);
+        if(d<distance){best=i;distance=d;}
+      }
+      if(best>=0){ui->selected_element=best;prv_calculate_layout(ui);prv_ensure_visible(ui,true);layer_mark_dirty(ui->content_layer);}
+    }
     prv_reset_touch_guard(ui);
     return;
   }
@@ -2095,7 +2186,7 @@ bool agent_ui_add(AgentUi *ui, const AgentUiElementSpec *spec) {
   memset(element, 0, sizeof(*element));
   element->used = true;
   prv_apply_spec(element, spec, false);
-  if (prv_is_selectable(element) && (ui->selected_element < 0 ||
+  if (prv_is_selectable(element) && (ui->selected_element < 0 || (element->flags & AGENT_UI_FLAG_SELECTED) ||
       (strcmp(ui->screen_id, "dashboard") == 0 && strcmp(element->action, "local.dictate") == 0))) {
     ui->selected_element = ui->element_count;
   }

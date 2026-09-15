@@ -66,7 +66,9 @@ function renderCollection(requestId,error,view){
  if(view.list){
   var list=view.list;m[Key.messageType]="collection-list";m[Key.operation]=list.kind;
   m[Key.value]=list.titles.join("\n");m[Key.meta]=list.states;m[Key.index]=list.total;
+  if(list.kind==="event")m[Key.title]=list.timeline.join("\n");
   m[Key.flags]=(list.state==="completed"?1:0)|(list.next?2:0)|(list.stale?4:0)|(list.partial?8:0)|(list.first?16:0);
+  if(list.kind==="event")m[Key.flags]|=(list.previous?32:0)|(Math.max(0,Math.min(7,list.focus||0))<<8);
   m[Key.subtitle]=list.stale?"Cached · Server unavailable":list.pending?list.pending+" pending server":list.partial?"First 8 · More after sync":"Saved on server";
   // A list may change the watch count optimistically, or be superseded before delivery.
   if(list.state!=="completed"&&collectionCounts[list.kind]!==list.total)delete collectionCounts[list.kind];
@@ -80,7 +82,8 @@ function handleCollectionRequest(kind,action,id,value,token,payload){
  var started=Date.now(),viewToken=String(read(payload,Key.viewToken,"ViewToken")||""),done=function(e,v){log("collection read "+kind+" "+action+" ms="+(Date.now()-started));renderCollection(requestId,e,v);};
  try {
   if(action==="list"||action==="archive"){
-   if(value==="next"){var page=collectionViews.resolve(viewToken,"next");collectionViews.list(kind,page.state,page.snapshot,page.cursor,done);}
+   if((value==="return"||value==="previous")&&kind==="event"){var previous=collectionViews.resolve(viewToken,value==="return"?"back":"previous");collectionViews.list(kind,previous.state,previous.snapshot,previous.cursor,function(e,v){if(v)v.list.focus=value==="previous"?Math.max(0,v.list.titles.length-1):previous.focus;done(e,v);});}
+   else if(value==="next"){var page=collectionViews.resolve(viewToken,"next");collectionViews.list(kind,page.state,page.snapshot,page.cursor,done);}
    else collectionViews.list(kind,action==="archive"?"completed":"active","","",done);
    collections.drain();return;
   }

@@ -44,7 +44,7 @@ console.log("✓ collection journal: durable recovery, torn slots, duplicate ing
 (function calendarViewsShowTimeAndReadOnlyDetails(){
  var record={id:"event",kind:"event",revision:"1",title:"Planning",start:"2099-09-15T16:00:00Z",end:"2099-09-15T17:00:00Z",location:"Room A",capabilities:[]};
  var views=new Views({list:function(k,s,snap,cur,done){assert.strictEqual(k,"event");done(null,{total:1,records:[record]});},body:function(r,c,done){done(null,{body:"Agenda",complete:true});}});
- views.list("event","active","","",function(e,v){assert.ifError(e);assert.match(v.list.titles[0],/Sep 15 .*Planning/);assert.strictEqual(views.resolve(v.token,"r0").record.kind,"event");assert.strictEqual(v.list.total,1);views.body(views.resolve(v.token,"r0").record,"",function(e,v){assert.ifError(e);assert.match(v.source,/Room A/);assert.match(v.source,/Agenda/);assert.match(v.source,/bind .*action=local.events.*input=back/);assert.ok(!v.source.includes("Back to calendar"));assert.ok(!v.source.includes("local.note.edit"));});});
+ views.list("event","active","","",function(e,v){assert.ifError(e);assert.strictEqual(v.list.titles[0],"Planning");assert.match(v.list.timeline[0],/day=2099-09-15/);assert.strictEqual(views.resolve(v.token,"r0").record.kind,"event");assert.strictEqual(v.list.total,1);views.body(views.resolve(v.token,"r0").record,"",function(e,v){assert.ifError(e);assert.match(v.source,/Room A/);assert.match(v.source,/Agenda/);assert.match(v.source,/bind .*action=local.event.list.*input=back/);assert.ok(!v.source.includes("Back to calendar"));assert.ok(!v.source.includes("local.note.edit"));});});
 })();
 
 (function compactionOnlyWritesWhenDurableWorkCanBeRemoved(){
@@ -60,6 +60,18 @@ console.log("✓ collection journal: durable recovery, torn slots, duplicate ing
  assert.ok(f.j.data.receipts[op.ingress_id],"watch duplicate receipts must survive compaction");
  before=f.j.generation;f.j.compact(records);assert.strictEqual(f.j.generation,before);
 })();
+
+(function timelineMetadataAndReturnPage(){
+ var records=Array.from({length:8},function(_,i){return {id:"event"+i,kind:"event",title:"🌙".repeat(40),start:"2099-09-15",end:"2099-09-16",location:'"'.repeat(80),capabilities:[]};});
+ var views=new Views({list:function(kind,state,snapshot,cursor,done){done(null,{records:records,total:16,next_cursor:"third",snapshot_id:"snapshot"});},body:function(record,cursor,done){done(null,{body:"Details"});}}),list;
+ views.list("event","active","snapshot","second",function(e,v){assert.ifError(e);list=v;});
+ assert.match(list.list.timeline[0],/all_day=true/);
+ assert.match(list.list.timeline[0],/day=2099-09-15/);
+ assert.match(list.list.timeline[0],/time="All day"/);
+ assert.ok(list.list.timeline.every(function(m){return Buffer.byteLength(m)<192;}));
+ assert.ok(Buffer.byteLength(list.list.titles.join("\n"))+Buffer.byteLength(list.list.timeline.join("\n"))+250<2048,"packed event cards must fit the watch inbox");
+ views.body(views.resolve(list.token,"r5").record,"",function(e,v){assert.ifError(e);var back=views.resolve(v.token,"back");assert.strictEqual(back.cursor,"second");assert.strictEqual(back.snapshot,"snapshot");assert.strictEqual(back.focus,5);assert.match(v.source,/value=return/);});
+})();
 (function unchangedMetadataDoesNotRewriteCache(){
  var client=new Client({storage:storage(),base:function(){return "https://server.test";},token:function(){return "test";}}),writes=0;
  client.saveCache=function(){writes++;};
@@ -70,4 +82,18 @@ console.log("✓ collection journal: durable recovery, torn slots, duplicate ing
  };
  client.connect(function(e){assert.ifError(e);});client.connect(function(e){assert.ifError(e);});
  assert.strictEqual(writes,1);
+})();
+
+(function timelinePageHistoryAndDST(){
+ var oldTZ=process.env.TZ;process.env.TZ="America/Los_Angeles";
+ try {
+  var records=[{id:"early",kind:"event",title:"Early",start:"2026-11-01T01:30:00-07:00",end:"2026-11-01T01:15:00-08:00"},
+   {id:"late",kind:"event",title:"Late",start:"2026-11-01T01:30:00-08:00",end:"2026-11-01T02:00:00-08:00"}];
+  var views=new Views({list:function(kind,state,snapshot,cursor,done){done(null,{records:records,total:6,next_cursor:cursor==="second"?"third":"second",snapshot_id:"snap"});}}),page;
+  function read(snapshot,cursor){views.list("event","active",snapshot,cursor,function(e,v){assert.ifError(e);page=v;});}
+  read("","");assert.match(page.list.timeline[0],/start=5400/);assert.match(page.list.timeline[0],/end=8100/);assert.match(page.list.timeline[1],/start=9000/);assert.strictEqual(page.list.previous,false);
+  read("snap","second");assert.strictEqual(page.list.previous,true);assert.strictEqual(views.resolve(page.token,"previous").cursor,"");
+  read("snap","third");assert.strictEqual(views.resolve(page.token,"previous").cursor,"second");
+  read("snap","second");assert.strictEqual(views.resolve(page.token,"previous").cursor,"");assert.strictEqual(views.eventPages.length,2);
+ } finally {if(oldTZ===undefined)delete process.env.TZ;else process.env.TZ=oldTZ;}
 })();

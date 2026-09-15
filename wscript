@@ -13,6 +13,9 @@ def check_watch_symbols(task):
     found = sorted({line.split()[-1] for line in symbols.splitlines() if line.split()} & unsafe)
     if found:
         task.generator.bld.fatal('Unsafe newlib state in relocated watchapp: ' + ', '.join(found))
+    header = [line.split() for line in symbols.splitlines() if line.split() and line.split()[-1] == '__pbl_app_info']
+    if len(header) != 1 or int(header[0][0], 16) != 0:
+        task.generator.bld.fatal('Missing or misplaced Pebble app header')
     task.outputs[0].write('No unsupported newlib state symbols\n')
 
 

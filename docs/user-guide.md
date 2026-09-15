@@ -155,7 +155,11 @@ The hosted page is [nick1udwig.github.io/codey/config/](https://nick1udwig.githu
 
 Tap the top-left date tile to see calendar events in time order. The watch
 caches the first eight dated titles; opening the list refreshes them through the
-phone. Open an event for its end time, location, and description. Date-only events
+phone. The Timeline-style view expands the selected event, previews the next,
+and separates dates with day headings. Up/Down move between events and load
+adjacent pages at the boundaries. Select opens the event; Back returns to the
+same page and selection. Dragging the list snaps to an event when released.
+Open an event for its end time, location, and description. Date-only events
 are all day; their end date is exclusive.
 
 Say “Add a calendar event: lunch tomorrow from noon to one at Café Central.”
@@ -166,6 +170,6 @@ app. See [backend setup](../README.md#backend-sync-setup). The agenda imports th
 next 90 days and recurring occurrences. Manage edits, invitations, and recurring
 series in your calendar app. This agenda lives in codey, separate from OS Timeline.
 
-The dashboard counts all active tasks, all notes, or upcoming events, including
+The lower-right dashboard tile counts all active tasks or notes, including
 items beyond the cached first page. Completing a task updates the list from the
 phone cache immediately while delivery continues in the background.

@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define OUTBOX_QUEUE_SIZE 10 // Keep the static image within Pebble's 16-bit size limit.
+#define OUTBOX_QUEUE_SIZE 10
 #define OUTBOX_RETRY_MS 100
 #define OUTBOX_VALUE_LENGTH 220
 #define DICTATION_LENGTH 220
@@ -37,7 +37,9 @@ static AgentUi *s_ui;
 static AgentCapabilities *s_capabilities;
 static DictationSession *s_dictation;
 static uint32_t s_request_id;
-static OutgoingMessage s_outbox[OUTBOX_QUEUE_SIZE];
+// Allocate the same fixed queue on the heap: the PBW image has a 16-bit size
+// limit independent of available RAM. This leaves room for the Timeline UI.
+static OutgoingMessage *s_outbox;
 static uint8_t s_outbox_count;
 static bool s_outbox_busy;
 static AppTimer *s_outbox_retry_timer;
@@ -522,7 +524,8 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
     agent_protocol_copy(s_collection_view,sizeof(s_collection_view),prv_tuple_string(iter,MESSAGE_KEY_ViewToken));
     int kind=!strcmp(operation,"event")?2:!strcmp(operation,"note")?1:0;
     if(!(prv_tuple_int(iter,MESSAGE_KEY_Flags,0)&1))collection_preview_set_count(kind,prv_tuple_int(iter,MESSAGE_KEY_Index,0));
-    collection_preview_receive(s_capabilities,kind,prv_tuple_string(iter,MESSAGE_KEY_Value),prv_tuple_int(iter,MESSAGE_KEY_Flags,0),prv_tuple_string(iter,MESSAGE_KEY_Subtitle),prv_tuple_string(iter,MESSAGE_KEY_Meta));
+    if(kind==2)collection_preview_receive_timeline(s_capabilities,prv_tuple_string(iter,MESSAGE_KEY_Value),prv_tuple_int(iter,MESSAGE_KEY_Flags,0),prv_tuple_string(iter,MESSAGE_KEY_Subtitle),prv_tuple_string(iter,MESSAGE_KEY_Meta),prv_tuple_string(iter,MESSAGE_KEY_Title));
+    else collection_preview_receive(s_capabilities,kind,prv_tuple_string(iter,MESSAGE_KEY_Value),prv_tuple_int(iter,MESSAGE_KEY_Flags,0),prv_tuple_string(iter,MESSAGE_KEY_Subtitle),prv_tuple_string(iter,MESSAGE_KEY_Meta));
     return;
   }
   if (!strcmp(type,"collection-view")) {
@@ -668,6 +671,8 @@ static void prv_show_boot(void) {
 }
 
 static void prv_init(void) {
+  s_outbox=calloc(OUTBOX_QUEUE_SIZE,sizeof(*s_outbox));
+  if(!s_outbox){APP_LOG(APP_LOG_LEVEL_ERROR,"Cannot allocate phone queue");return;}
   s_ui = agent_ui_create(prv_ui_event, prv_start_dictation, NULL);
   if (!s_ui) { return; }
   s_capabilities = agent_capabilities_create(s_ui, prv_capability_event, NULL);
@@ -710,6 +715,7 @@ static void prv_deinit(void) {
 #endif
   agent_capabilities_destroy(s_capabilities);
   agent_ui_destroy(s_ui);
+  free(s_outbox);s_outbox=NULL;
 }
 
 int main(void) {

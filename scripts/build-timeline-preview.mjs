@@ -1,0 +1,20 @@
+// Build an isolated PBW with production UI code and deterministic calendar data.
+import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+const root=path.resolve(import.meta.dirname,"..");
+const out=path.join(root,"build","timeline-preview");
+await mkdir(out,{recursive:true});
+await cp(path.join(root,"src/c"),path.join(out,"src/c"),{recursive:true});
+await cp(path.join(root,"resources"),path.join(out,"resources"),{recursive:true});
+await cp(path.join(root,"tests/timeline-preview.c"),path.join(out,"src/c/main.c"));
+const pkg=JSON.parse(await readFile(path.join(root,"package.json"),"utf8"));
+pkg.name="timeline-preview";pkg.pebble.displayName="Timeline preview";
+pkg.pebble.uuid="c064fa7b-456e-46a6-bc12-36e3583178e6";
+pkg.pebble.capabilities=[];
+await writeFile(path.join(out,"package.json"),JSON.stringify(pkg,null,2));
+let wscript=await readFile(path.join(root,"wscript"),"utf8");
+wscript=wscript.slice(0,wscript.indexOf("    ctx.pbl_bundle("))+"    ctx.pbl_bundle(binaries=binaries)\n";
+await writeFile(path.join(out,"wscript"),wscript);
+const result=spawnSync("pebble",["build"],{cwd:out,stdio:"inherit"});
+process.exit(result.status??1);
