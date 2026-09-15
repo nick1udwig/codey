@@ -34,14 +34,28 @@ CREATE TABLE IF NOT EXISTS versions(record_id TEXT NOT NULL,revision TEXT NOT NU
 CREATE TABLE IF NOT EXISTS operations(id TEXT PRIMARY KEY,client_id TEXT NOT NULL REFERENCES clients(id),ingress TEXT UNIQUE NOT NULL,data BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS changes(sequence INTEGER PRIMARY KEY AUTOINCREMENT,collection_id TEXT NOT NULL,data BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS conflicts(id TEXT PRIMARY KEY,data BLOB NOT NULL);
-CREATE TABLE IF NOT EXISTS snapshots(id TEXT PRIMARY KEY,epoch TEXT NOT NULL,expires INTEGER NOT NULL,cursor TEXT NOT NULL,data BLOB NOT NULL);
+CREATE TABLE IF NOT EXISTS snapshots(id TEXT PRIMARY KEY,epoch TEXT NOT NULL,expires INTEGER NOT NULL,cursor TEXT NOT NULL,total INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS snapshots_expiry ON snapshots(expires);
+CREATE TABLE IF NOT EXISTS snapshot_records(snapshot_id TEXT NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,position INTEGER NOT NULL,data BLOB NOT NULL,PRIMARY KEY(snapshot_id,position)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS record_summaries(id TEXT PRIMARY KEY,collection_id TEXT NOT NULL,data BLOB NOT NULL);
+CREATE INDEX IF NOT EXISTS summaries_collection ON record_summaries(collection_id,id);
+CREATE TRIGGER IF NOT EXISTS summary_insert AFTER INSERT ON records BEGIN
+ INSERT OR REPLACE INTO record_summaries VALUES(NEW.id,NEW.collection_id,json_remove(NEW.data,'$.body','$.description','$.extensions'));
+END;
+CREATE TRIGGER IF NOT EXISTS summary_update AFTER UPDATE ON records BEGIN
+ DELETE FROM record_summaries WHERE id=OLD.id;
+ INSERT INTO record_summaries VALUES(NEW.id,NEW.collection_id,json_remove(NEW.data,'$.body','$.description','$.extensions'));
+END;
+CREATE TRIGGER IF NOT EXISTS summary_delete AFTER DELETE ON records BEGIN
+ DELETE FROM record_summaries WHERE id=OLD.id;
+END;
 CREATE TABLE IF NOT EXISTS bindings(id TEXT PRIMARY KEY,collection_id TEXT NOT NULL,data BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS provider_jobs(id TEXT PRIMARY KEY,binding_id TEXT NOT NULL,record_id TEXT NOT NULL,revision TEXT NOT NULL,state TEXT NOT NULL,data BLOB NOT NULL);
 CREATE INDEX IF NOT EXISTS provider_jobs_state ON provider_jobs(state);
 CREATE TABLE IF NOT EXISTS mappings(binding_id TEXT NOT NULL,remote_id TEXT NOT NULL,record_id TEXT NOT NULL,data BLOB NOT NULL,PRIMARY KEY(binding_id,remote_id));
 CREATE TABLE IF NOT EXISTS secrets(id TEXT PRIMARY KEY,data BLOB NOT NULL);
 CREATE INDEX IF NOT EXISTS changes_collection ON changes(collection_id,sequence);
-PRAGMA user_version=1;
+PRAGMA user_version=2;
 `
 
 func Open(dir string) (*Store, error) {
@@ -77,10 +91,10 @@ func Open(dir string) (*Store, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 1 {
+	if version > 2 {
 		return fail(fmt.Errorf("unsupported collection schema %d", version))
 	}
-	if _, err = db.Exec(schema); err != nil {
+	if err = s.initializeSchema(version); err != nil {
 		return fail(err)
 	}
 	for _, k := range []string{"server_instance_id", "store_epoch", "cursor_key"} {
@@ -105,6 +119,37 @@ func Open(dir string) (*Store, error) {
 	}
 	return s, nil
 }
+
+// Upgrade atomically, preserving issued snapshot IDs, cursors and pinned records.
+func (s *Store) initializeSchema(version int) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if version == 1 {
+		if _, err = tx.Exec("ALTER TABLE snapshots RENAME TO legacy_snapshots"); err != nil {
+			return err
+		}
+	}
+	if _, err = tx.Exec(schema); err != nil {
+		return err
+	}
+	if version < 2 {
+		if _, err = tx.Exec("INSERT OR REPLACE INTO record_summaries SELECT id,collection_id,json_remove(data,'$.body','$.description','$.extensions') FROM records"); err != nil {
+			return err
+		}
+	}
+	if version == 1 {
+		if _, err = tx.Exec(`INSERT INTO snapshots SELECT id,epoch,expires,cursor,json_array_length(data) FROM legacy_snapshots;
+   INSERT INTO snapshot_records SELECT s.id,CAST(j.key AS INTEGER),j.value FROM legacy_snapshots s,json_each(s.data) j;
+   DROP TABLE legacy_snapshots;`); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *Store) Close() error { return s.DB.Close() }
 func encode(v any) []byte {
 	b, e := json.Marshal(v)

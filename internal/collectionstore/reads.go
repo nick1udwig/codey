@@ -3,6 +3,7 @@ package collectionstore
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -71,8 +72,7 @@ func (s *Store) SnapshotInZone(collection, state string, offset int) (Page, erro
 	return s.snapshot(collection, state, offset, 0)
 }
 
-// SnapshotFirstPage returns the first bounded page from the same in-memory
-// snapshot that is persisted, avoiding a second HTTP request and JSON decode.
+// SnapshotFirstPage returns bounded rows from the same immutable transaction.
 func (s *Store) SnapshotFirstPage(collection, state string, offset, n int) (Page, error) {
 	return s.snapshot(collection, state, offset, limit(n))
 }
@@ -80,108 +80,161 @@ func (s *Store) snapshot(collection, state string, offset, firstSize int) (Page,
 	if offset < -840 || offset > 840 {
 		return Page{}, c.Fail("invalid_input", "Invalid timezone offset")
 	}
-	loc := time.FixedZone("phone", offset*60)
-	now := time.Now().In(loc)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx, e := s.DB.Begin()
-	if e != nil {
-		return Page{}, e
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return Page{}, err
 	}
 	defer tx.Rollback()
 	var count int
-	if e = tx.QueryRow("SELECT count(*) FROM collections WHERE id=? AND principal=?", collection, c.Principal).Scan(&count); e != nil {
-		return Page{}, e
+	if err = tx.QueryRow("SELECT count(*) FROM collections WHERE id=? AND principal=?", collection, c.Principal).Scan(&count); err != nil {
+		return Page{}, err
 	}
 	if count != 1 {
 		return Page{}, c.Fail("permission_denied", "Unknown collection")
 	}
 	var seq int64
-	if e = tx.QueryRow("SELECT COALESCE(MAX(sequence),0) FROM changes").Scan(&seq); e != nil {
-		return Page{}, e
+	if err = tx.QueryRow("SELECT COALESCE(MAX(sequence),0) FROM changes").Scan(&seq); err != nil {
+		return Page{}, err
 	}
-	rows, e := tx.Query("SELECT json_remove(data,'$.body','$.description','$.extensions') FROM records WHERE collection_id=? ORDER BY id", collection)
-	if e != nil {
-		return Page{}, e
+	now := time.Now()
+	id, cur := c.ID("snap_"), s.cursor("changes", collection, seq)
+	if _, err = tx.Exec("DELETE FROM snapshots WHERE expires<?", now.Unix()); err != nil {
+		return Page{}, err
 	}
-	records := []c.Record{}
-	for rows.Next() {
-		var b []byte
-		if e = rows.Scan(&b); e != nil {
-			rows.Close()
-			return Page{}, e
-		}
-		r, err := Decode[c.Record](b)
-		if err != nil {
-			rows.Close()
-			return Page{}, err
-		}
-		if c.Visible(r, state, now) {
-			records = append(records, r.Summary())
-		}
-	}
-	e = rows.Err()
-	rows.Close()
-	if e != nil {
-		return Page{}, e
+	if _, err = tx.Exec("INSERT INTO snapshots VALUES(?,?,?,?,0)", id, s.Epoch, now.Add(15*time.Minute).Unix(), cur); err != nil {
+		return Page{}, err
 	}
 	if collection == "col_event" {
-		sort.SliceStable(records, func(i, j int) bool {
-			a, _ := c.EventTimeInZone(records[i].Start, loc)
-			b, _ := c.EventTimeInZone(records[j].Start, loc)
-			return a.Before(b)
-		})
+		err = snapshotEvents(tx, id, collection, state, time.FixedZone("phone", offset*60), now)
+	} else {
+		// Copy summaries directly in SQLite; Go never decodes off-page records.
+		filter := "collection_id=? AND COALESCE(json_extract(data,'$.deleted'),0)=0"
+		args := []any{id, collection}
+		if collection == "col_task" && state != "all" {
+			filter += " AND COALESCE(json_extract(data,'$.completed'),0)=?"
+			args = append(args, state == "completed")
+		}
+		_, err = tx.Exec("INSERT INTO snapshot_records SELECT ?,ROW_NUMBER() OVER (ORDER BY id)-1,data FROM record_summaries WHERE "+filter, args...)
 	}
-	id := c.ID("snap_")
-	cur := s.cursor("changes", collection, seq)
-	if _, e = tx.Exec("DELETE FROM snapshots WHERE expires<?", time.Now().Unix()); e != nil {
-		return Page{}, e
+	if err != nil {
+		return Page{}, err
 	}
-	if _, e = tx.Exec("INSERT INTO snapshots VALUES(?,?,?,?,?)", id, s.Epoch, time.Now().Add(15*time.Minute).Unix(), cur, encode(records)); e != nil {
-		return Page{}, e
+	if _, err = tx.Exec("UPDATE snapshots SET total=(SELECT count(*) FROM snapshot_records WHERE snapshot_id=?) WHERE id=?", id, id); err != nil {
+		return Page{}, err
 	}
-	if e = tx.Commit(); e != nil {
-		return Page{}, e
+	page, err := s.snapshotPage(tx, id, "", firstSize)
+	if err != nil {
+		return Page{}, err
 	}
-	if firstSize > 0 {
-		return s.recordPage(records, id, cur, 0, firstSize), nil
+	if err = tx.Commit(); err != nil {
+		return Page{}, err
 	}
-	return Page{Total: len(records), SnapshotID: id, Cursor: cur, Records: []c.Record{}}, nil
+	return page, nil
+}
+
+func snapshotEvents(tx *sql.Tx, id, collection, state string, loc *time.Location, now time.Time) error {
+	rows, err := tx.Query("SELECT data FROM record_summaries WHERE collection_id=? ORDER BY id", collection)
+	if err != nil {
+		return err
+	}
+	type event struct {
+		record c.Record
+		start  time.Time
+	}
+	var events []event
+	for rows.Next() {
+		var raw []byte
+		if err = rows.Scan(&raw); err != nil {
+			rows.Close()
+			return err
+		}
+		record, e := Decode[c.Record](raw)
+		if e != nil {
+			rows.Close()
+			return e
+		}
+		if c.Visible(record, state, now.In(loc)) {
+			start, _ := c.EventTimeInZone(record.Start, loc)
+			events = append(events, event{record, start})
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	sort.SliceStable(events, func(i, j int) bool { return events[i].start.Before(events[j].start) })
+	stmt, err := tx.Prepare("INSERT INTO snapshot_records VALUES(?,?,?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for i, e := range events {
+		if _, err = stmt.Exec(id, i, encode(e.record)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 func (s *Store) SnapshotPage(id, token string, n int) (Page, error) {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return Page{}, err
+	}
+	defer tx.Rollback()
+	return s.snapshotPage(tx, id, token, limit(n))
+}
+func (s *Store) snapshotPage(tx *sql.Tx, id, token string, n int) (Page, error) {
 	var epoch, cur string
-	var expires int64
-	var b []byte
-	if e := s.DB.QueryRow("SELECT epoch,expires,cursor,data FROM snapshots WHERE id=?", id).Scan(&epoch, &expires, &cur, &b); e != nil {
+	var expires, total int64
+	if err := tx.QueryRow("SELECT epoch,expires,cursor,total FROM snapshots WHERE id=?", id).Scan(&epoch, &expires, &cur, &total); err != nil {
 		return Page{}, c.Fail("cursor_expired", "Snapshot unavailable")
 	}
 	if epoch != s.Epoch || expires < time.Now().Unix() {
 		return Page{}, c.Fail("cursor_expired", "Snapshot expired")
 	}
 	var pos int64
-	var e error
+	var err error
 	if token != "" {
-		pos, e = s.parse(token, "snapshot", id)
+		pos, err = s.parse(token, "snapshot", id)
+		if err != nil {
+			return Page{}, err
+		}
+	}
+	if pos > total {
+		return Page{}, c.Fail("cursor_expired", "Invalid snapshot offset")
+	}
+	page := Page{Total: int(total), SnapshotID: id, Cursor: cur, Records: []c.Record{}, Complete: pos == total}
+	if n == 0 {
+		return page, nil
+	}
+	rows, err := tx.Query("SELECT data FROM snapshot_records WHERE snapshot_id=? AND position>=? ORDER BY position LIMIT ?", id, pos, n)
+	if err != nil {
+		return Page{}, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw []byte
+		if err = rows.Scan(&raw); err != nil {
+			return Page{}, err
+		}
+		record, e := Decode[c.Record](raw)
 		if e != nil {
 			return Page{}, e
 		}
+		page.Records = append(page.Records, record)
 	}
-	records, e := Decode[[]c.Record](b)
-	if e != nil {
-		return Page{}, e
+	if err = rows.Err(); err != nil {
+		return Page{}, err
 	}
-	if pos > int64(len(records)) {
-		return Page{}, c.Fail("cursor_expired", "Invalid snapshot offset")
-	}
-	return s.recordPage(records, id, cur, int(pos), n), nil
-}
-func (s *Store) recordPage(records []c.Record, id, cur string, pos, n int) Page {
-	end := min(pos+limit(n), len(records))
-	page := Page{Total: len(records), SnapshotID: id, Cursor: cur, Records: records[pos:end], Complete: end == len(records)}
+	end := pos + int64(len(page.Records))
+	page.Complete = end == total
 	if !page.Complete {
-		page.Next = s.cursor("snapshot", id, int64(end))
+		page.Next = s.cursor("snapshot", id, end)
 	}
-	return page
+	return page, nil
 }
 
 func (s *Store) Changes(collection, token string, n int) (map[string]any, error) {
