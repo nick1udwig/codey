@@ -1387,19 +1387,16 @@ test("collection lists use one bounded Bluetooth payload with exact view aliases
  }finally{h.cleanup();}
 });
 
-test("failed sync management reopens settings with the server error and no token", function(){
+test("phone opens settings once with a temporary setup session and never reopens on close", function(){
  var requests=[],storage={};storage[Settings.STORAGE_KEY]=JSON.stringify({endpoint:"https://agent.test",token:"private-token"});
  function XHR(){}XHR.prototype.open=function(method,url){this.url=url;};XHR.prototype.setRequestHeader=function(){};XHR.prototype.send=function(body){this.body=body;requests.push(this);};
  var h=loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
  try{
-  h.handlers.webviewclosed({response:JSON.stringify({endpoint:"https://agent.test",token:"",todoSyncProvider:"todoist",manageCollection:"task"})});
-  var r=requests.filter(function(r){return /integration-sessions$/.test(r.url);})[0];assert.ok(r);assert.deepStrictEqual(JSON.parse(r.body),{public_url:"https://agent.test",provider:"todoist",collection_id:"col_task"});
-  r.status=400;r.responseText=JSON.stringify({message:"Operator must configure HTTPS public_url for integration settings"});r.onload();
-  assert.strictEqual(h.opened.length,1);
-  var state=JSON.parse(decodeURIComponent(h.opened[0].split("#")[1]));
-  assert.match(state.managementError,/HTTPS public_url/);assert.strictEqual(state.token,"");assert.strictEqual(state.tokenConfigured,true);
-  assert.strictEqual(state.manageIntegrations,undefined);
-  assert.strictEqual(JSON.parse(storage[Settings.STORAGE_KEY]).managementError,undefined);
+  h.handlers.showConfiguration();var models=requests.shift();models.status=200;models.responseText=JSON.stringify({models:[]});models.onload();
+  var r=requests.shift();assert.match(r.url,/integration-setup-sessions$/);assert.deepStrictEqual(JSON.parse(r.body),{public_url:"https://agent.test"});
+  r.status=200;r.responseText=JSON.stringify({url:"https://agent.test/integrations/setup-api",token:"temporary-setup-token"});r.onload();
+  assert.strictEqual(h.opened.length,1);var state=JSON.parse(decodeURIComponent(h.opened[0].split("#")[1]));assert.strictEqual(state.integrationSetup.token,"temporary-setup-token");assert.strictEqual(state.token,"");
+  h.handlers.webviewclosed({response:JSON.stringify(state)});assert.strictEqual(h.opened.length,1);assert.strictEqual(JSON.parse(storage[Settings.STORAGE_KEY]).integrationSetup,undefined);
  }finally{h.cleanup();}
 });
 

@@ -63,7 +63,7 @@
   }
 
   var current = stateFromHash();
-  if(current.managementError) { status.textContent="Settings saved. Could not open sync services: "+current.managementError; }
+  if(current.managementError) { status.textContent="Sync setup unavailable: "+current.managementError; }
   // A one-time action: never restore it from saved settings or URL state.
   var newSession = document.getElementById("new-session");
   newSession.checked = false;
@@ -150,17 +150,54 @@
     xhr.send();
   });
 
-  var manageCollection="";
-  var syncHelp={server:"Stored on your codey server only. No external account is needed. To disconnect an existing backend, open setup and choose Use Server only; saving this preference alone does not disconnect it.",todoist:"Open To-do setup, enter your Todoist API token, and connect. Choose a project, preview it, then activate. Existing server tasks are exported only if you select that option.",googletasks:"First configure a Google OAuth client in ~/.codey/integrations.json; see the README link below for the exact fields and callback. Restart codey, open To-do setup, sign in to Google, choose a task list, preview, and activate.",nextcloudnotes:"Open Notes setup and enter your Nextcloud HTTPS base URL, username, and app password. Choose a category, preview it, then activate. Private Nextcloud hosts must also be allowed in ~/.codey/integrations.json; see the README."};
-  function updateSyncHelp(){
-    document.getElementById("todo-sync-help").textContent=syncHelp[extraFields.todoSyncProvider.value]||syncHelp.server;
-    document.getElementById("note-sync-help").textContent=syncHelp[extraFields.noteSyncProvider.value]||syncHelp.server;
+  var setup=current.integrationSetup, setupState=null;
+  // The setup credential is short lived and never saved with phone preferences.
+  try{if(window.history&&window.history.replaceState)window.history.replaceState(null,"",window.location.href.split("#")[0]);}catch(_){}
+  function setupRequest(values,done){
+    var expected=Endpoints.api(endpoint.value,"integration-setup-sessions").replace(/\/v1\/integration-setup-sessions$/,"/integrations/setup-api");
+    if(!setup||!setup.token){done(new Error(current.managementError||"Save your HTTPS server URL and bearer token, then reopen settings to connect sync services."));return;}
+    if(expected!==setup.url||token.value.trim()){done(new Error("Save the changed server settings and reopen settings before connecting a backend."));return;}
+    var xhr=new XMLHttpRequest();xhr.open(values?"POST":"GET",setup.url,true);xhr.timeout=30000;
+    xhr.setRequestHeader("Authorization","Bearer "+setup.token);
+    if(values)xhr.setRequestHeader("Content-Type","application/x-www-form-urlencoded");
+    xhr.onload=function(){var data;try{data=JSON.parse(xhr.responseText);}catch(_){done(new Error("Invalid setup response from server"));return;}if(xhr.status<200||xhr.status>=300){done(new Error(data.message||"Setup request failed"));return;}done(null,data);};
+    xhr.onerror=xhr.ontimeout=function(){done(new Error("Cannot reach sync setup. Check the connection, then retry."));};
+    xhr.send(values?Object.keys(values).map(function(k){return encodeURIComponent(k)+"="+encodeURIComponent(values[k]);}).join("&"):null);
   }
-  extraFields.todoSyncProvider.addEventListener("change",updateSyncHelp);
-  extraFields.noteSyncProvider.addEventListener("change",updateSyncHelp);
-  updateSyncHelp();
-  document.getElementById("manage-todos").addEventListener("click",function(){manageCollection="task";form.requestSubmit();});
-  document.getElementById("manage-notes").addEventListener("click",function(){manageCollection="note";form.requestSubmit();});
+  var panels={};
+  function updateActive(data){setupState=data;Object.keys(panels).forEach(function(k){var p=panels[k];var id=(data.active||{})[p.collection]||"server";p.active.textContent="Active backend: "+({server:"Server only",todoist:"Todoist",googletasks:"Google Tasks",nextcloudnotes:"Nextcloud Notes"}[id]||id);});}
+  ["todo","note"].forEach(function(kind){
+    function el(name){return document.getElementById(kind+"-sync-"+name);}
+    var select=extraFields[kind==="todo"?"todoSyncProvider":"noteSyncProvider"];
+    var p=panels[kind]={collection:kind==="todo"?"col_task":"col_note",active:el("active"),status:el("status"),candidate:null,preview:null,busy:false,sequence:0};
+    function reset(){p.sequence++;p.candidate=null;p.preview=null;el("destination").hidden=true;el("activate").hidden=true;el("secret").value="";el("export").checked=false;el("stop").checked=false;}
+    function update(){reset();var provider=select.value;el("credentials").hidden=provider==="server"||provider==="googletasks";el("endpoint-label").hidden=el("username-label").hidden=provider!=="nextcloudnotes";
+      el("connect").textContent=provider==="server"?"Use Server only":provider==="googletasks"?"Continue to Google authorization":"Connect";
+      document.getElementById(kind+"-sync-help").textContent=provider==="server"?"No external account is needed. Use Server only below to disconnect an existing backend; records are preserved.":provider==="nextcloudnotes"?"Enter the Nextcloud base URL, username, and app password. Connect to discover categories, then preview and activate. Private Nextcloud hosts must be allowed in ~/.codey/integrations.json.":provider==="todoist"?"Enter your Todoist API token. Connect to discover projects, then preview and activate.":"Google requires OAuth client credentials in ~/.codey/integrations.json (see README). Continue in this webview to authorize Google; this does not close Pebble settings.";
+      p.status.textContent="";
+    }
+    function send(values,done){if(p.busy)return;p.busy=true;var seq=p.sequence;p.status.textContent="Working…";["connect","preview","activate"].forEach(function(k){el(k).disabled=true;});
+      setupRequest(values,function(e,data){p.busy=false;["connect","preview","activate"].forEach(function(k){el(k).disabled=false;});el("secret").value="";
+        if(e){p.status.textContent=e.message;return;}updateActive(data);if(seq!==p.sequence){p.status.textContent="Previous setup request completed. Review the active backend before continuing.";return;}p.status.textContent=data.message||"";done(data);
+      });
+    }
+    function generation(){var cols=setupState&&setupState.collections||[];for(var i=0;i<cols.length;i++)if(cols[i].id===p.collection)return cols[i].binding_generation;return "";}
+    select.addEventListener("change",update);update();
+    el("credentials").addEventListener("keydown",function(e){if(e.key==="Enter"||e.keyCode===13){e.preventDefault();el("connect").click();}});
+    el("connect").addEventListener("click",function(){
+      if(!generation()){p.status.textContent="Setup is not ready. Reopen settings if the server could not be reached.";return;}
+      var provider=select.value,values={action:provider==="server"?"disconnect":provider==="googletasks"?"authorize":"connect",collection:p.collection,generation:generation(),provider:provider,stop:el("stop").checked?"yes":""};
+      if(values.action==="connect"){values.token=el("secret").value.trim();values.username=el("username").value.trim();values.endpoint=el("endpoint").value.trim();if(!values.token||(provider==="nextcloudnotes"&&(!values.username||!values.endpoint))){p.status.textContent="Fill in the required connection fields.";return;}}
+      reset();send(values,function(data){
+        if(data.url){var base=setup.url.replace(/\/integrations\/setup-api$/,"");if(data.url.indexOf(base+"/integrations?ticket=")!==0){p.status.textContent="Invalid authorization destination";return;}window.location.href=data.url;return;}
+        if(data.candidate_id){p.candidate=data.candidate_id;var dest=el("container");dest.textContent="";(data.containers||[]).forEach(function(c){var o=document.createElement("option");o.value=c.id;o.textContent=c.name;dest.appendChild(o);});if(data.containers&&data.containers.length){dest.value=data.containers[0].id;el("destination").hidden=false;}else p.status.textContent="No destinations found for this account.";}
+      });
+    });
+    ["container","export","stop"].forEach(function(k){el(k).addEventListener("change",function(){p.sequence++;p.preview=null;el("activate").hidden=true;});});
+    el("preview").addEventListener("click",function(){if(!p.candidate)return;var values={action:"bind",candidate:p.candidate,container:el("container").value,export:el("export").checked?"yes":"",stop:el("stop").checked?"yes":""};send(values,function(data){p.preview=values;p.status.textContent=data.preview||"Review connection";el("activate").hidden=false;});});
+    el("activate").addEventListener("click",function(){if(!p.preview)return;var values=Object.assign({},p.preview,{action:"apply"});send(values,function(){reset();p.status.textContent="Sync connection activated.";});});
+  });
+  setupRequest(null,function(e,data){if(e){Object.keys(panels).forEach(function(k){panels[k].status.textContent=e.message;});return;}updateActive(data);});
   form.addEventListener("submit", function(event) {
     var settings;
     event.preventDefault();
@@ -185,8 +222,6 @@
     status.textContent = "Saved. Returning to Pebble…";
     if (newSession.checked) { settings.newSession = true; }
     if(document.getElementById("recover-collections").checked)settings.recoverCollections=true;
-    if(manageCollection)settings.manageCollection=manageCollection;
-    manageCollection="";
     closeWith(settings);
   });
 }());

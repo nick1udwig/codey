@@ -587,7 +587,12 @@ Pebble.addEventListener("showConfiguration", function() {
   function open(catalog) {
     if (opened) { return; }
     opened = true;
-    Pebble.openURL(Settings.buildConfigUrl(settings, Date.now(), catalog));
+    if(!collections||!collectionBase()||!settings.token){Pebble.openURL(Settings.buildConfigUrl(settings,Date.now(),catalog));return;}
+    collections.request("POST","/v1/integration-setup-sessions",{public_url:collectionBase()},function(e,setup){
+      var base=collectionBase();
+      if(!e&&(!setup||setup.url!==base+"/integrations/setup-api"||!setup.token))e=new Error("Invalid sync setup destination");
+      Pebble.openURL(Settings.buildConfigUrl(settings,Date.now(),catalog,e?e.message:null,e?null:setup));
+    });
   }
   var xhr = new XMLHttpRequest();
   try {
@@ -620,19 +625,6 @@ Pebble.addEventListener("webviewclosed", function(event) {
   if (!updated.token) updated.token=settings.token;
   settings = Settings.save(updated);
   if(updated.recoverCollections&&collections)collections.recover(function(e){sendStatus(e?e.message:"Pending input archived for recovery. Reopen collections.",e?"error":"show");if(!e)syncCollections();});else syncCollections();
-  if(updated.manageIntegrations){
-    function managementError(message){
-      sendStatus(message,"error");
-      Pebble.openURL(Settings.buildConfigUrl(settings,Date.now(),null,message));
-    }
-    if(!collections)managementError(collectionError||"Collections unavailable");
-    else collections.request("POST","/v1/integration-sessions",{public_url:collectionBase(),provider:updated.manageCollection==="note"?settings.noteSyncProvider:settings.todoSyncProvider,collection_id:updated.manageCollection==="note"?"col_note":"col_task"},function(e,data){
-      if(e){managementError(e.message);return;}
-      var base=collectionBase();
-      if(!data.url||data.url.indexOf(base.replace(/\/$/,"")+"/integrations?ticket=")!==0){managementError("Sync settings returned an unexpected server URL.");return;}
-      Pebble.openURL(data.url);
-    });
-  }
   if (updated.newSession) { startNewSession(); }
   if (watchReady) { sendConnection(); refreshWeather(); sendPreferences(); dashboardStatus.refresh(); }
 });

@@ -39,6 +39,7 @@ type ticket struct {
 	Provider   string
 }
 type session struct {
+	Inline     bool
 	Collection string
 	Base       string
 	Provider   string
@@ -244,6 +245,10 @@ func ticketInfo(base, provider, collection string) ticket {
 	return ticket{Collection: collection, Expires: time.Now().Add(5 * time.Minute), Base: base, Provider: provider}
 }
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/integrations/setup-api" {
+		m.serveInline(w, r)
+		return
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
@@ -277,7 +282,7 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.mu.Lock()
 	sess, ok := m.sessions[cookie.Value]
 	m.mu.Unlock()
-	if !ok || time.Now().After(sess.Expires) {
+	if !ok || sess.Inline || time.Now().After(sess.Expires) {
 		http.Error(w, "Management session expired", 401)
 		return
 	}

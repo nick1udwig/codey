@@ -66,7 +66,8 @@ function request(port, { method = "POST", body = "" } = {}) {
 function runConfig(hash, bridge, XHR) {
   const ids = ["settings", "endpoint", "token", "units", "timeout", "location-label", "status", "codex-model", "codex-effort", "fast-mode", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review", "answer-vibrate", "tap-animation"];
   const elements = {};
-  ids.push("todo-sync-provider","note-sync-provider","todo-sync-help","note-sync-help","manage-todos","manage-notes","token-status","new-session","collection-development-http","recover-collections");
+  ids.push("todo-sync-provider","note-sync-provider","todo-sync-help","note-sync-help","token-status","new-session","collection-development-http","recover-collections");
+  ["todo","note"].forEach(kind=>["form","active","credentials","endpoint-label","username-label","secret-label","endpoint","username","secret","connect","destination","container","export","preview","stop","status","activate"].forEach(name=>ids.push(kind+"-sync-"+name)));
   let submit;
   ids.forEach(id => {
     elements[id] = {
@@ -219,26 +220,32 @@ test("configuration page hydrates state and closes with normalized form values",
   });
 });
 
-test("sync setup defaults to server only and keeps notes and todos independent", () => {
- let saved;const h=runConfig("",{submit(s){saved=s;}});
- assert.equal(h.elements["todo-sync-provider"].value,"server");
- assert.equal(h.elements["note-sync-provider"].value,"server");
- h.elements["todo-sync-provider"].value="googletasks";
- h.elements["todo-sync-provider"].handlers.change();
- assert.match(h.elements["todo-sync-help"].textContent,/OAuth client/);
- assert.match(h.elements["note-sync-help"].textContent,/No external account/);
- h.elements["manage-todos"].handlers.click();
- assert.equal(saved.manageCollection,"task");assert.equal(saved.todoSyncProvider,"googletasks");assert.equal(saved.noteSyncProvider,"server");
- h.elements["note-sync-provider"].value="nextcloudnotes";
- h.elements["note-sync-provider"].handlers.change();assert.match(h.elements["note-sync-help"].textContent,/app password/);
- h.elements["manage-notes"].handlers.click();assert.equal(saved.manageCollection,"note");
- h.submit({preventDefault(){}});assert.equal(saved.manageCollection,undefined);
+test("Nextcloud setup connects, previews, and activates without closing settings", () => {
+ const requests=[];let saved;
+ function XHR(){}XHR.prototype.open=function(method,url){this.url=url;};XHR.prototype.setRequestHeader=function(){};XHR.prototype.send=function(body){this.body=body;requests.push(this);};
+ const initial={endpoint:"https://agent.test",integrationSetup:{url:"https://agent.test/integrations/setup-api",token:"temporary"}};
+ const h=runConfig("#"+encodeURIComponent(JSON.stringify(initial)),{submit(s){saved=s;}},XHR);
+ const state={collections:[{id:"col_note",binding_generation:"1"},{id:"col_task",binding_generation:"1"}],active:{col_note:"server",col_task:"server"}};
+ function reply(data,status=200){const r=requests.shift();r.status=status;r.responseText=JSON.stringify(data);r.onload();}
+ reply(state);
+ assert.equal(h.elements["todo-sync-provider"].value,"server");assert.equal(h.elements["note-sync-provider"].value,"server");
+ h.elements["note-sync-provider"].value="nextcloudnotes";h.elements["note-sync-provider"].handlers.change();
+ assert.equal(h.elements["note-sync-credentials"].hidden,false);
+ h.elements["note-sync-endpoint"].value="https://cloud.test";h.elements["note-sync-username"].value="nick";h.elements["note-sync-secret"].value="app-password";
+ h.elements["note-sync-connect"].handlers.click();assert.equal(saved,undefined);
+ assert.match(requests[0].body,/token=app-password/);reply({message:"Password rejected"},400);
+ assert.match(h.elements["note-sync-status"].textContent,/Password rejected/);assert.equal(saved,undefined);
+ h.elements["note-sync-secret"].value="valid-password";h.elements["note-sync-connect"].handlers.click();reply({...state,candidate_id:"candidate",containers:[{id:"category",name:"Work"}]});
+ assert.equal(h.elements["note-sync-destination"].hidden,false);assert.equal(h.elements["note-sync-secret"].value,"");
+ h.elements["note-sync-preview"].handlers.click();reply({...state,preview:"2 remote notes; no export"});assert.equal(h.elements["note-sync-activate"].hidden,false);
+ h.elements["note-sync-activate"].handlers.click();assert.match(requests[0].body,/action=apply/);reply({...state,active:{col_note:"nextcloudnotes"},message:"Destination activated"});
+ assert.equal(saved,undefined);assert.match(h.elements["note-sync-active"].textContent,/Nextcloud Notes/);assert.match(h.location.href,/^https:\/\/config.test/);
+ h.submit({preventDefault(){}});assert.equal(saved.noteSyncProvider,"nextcloudnotes");assert.equal(saved.integrationSetup,undefined);assert.ok(!JSON.stringify(saved).includes("password"));
 });
 
-test("management setup errors are visible in the reopened settings page", () => {
- const h=runConfig("#"+encodeURIComponent(JSON.stringify({managementError:"Configure HTTPS public_url",tokenConfigured:true})));
- assert.match(h.elements.status.textContent,/Could not open sync services: Configure HTTPS public_url/);
- assert.equal(h.elements.token.value,"");
+test("missing setup sessions show inline instructions and never close settings", () => {
+ const h=runConfig("");h.elements["note-sync-provider"].value="nextcloudnotes";h.elements["note-sync-provider"].handlers.change();h.elements["note-sync-connect"].handlers.click();
+ assert.match(h.elements["note-sync-status"].textContent,/not ready/);assert.match(h.location.href,/config.test/);
 });
 
 test("configuration page recovers from a bad hash and supports the native bridge", () => {

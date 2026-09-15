@@ -170,6 +170,22 @@ func (s *Server) integrationAPI(w http.ResponseWriter, r *http.Request) {
 		collectionError(w, c.Fail("auth_required", "Bearer token required"))
 		return
 	}
+	if r.URL.Path == "/v1/integration-setup-sessions" && r.Method == "POST" && s.config.IntegrationSetup != nil {
+		var input struct {
+			PublicURL string `json:"public_url"`
+		}
+		if e := collectionDecode(w, r, &input); e != nil {
+			collectionError(w, e)
+			return
+		}
+		value, e := s.config.IntegrationSetup(input.PublicURL)
+		if e != nil {
+			collectionError(w, e)
+			return
+		}
+		collectionJSON(w, 200, value)
+		return
+	}
 	if r.URL.Path == "/v1/providers" && r.Method == "GET" && s.config.ProviderDescriptors != nil {
 		collectionJSON(w, 200, s.config.ProviderDescriptors())
 		return

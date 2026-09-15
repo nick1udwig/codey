@@ -20,18 +20,19 @@ HTTPS is required unless **Allow HTTP for local development collections** is
 explicitly enabled. The server creates one To-dos and one Notes collection.
 Collection APIs remain available when Codex is unavailable.
 
-Choose independently under **To-do sync setup** or **Notes sync setup**; each
-defaults to **Server only**. Read the instructions shown for that selection, then
-choose **Save & open To-do setup** or **Save & open Notes setup**.
-The phone sends its HTTPS server URL and selected service to create a short-lived
-management session scoped to that collection; no separate public URL configuration
-is required. Setup preferences are not active bindings: activate or disconnect on
-the server page. See [backend setup](../README.md#backend-sync-setup) for credentials
-and Google OAuth configuration.
-Select Server only, Todoist, Google Tasks, or Nextcloud Notes; authenticate,
-discover a project/list/category, preview the records, then activate it. Existing
-server records are exported only when explicitly selected. Provider secrets are
-entered on the server page and encrypted with a separately held server key.
+Choose **To-do sync setup** or **Notes sync setup** independently; both default
+to Server only. Selecting Nextcloud Notes reveals its URL/username/app-password
+fields; Todoist reveals a token field. Connect, choose a destination, preview, and
+activate directly in the settings page. Errors remain visible there. No setup
+button closes and reopens the Pebble settings webview. Google authorization
+navigates within the current webview after its server OAuth prerequisites are met.
+
+A setup-only session is issued by the phone before opening settings. First save an
+HTTPS server URL and token; reopening settings then supplies a 30-minute session.
+The static settings page never receives the main server bearer token. Provider
+secrets are sent directly to the server, excluded from responses and phone settings,
+and encrypted when activated. The displayed active backend is authoritative;
+changing a selector alone does not change it. See [setup instructions](../README.md#backend-sync-setup).
 
 ## Saving and browsing
 

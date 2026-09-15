@@ -49,17 +49,25 @@ without an external account. Configure them independently in phone settings:
 | To-dos | Server only, Todoist, Google Tasks | None, Todoist API token, Google OAuth |
 | Notes | Server only, Nextcloud Notes | None, Nextcloud username and app password |
 
-Select a service under **To-do sync setup** or **Notes sync setup**. The instructions
-below that selector change to match your choice. Tap **Save & open To-do setup**
-or **Save & open Notes setup** to open that collection's authenticated server page.
-The phone supplies the HTTPS server address automatically; no `public_url` setting
-is required. The dropdowns remember which setup to open, not the active binding.
-Saving alone does not switch an existing backend.
+Select a service under **To-do sync setup** or **Notes sync setup**. Selecting
+Nextcloud Notes reveals its HTTPS URL, username, and app-password fields in the
+same settings page. Todoist reveals an API-token field. **Connect**, choose a
+destination, **Preview connection**, then **Activate this destination**. Errors
+stay beside the fields; these buttons never save-and-close the Pebble webview.
+The active backend is shown separately from the dropdown selection.
 
-- **Todoist:** enter your Todoist API token on the server setup page, connect,
+The phone obtains a short-lived, setup-only session before opening settings.
+The normal server bearer token is not sent to the settings website. Provider
+credentials go directly over HTTPS to your server and are never saved as phone
+preferences. On first use or after changing your server URL/token, save those
+connection settings and reopen settings once to obtain a session. Sessions expire
+after 30 minutes; reopen settings to renew. **Save & close** saves other phone
+preferences; activation/disconnection takes effect immediately on the server.
+
+- **Todoist:** enter your Todoist API token in the settings fields, connect,
   select a project, preview, and activate the destination.
 - **Nextcloud Notes:** enter the HTTPS Nextcloud base URL (including its installation
-  subpath, if any), username, and an app password on the server setup page. Choose
+  subpath, if any), username, and an app password in the settings fields. Choose
   a category, preview, and activate. The Nextcloud Notes app must be available.
   For a private Nextcloud hostname, add `"private_hosts": ["cloud.example"]` to
   `~/.codey/integrations.json` and restart codey.
@@ -80,11 +88,13 @@ Saving alone does not switch an existing backend.
   }
   ```
 
-  Then open **To-do setup**, authorize Google, choose a task list, preview, and
+  Then select Google Tasks and **Continue to Google authorization**. Navigation
+  happens inside the current webview, without closing/reopening it. Save other
+  changed phone preferences before navigating. Authorize Google, choose a task list, preview, and
   activate. The server loads this file automatically; no extra startup flag is
   needed. Provider tokens are encrypted on the server. Do not commit this file.
 - **Server only:** no setup is required for a new collection. To disconnect an
-  existing backend, open that collection's setup and choose **Use Server only**.
+  existing backend, select Server only for that collection and click **Use Server only**.
   This preserves server and remote records; pending delivery may need an explicit
   stop decision.
 

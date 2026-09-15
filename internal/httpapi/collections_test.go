@@ -61,3 +61,23 @@ func TestManagementURLAndProviderRequireAuthenticatedPhone(t *testing.T) {
 		t.Fatal(calls)
 	}
 }
+
+func TestInlineSetupSessionIssuanceRequiresPhoneBearer(t *testing.T) {
+	calls := 0
+	s := New(Config{Token: "phone", IntegrationSetup: func(base string) (map[string]string, error) {
+		calls++
+		return map[string]string{"url": base + "/integrations/setup-api", "token": "temporary"}, nil
+	}})
+	for _, token := range []string{"", "temporary", "phone"} {
+		r := httptest.NewRequest("POST", "/v1/integration-setup-sessions", strings.NewReader(`{"public_url":"https://server.test"}`))
+		r.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if token == "phone" && w.Code != 200 || token != "phone" && w.Code != 401 {
+			t.Fatal(token, w.Code)
+		}
+	}
+	if calls != 1 {
+		t.Fatal(calls)
+	}
+}

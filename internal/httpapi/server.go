@@ -27,6 +27,7 @@ type Config struct {
 	Collections         *collectionstore.Store
 	RefreshCollections  func()
 	Integrations        http.Handler
+	IntegrationSetup    func(string) (map[string]string, error)
 	IntegrationTicket   func(string, string, string) (string, error)
 	ProviderDescriptors func() any
 	Jobs                *jobs.Store
@@ -47,6 +48,7 @@ func New(config Config) *Server {
 	}
 	server.mux.HandleFunc("/v1/providers", server.integrationAPI)
 	server.mux.HandleFunc("/v1/integration-sessions", server.integrationAPI)
+	server.mux.HandleFunc("/v1/integration-setup-sessions", server.integrationAPI)
 	if config.Integrations != nil {
 		server.mux.Handle("/integrations", config.Integrations)
 		server.mux.Handle("/integrations/", config.Integrations)

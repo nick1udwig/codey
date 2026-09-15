@@ -420,3 +420,19 @@ from forwarded headers or stored as a mutable global URL. The provider choice
 opens that service’s setup section for the selected collection; authentication and activation remain explicit.
 Management sessions use secure cookies,
 never a provider token in a phone settings fragment.
+
+### In-page sync setup
+
+Before opening phone settings, the bridge posts `{public_url}` to bearer-protected
+`/v1/integration-setup-sessions`. The result is a 30-minute setup-only token and
+an exact `/integrations/setup-api` URL. Only this temporary token travels in the
+settings URL fragment; the page removes the fragment from browser history and
+never returns it with saved phone settings. The main bearer token stays on the phone.
+
+The setup API accepts GET for public descriptors/collections/active bindings and
+URL-encoded POST actions: connect, bind (preview), apply, disconnect, and authorize
+(Google's existing browser flow). Requests use the temporary bearer token. CORS
+allows only the hosted settings origin `https://nick1udwig.github.io`; no cookie
+authentication is used by this API. Provider credentials are omitted from every
+response. Candidates are tied to their originating setup session. Errors are JSON
+and displayed inline. The `webviewclosed` handler never opens another page.

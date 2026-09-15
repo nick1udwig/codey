@@ -50,10 +50,12 @@ provider endpoints are refused. Explicitly allow private DNS hosts for self-host
 Nextcloud; link-local/metadata destinations are denied. Preserve Nextcloud's base
 path. Provider failures do not stop canonical reads/writes or agent requests.
 
-If management setup fails, the settings page reopens with the server error.
+The phone creates a short-lived setup session before opening settings. Provider
+connection errors stay inline; no action closes/reopens the settings webview.
 Development HTTP permission for collection API calls does not enable HTTP browser
-management sessions. Selecting a provider opens its setup section; authenticate,
-preview a destination, then activate it. Merely choosing a provider in phone
+management sessions. Selecting Nextcloud Notes or Todoist reveals credential fields
+in the same settings page; connect, choose a destination, preview, then activate.
+Google authorization navigates within that existing webview. Merely choosing a provider in phone
 settings does not switch or export existing records.
 
 ## Backup and restore

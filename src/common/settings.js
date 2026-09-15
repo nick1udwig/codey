@@ -75,10 +75,11 @@ function save(settings, storage) {
   return normalized;
 }
 
-function buildConfigUrl(settings, nonce, catalog, error) {
+function buildConfigUrl(settings, nonce, catalog, error, setup) {
   var normalized = copyDefaults(settings);
   if (catalog) { normalized.codexCatalog = catalog; }
   if (error) { normalized.managementError = String(error).slice(0, 500); }
+  if(setup) { normalized.integrationSetup=setup; }
   normalized.tokenConfigured = !!normalized.token;
   normalized.token = "";
   var state = encodeURIComponent(JSON.stringify(normalized));
@@ -97,7 +98,6 @@ function parseConfigResponse(response) {
     // Preserve the action only while handling this submission. save() and
     // buildConfigUrl() strip it because it is not a persistent preference.
     if (source && source.recoverCollections === true) normalized.recoverCollections=true;
-    if (source && ["task","note"].indexOf(source.manageCollection)>=0) { normalized.manageIntegrations=true; normalized.manageCollection=source.manageCollection; }
     if (source && source.newSession === true) { normalized.newSession = true; }
     return normalized;
   } catch (error) {

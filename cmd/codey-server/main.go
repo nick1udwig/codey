@@ -232,7 +232,7 @@ func run(arguments []string) error {
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); engine.Run(workerContext) }()
 	defer func() { workerCancel(); <-workerDone }()
-	handler := httpapi.New(httpapi.Config{Collections: collections, RefreshCollections: engine.Refresh, Integrations: integrations, IntegrationTicket: integrations.Ticket, ProviderDescriptors: func() any { return integrations.Descriptors() }, Jobs: jobStore, Responder: responder, Token: phoneToken, Logger: logger})
+	handler := httpapi.New(httpapi.Config{Collections: collections, RefreshCollections: engine.Refresh, Integrations: integrations, IntegrationTicket: integrations.Ticket, IntegrationSetup: integrations.SetupSession, ProviderDescriptors: func() any { return integrations.Descriptors() }, Jobs: jobStore, Responder: responder, Token: phoneToken, Logger: logger})
 	listener, err := net.Listen("tcp", config.listen)
 	if err != nil {
 		return err

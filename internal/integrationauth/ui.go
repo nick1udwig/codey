@@ -23,6 +23,10 @@ var pageTemplate = template.Must(template.New("settings").Parse(`<!doctype html>
 <form method="post" action="{{$.Base}}"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="resume"><label><input type="checkbox" name="confirmed" value="yes" required> I have reconciled restored provider operations against remote records</label><button>Resume providers after restore</button></form><h2>Conflicts</h2>{{range .Conflicts}}<pre>{{.}}</pre>{{end}}<form method="post" action="{{$.Base}}"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="resolve"><label>Conflict ID<input name="conflict" required></label><label>Observed current revision<input name="revision" required></label><label>Decision<select name="decision"><option value="keep">Keep current record; discard proposal</option><option value="proposal">Apply preserved proposal</option></select></label><button>Resolve conflict</button></form>`))
 
 func (m *Manager) page(w http.ResponseWriter, s session, message string, extra map[string]any) {
+	if _, ok := w.(inlineWriter); ok {
+		m.inlinePage(w, s, message, extra)
+		return
+	}
 	cols, e := m.Store.Collections()
 	if e != nil {
 		http.Error(w, "Collection storage unavailable", 503)
