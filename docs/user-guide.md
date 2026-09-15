@@ -24,6 +24,7 @@ On the dashboard, Up opens Notifications, Down opens the selected collection, an
 Touch taps open each section:
 
 - **Clock / Calendar:** opens your upcoming calendar agenda.
+  The top row shows battery and remaining agent quota as numbers around a shared `%`, with the brain at the far right.
   The public SDK cannot directly open the system Timeline; it is accessible from the watchface.
 - **Weather:** shows current temperature, daily low/high, and a condition icon (including sun/moon and cloudy day/night variants).
   It refreshes through the phone on startup and every 15 minutes; cached readings older than an hour are discarded on refresh.
@@ -34,7 +35,7 @@ Touch taps open each section:
   Timer rings fill clockwise from 12 o’clock as elapsed time increases, freezing when paused and filling completely at completion.
   Up to four entries fit; additional entries are indicated by a “MORE” count.
   Select opens the complete live list of timers, alarms, reminders, and stopwatch controls.
-- **Talk to codey:** dictates into the current conversation.
+- **Talk to codey:** the full-button Codey artwork sleeps with zero active threads and thinks with one or more active threads. Tap it to dictate into the current conversation. Agent notification icons use the same sleeping/thinking state.
 - **Todos:** shows the undone count and opens the active task list.
   Tap a checkbox or press Select to archive an item; archived items can be restored.
   Swipe vertically or use Up/Down to navigate.

@@ -69,8 +69,10 @@
         },
         {
           "type": "bitmap",
-          "name": "DASH_ROBOT",
-          "file": "images/icon_robot.png"
+          "name": "DASH_CODEY_SLEEP_SMALL",
+          "file": "images/codey_sleep_small.png",
+          "storageFormat": "pbi",
+          "memoryFormat": "4bitpalette"
         },
         {
           "type": "bitmap",
@@ -116,6 +118,41 @@
           "type": "bitmap",
           "name": "DASH_TODOS_SMALL",
           "file": "images/icon_todos_small.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DASH_CODEY_THINK_SMALL",
+          "file": "images/codey_think_small.png",
+          "storageFormat": "pbi",
+          "memoryFormat": "4bitpalette"
+        },
+        {
+          "type": "bitmap",
+          "name": "DASH_CODEY_SLEEP_EMERY",
+          "file": "images/codey_sleep_emery.png",
+          "storageFormat": "pbi",
+          "memoryFormat": "4bitpalette"
+        },
+        {
+          "type": "bitmap",
+          "name": "DASH_CODEY_THINK_EMERY",
+          "file": "images/codey_think_emery.png",
+          "storageFormat": "pbi",
+          "memoryFormat": "4bitpalette"
+        },
+        {
+          "type": "bitmap",
+          "name": "DASH_CODEY_SLEEP_GABBRO",
+          "file": "images/codey_sleep_gabbro.png",
+          "storageFormat": "pbi",
+          "memoryFormat": "4bitpalette"
+        },
+        {
+          "type": "bitmap",
+          "name": "DASH_CODEY_THINK_GABBRO",
+          "file": "images/codey_think_gabbro.png",
+          "storageFormat": "pbi",
+          "memoryFormat": "4bitpalette"
         }
       ]
     }
