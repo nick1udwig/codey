@@ -22,6 +22,23 @@ Journal.prototype.accept=function(input){var self=this;return this.update(functi
  var previous=d.entries.filter(function(e){return e.operation.record_id===op.record_id;}).pop();if(previous){op.base_operation_id=previous.operation.id;op.base_revision="";op.depends_on=[previous.operation.id];}
  d.entries.push({operation:op,input:input});d.receipts[input.ingress]={hash:hash,operation:op,durable:false,alias:input.alias,view:input.view};return op;});};
 Journal.prototype.receipt=function(result){this.update(function(d){var e=d.entries.filter(function(e){return e.operation.id===result.operation_id;})[0];if(!e)return;if(result.durably_recorded!==true)return;e.receipt=result;d.receipts[e.operation.ingress_id].durable=true;});};
-Journal.prototype.compact=function(records){this.update(function(d){d.entries=d.entries.filter(function(e){if(!e.receipt||!e.receipt.durably_recorded)return true;if(e.receipt.outcome!=="applied")return false;var r=records[e.operation.record_id];return !r||compare(r.revision,e.receipt.revision)<0;});Object.keys(d.receipts).forEach(function(k){if(k.indexOf("watch:")!==0&&d.receipts[k].durable&&!d.entries.some(function(e){return e.operation.ingress_id===k;}))delete d.receipts[k];});});};
+Journal.prototype.compact=function(records){
+ var data=this.data,retained=Object.create(null);
+ var entries=data.entries.filter(function(e){
+  var keep=true;
+  if(e.receipt&&e.receipt.durably_recorded){
+   var r=records[e.operation.record_id];
+   keep=e.receipt.outcome==="applied"&&(!r||compare(r.revision,e.receipt.revision)<0);
+  }
+  if(keep)retained[e.operation.ingress_id]=true;
+  return keep;
+ });
+ var expired=Object.keys(data.receipts).filter(function(k){return k.indexOf("watch:")!==0&&data.receipts[k].durable&&!retained[k];});
+ if(entries.length===data.entries.length&&!expired.length)return;
+ // Commit the changed journal through the same verified two-slot write path.
+ var next=clone(Object.assign({},data,{entries:entries}));
+ expired.forEach(function(k){delete next.receipts[k];});
+ this.commit(next);
+};
 function compare(a,b){a=String(a||"0");b=String(b||"0");return a.length===b.length?(a===b?0:a>b?1:-1):a.length>b.length?1:-1;}
 module.exports={Journal:Journal,PREFIX:PREFIX,checksum:checksum,compare:compare,clone:clone,stable:stable};

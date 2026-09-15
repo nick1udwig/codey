@@ -19,3 +19,7 @@ static inline void refresh_policy_painted(RefreshPolicy *p, uint32_t now) {
   p->painted = true;
   p->painted_at = now;
 }
+
+// Replacing a screen invalidates all element frames; waiting here could leave
+// a blank page after an OS notification covers and restores the app.
+static inline uint32_t refresh_policy_screen_delay(const RefreshPolicy *p,uint32_t now,bool input,bool structural){return refresh_policy_delay(p,now,input||structural);}

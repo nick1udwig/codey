@@ -12,7 +12,7 @@ console.log("✓ collection journal: durable recovery, torn slots, duplicate ing
 
 (function startupEnrollment(){
  var client=new Client({storage:storage(),base:function(){return "https://server.test";},token:function(){return "test";}}),pending=[],completed=0;
- client.request=function(method,path,body,done){pending.push({method:method,path:path,done:done});};
+ client.request=function(method,path,body,done){pending.push({method:method,path:path,body:body,done:done});};
  client.connect(function(e){assert.ifError(e);completed++;});
  client.list("task","active","","",function(e,p){assert.ifError(e);assert.deepStrictEqual(p.records,[]);completed++;});
  assert.strictEqual(pending.length,1);
@@ -21,7 +21,7 @@ console.log("✓ collection journal: durable recovery, torn slots, duplicate ing
  pending.shift().done(null,{client_id:"c",server_instance_id:"s",store_epoch:"e",principal:"operator"});
  pending.shift().done(null,[{id:"col_task",kind:"task",binding_generation:"1"}]);
  assert.strictEqual(completed,1);
- pending.shift().done(null,{snapshot_id:"snapshot"});
+ assert.strictEqual(pending[0].body.limit,8);
  pending.shift().done(null,{records:[],snapshot_id:"snapshot",complete:true});
  assert.strictEqual(completed,2);
 })();
@@ -31,4 +31,43 @@ console.log("✓ collection journal: durable recovery, torn slots, duplicate ing
  assert.strictEqual(client.connectWaiters,null);
  client.options.base=function(){return "";};
  client.ensure(function(e){assert.match(e.message,/URL and bearer token/);});
+})();
+(function completedTaskImmediatelyUsesCachedPageAndTotal(){
+ var f=enrolled(),client=new Client({storage:f.s,base:function(){return "https://server.test";},token:function(){return "secret";}});
+ client.collections=[{id:"col_task",kind:"task",binding_generation:"1"}];
+ var a={id:"a",title:"First",kind:"task",revision:"1",completed:false,capabilities:["task.complete"]},b={id:"b",title:"Second",kind:"task",revision:"1",completed:false,capabilities:["task.complete"]};
+ client.cache.pages["task:active::"]={total:21,records:[a,b],next_cursor:"next"};client.cache.records={a:a,b:b};
+ client.journal.accept({ingress:"watch:bridge_a:1",collection_id:"col_task",generation:"1",record_id:"a",revision:"1",type:"task.complete",payload:{}});
+ client.request=function(){throw new Error("Completion must render from cache without waiting for network");};
+ var views=new Views(client);views.list("task","active","","",function(e,v){assert.ifError(e);assert.deepStrictEqual(v.list.titles,["Second"]);assert.strictEqual(v.list.total,20);assert.strictEqual(v.list.pending,1);assert.strictEqual(views.resolve(v.token,"r0").record.id,"b");},true);
+})();
+(function calendarViewsShowTimeAndReadOnlyDetails(){
+ var record={id:"event",kind:"event",revision:"1",title:"Planning",start:"2099-09-15T16:00:00Z",end:"2099-09-15T17:00:00Z",location:"Room A",capabilities:[]};
+ var views=new Views({list:function(k,s,snap,cur,done){assert.strictEqual(k,"event");done(null,{total:1,records:[record]});},body:function(r,c,done){done(null,{body:"Agenda",complete:true});}});
+ views.list("event","active","","",function(e,v){assert.ifError(e);assert.match(v.list.titles[0],/Sep 15 .*Planning/);assert.strictEqual(views.resolve(v.token,"r0").record.kind,"event");assert.strictEqual(v.list.total,1);views.body(views.resolve(v.token,"r0").record,"",function(e,v){assert.ifError(e);assert.match(v.source,/Room A/);assert.match(v.source,/Agenda/);assert.match(v.source,/Back to calendar/);assert.ok(!v.source.includes("local.note.edit"));});});
+})();
+
+(function compactionOnlyWritesWhenDurableWorkCanBeRemoved(){
+ var f=enrolled(),before=f.j.generation;
+ f.j.compact({});assert.strictEqual(f.j.generation,before);
+ var op=f.j.accept(input(1));before=f.j.generation;
+ f.j.compact({});assert.strictEqual(f.j.generation,before);
+ f.j.receipt({operation_id:op.id,outcome:"applied",durably_recorded:true,revision:"10"});before=f.j.generation;
+ var records={};records[op.record_id]={revision:"9"};f.j.compact(records);assert.strictEqual(f.j.generation,before);
+ records[op.record_id].revision="10";f.s.fail(true);assert.throws(function(){f.j.compact(records);},/disk full/);
+ assert.strictEqual(f.j.data.entries.length,1);f.s.fail(false);f.j.compact(records);
+ assert.strictEqual(new J.Journal(f.s).data.entries.length,0);
+ assert.ok(f.j.data.receipts[op.ingress_id],"watch duplicate receipts must survive compaction");
+ before=f.j.generation;f.j.compact(records);assert.strictEqual(f.j.generation,before);
+})();
+(function unchangedMetadataDoesNotRewriteCache(){
+ var client=new Client({storage:storage(),base:function(){return "https://server.test";},token:function(){return "test";}}),writes=0;
+ client.saveCache=function(){writes++;};
+ client.request=function(method,path,body,done){
+  if(path==="/v1/sync/info")return done(null,{protocol_version:1,server_instance_id:"s",store_epoch:"e",principal:"operator"});
+  if(path==="/v1/sync/clients")return done(null,{client_id:"c",server_instance_id:"s",store_epoch:"e",principal:"operator"});
+  done(null,[{id:"col_note",kind:"note",count:3}]);
+ };
+ client.connect(function(e){assert.ifError(e);});client.connect(function(e){assert.ifError(e);});
+ assert.strictEqual(writes,1);
 })();

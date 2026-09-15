@@ -13,12 +13,12 @@ npm run build:watch
 
 `npm test` currently includes:
 
-- 47 JavaScript tests covering PAM at every chunk boundary, byte and hierarchy limits, all layouts/elements, patches/removals, UTF-8 AppMessage splitting, queue retry/staleness, HTTP and WebSocket cancellation/timeouts, settings, weather, the capability registry, writer output, onboarding, native dashboard preservation, and dictation input through the full PebbleKit-to-agent-to-render bridge.
+- 92 JavaScript tests covering PAM at every chunk boundary, byte and hierarchy limits, all layouts/elements, patches/removals, UTF-8 AppMessage splitting, queue retry/staleness, HTTP and WebSocket cancellation/timeouts, settings, weather, the capability registry, writer output, onboarding, native dashboard preservation, and dictation input through the full PebbleKit-to-agent-to-render bridge.
 - Native C tests built with `-Wall -Wextra -Werror`, AddressSanitizer, and UndefinedBehaviorSanitizer. These cover metadata parsing and escaping, strict signed 32-bit bounds, bounded copies, and duration parsing/formatting.
-- Four integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.
+- 12 integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.
 - Go tests covering strict request/output PAM handling, output at arbitrary model-delta boundaries, invalid-model containment, persisted conversation threads, Codex RPC initialization and fallback order, real loopback HTTP and downstream WebSocket requests, and app-server stdio, WebSocket, and WebSocket-over-Unix-socket transports.
 
-The watch build compiles and links the same sources for both target platforms. At the last run it used about 31 KiB of each platform's 128 KiB RAM budget, leaving about 100 KiB for heap.
+The watch build compiles and links the same sources for both target platforms. The current static footprint is 63,229 bytes on Emery and 63,693 bytes on Gabbro, leaving about 66 KiB of the 128 KiB RAM budget for heap.
 
 ### Streaming efficiency regressions
 
@@ -38,6 +38,34 @@ It streams 48 text elements using one-byte, 32-byte, and whole-response chunks.
 On the development host, buffering and normalization improvements reduced the
 32-byte case from about 47 to 33 microseconds and from 78,218 to 38,488 allocated
 bytes per response. These are host measurements, not device battery results.
+
+### Collection efficiency regressions
+
+```sh
+go test ./internal/collectionstore -run '^$' -bench 'Benchmark(CollectionCounts|NoteSnapshot)$' -benchmem -benchtime=10x
+```
+
+The fixture contains 100 notes with approximately 67 KiB bodies. A development-host
+run before/after the read optimizations measured:
+
+| Operation | Before | After | Allocated bytes before → after |
+| --- | ---: | ---: | ---: |
+| Collection counts | 35.95 ms | 0.105 ms | 29,570,308 → 4,588 |
+| Note snapshot | 37.73 ms | 22.76 ms | 29,829,582 → 268,967 |
+
+These are ten-iteration host measurements, not physical battery or Bluetooth
+latency measurements. The index adds a small persistent database cost and is
+maintained during record writes. Snapshot creation still scans the collection;
+it now avoids allocating full note bodies in Go.
+
+Phone tests cover one-request first pages, unchanged metadata/count suppression,
+watch reconnects, count reconciliation, durable journal compaction and storage
+failures. Store tests cover summary fields, intact canonical bodies, immutable
+pagination after records change, and counts matching active snapshots. Native
+sanitizer tests verify zero writes for unchanged previews, three instead of ten
+writes for a single changed title in eight rows, and invalidation/recovery after
+an interrupted write. Combining watch collection handlers reduced each watch's
+code/data footprint by 905 bytes without adding BSS.
 
 ## Emulator checks completed
 
@@ -115,7 +143,7 @@ The generated resource bundle builds on Emery and Gabbro. The JS bridge suite
 covers New Chat resetting/persisting a session before its dictation acknowledgment,
 canceling old responses, keeping subsequent normal dictation in that session,
 and routing Weather locally without a model request. Native scheduler tests cover
-all five dashboard action bindings, the Calendar placeholder, phone-routed explicit task actions without collection persistence,
+all five dashboard action bindings, the Calendar agenda request, phone-routed explicit task actions without collection persistence,
 archive/restore, counts, storage failure, capacity and text limits, opening and
 refreshing the separate Notifications list, returning home, and concurrent expiry.
 
@@ -265,3 +293,25 @@ Collection latency: phone logs report `collection read <kind> <action> ms=…`
 and credentials. Watch cached previews require no network; verify initial loads,
 reopening after restart, empty collections, pagination, and offline refresh errors
 on hardware. Local server timings do not measure phone networking or Bluetooth.
+
+### Collection and calendar regressions
+
+CalDAV fixtures cover discovery, Basic auth, calendar-query expansion, distinct
+recurrence identities, all-day/timed creates, lost PUT responses and conditional
+retries, external-edit conflicts, cross-origin href rejection, and incomplete
+recurrence data. Store tests check chronological paging, exact counts, event
+validation and reconciliation restricted to the observed window. Phone tests
+check immediate task completion from cached pages, event summaries/details, and
+agent animation only after remote dispatch. Setup tests exercise four-step
+progress, service-specific fields, changing the destination, and independent
+double-tap/ripple preferences. Native tests cover single tap/hold and structural
+refresh bypass after notifications.
+
+Real provider accounts, physical touch/holds, Bluetooth timing, and OS overlay
+return still require device verification. No claim of a sub-second phone or
+provider response follows from the host fixtures.
+
+The sync-engine regression also verifies that a remote resource observed after a
+lost create response is not imported as a duplicate before the conditional retry
+acknowledges its original canonical record. A headless Chromium check with mocked
+services verified actual hidden-field CSS and all three inline setup paths.

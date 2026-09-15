@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	c "github.com/nick1udwig/pebble-agent/internal/collections"
 	_ "modernc.org/sqlite"
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS clients(id TEXT PRIMARY KEY,principal TEXT NOT NULL,revoked INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS collections(id TEXT PRIMARY KEY,principal TEXT NOT NULL,data BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY,collection_id TEXT NOT NULL REFERENCES collections(id),data BLOB NOT NULL);
+CREATE INDEX IF NOT EXISTS records_collection_state ON records(collection_id,json_extract(data,'$.deleted'),json_extract(data,'$.completed'),json_extract(data,'$.end'));
 CREATE TABLE IF NOT EXISTS versions(record_id TEXT NOT NULL,revision TEXT NOT NULL,data BLOB NOT NULL,PRIMARY KEY(record_id,revision));
 CREATE TABLE IF NOT EXISTS operations(id TEXT PRIMARY KEY,client_id TEXT NOT NULL REFERENCES clients(id),ingress TEXT UNIQUE NOT NULL,data BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS changes(sequence INTEGER PRIMARY KEY AUTOINCREMENT,collection_id TEXT NOT NULL,data BLOB NOT NULL);
@@ -95,8 +97,8 @@ func Open(dir string) (*Store, error) {
 	if err = db.QueryRow("SELECT value FROM metadata WHERE key='cursor_key'").Scan(&s.cursorKey); err != nil {
 		return fail(err)
 	}
-	for _, kind := range []string{"task", "note"} {
-		v := c.Collection{ID: "col_" + kind, Kind: kind, Name: map[string]string{"task": "To-dos", "note": "Notes"}[kind], Generation: "1"}
+	for _, kind := range []string{"task", "note", "event"} {
+		v := c.Collection{ID: "col_" + kind, Kind: kind, Name: map[string]string{"task": "To-dos", "note": "Notes", "event": "Calendar"}[kind], Generation: "1"}
 		if _, err = db.Exec("INSERT OR IGNORE INTO collections VALUES(?,?,?)", v.ID, c.Principal, encode(v)); err != nil {
 			return fail(err)
 		}
@@ -123,7 +125,12 @@ func (s *Store) Enroll() (string, error) {
 	_, e := s.DB.Exec("INSERT INTO clients(id,principal) VALUES(?,?)", id, c.Principal)
 	return id, e
 }
-func (s *Store) Collections() ([]c.Collection, error) {
+func (s *Store) Collections() ([]c.Collection, error) { return s.CollectionsInZone(0) }
+func (s *Store) CollectionsInZone(offset int) ([]c.Collection, error) {
+	if offset < -840 || offset > 840 {
+		return nil, c.Fail("invalid_input", "Invalid timezone offset")
+	}
+	loc := time.FixedZone("phone", offset*60)
 	rows, e := s.DB.Query("SELECT data FROM collections WHERE principal=? ORDER BY id", c.Principal)
 	if e != nil {
 		return nil, e
@@ -141,7 +148,46 @@ func (s *Store) Collections() ([]c.Collection, error) {
 		}
 		out = append(out, v)
 	}
-	return out, rows.Err()
+	if e = rows.Err(); e != nil {
+		return nil, e
+	}
+	rows.Close()
+	now := time.Now().In(loc)
+	for i := range out {
+		col := &out[i]
+		const activeRows = " FROM records WHERE collection_id=? AND json_extract(data,'$.deleted')=0"
+		if col.Kind != "event" {
+			query := "SELECT count(*)" + activeRows
+			if col.Kind == "task" {
+				query += " AND json_extract(data,'$.completed')=0"
+			}
+			if e = s.DB.QueryRow(query, col.ID).Scan(&col.Count); e != nil {
+				return nil, e
+			}
+			continue
+		}
+		// The covering index supplies dates without reading or decoding event bodies.
+		dates, err := s.DB.Query("SELECT json_extract(data,'$.end')"+activeRows, col.ID)
+		if err != nil {
+			return nil, err
+		}
+		for dates.Next() {
+			var end sql.NullString
+			if err = dates.Scan(&end); err != nil {
+				dates.Close()
+				return nil, err
+			}
+			if c.Visible(c.Record{Kind: "event", End: end.String}, "active", now) {
+				col.Count++
+			}
+		}
+		err = dates.Err()
+		dates.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 func (s *Store) Record(id, revision string) (c.Record, error) {
 	var b []byte

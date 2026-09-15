@@ -20,10 +20,10 @@ Relative durations support 1 second through 7 days.
 
 ## Dashboard
 
-On the dashboard, Up opens Notifications, Down opens Todos, and Select starts dictation.
+On the dashboard, Up opens Notifications, Down opens the selected collection, and Select starts dictation.
 Touch taps open each section:
 
-- **Clock / Calendar:** opens a calendar placeholder with the current time.
+- **Clock / Calendar:** opens your upcoming calendar agenda.
   The public SDK cannot directly open the system Timeline; it is accessible from the watchface.
 - **Weather:** shows current temperature, daily low/high, and a condition icon (including sun/moon and cloudy day/night variants).
   It refreshes through the phone on startup and every 15 minutes; cached readings older than an hour are discarded on refresh.
@@ -35,10 +35,10 @@ Touch taps open each section:
   Up to four entries fit; additional entries are indicated by a “MORE” count.
   Select opens the complete live list of timers, alarms, reminders, and stopwatch controls.
 - **Talk to codey:** dictates into the current conversation.
-- **Todos:** shows the undone count and opens a persistent checklist with the current time at the top.
+- **Todos:** shows the undone count and opens the active task list.
   Tap a checkbox or press Select to archive an item; archived items can be restored.
   Swipe vertically or use Up/Down to navigate.
-  Drag item text horizontally, or hold Up/Down to pan the selected item left/right.
+  Drag item text horizontally, or hold Up to pan the selected item. Hold Down opens the collection menu.
   Add items by talking to codey: “make a to-do to buy milk,” “set a task to call José,” or “create a todo to book tickets.”
   The bare prefix also works: “to-do send a birthday card to John.” Speech variants `2D`, `2 d`, `two`, `two two`, `two do`, `to`, and `to o` also create a to-do when followed by item text at the start of dictation. These short prefixes are ambiguous: “to note the address” creates a task called “note the address.” Use “note: …” or “make a note …” to save a note. Embedded phrases and negated commands do not trigger this shortcut; “set two timers …” is not a to-do.
 
@@ -46,7 +46,7 @@ Touch taps open each section:
 
 Drag scrollable text or lists directly to scroll; no arming tap is needed.
 Up/Down scroll when they have no assigned action or next control to select.
-Other touchscreen controls require an arming tap: tap twice to activate a control, or tap then hold/drag/swipe on the same target.
+By default, other touchscreen controls require an arming tap: tap twice to activate a control, or tap then hold/drag/swipe on the same target.
 The arming tap expires after 1.5 seconds and is consumed by one gesture.
 An unarmed hold or control-adjusting drag does nothing.
 Menus and screen changes clear the arm; physical buttons keep their existing behavior.
@@ -59,7 +59,8 @@ On other screens, hold Select to dictate into the current conversation.
 ## Requests and stored items
 
 Notes and to-dos are saved on the server. The phone queues accepted changes during server outages; the watch needs its phone connection to save. Cached pages are marked stale when the server is unavailable. See [collection setup and recovery](collections.md).
-Agent requests immediately animate into **Notifications**.
+Agent requests animate into **Notifications** when the phone submits them. Local
+dictation shortcuts do not show this animation.
 A completed response buzzes during the configured notification window (45 seconds by default), without replacing the current screen.
 After that window there is no automatic polling.
 Opening Notifications immediately marks ongoing requests as **Checking** and refreshes them once.
@@ -67,17 +68,22 @@ Tap a request to refresh its status; finished requests open their answer, and on
 Connection failures keep the job available for another check.
 Canceling does not undo work already performed.
 
-Notes shares the To Do tile: tap, then hold the tile to choose **Notes** or **To Do**.
+To Do, Notes, and Calendar share the collection tile. Tap, then hold it, or hold
+Down, to choose **To Do**, **Notes**, or **Calendar**. Down opens your selected
+collection; the date tile also opens Calendar.
 The last collection opened stays on the dashboard.
 Say “make a note Call Jane” or “note: Call Jane.”
 Open a note and select **Append to note** or **Replace entire note**.
 Notes live on the server; the phone loads bounded summaries and revision-pinned content pages.
-The watch keeps only the displayed page in memory.
+The watch persists the first page of truncated titles and loads it immediately
+while refreshing from the phone. Full content is fetched in pages.
 See [collection setup and backend sync](collections.md).
 
 The arming tap shows a brief expanding ripple with edge reflection.
 The next touch stops it immediately.
-Disable the effect with **First-tap ripple animation** in phone settings; checkbox completion still requires two taps.
+Disable the effect with **First-tap ripple animation** in phone settings.
+**Require double tap** is a separate setting: turn it off to activate controls
+with a single tap or hold. Both settings default to enabled.
 
 ## Timers, alerts, and Quick Launch
 
@@ -141,5 +147,24 @@ Allow location access for the Pebble mobile app and make sure the phone has netw
 
 **The settings page will not open.**
 Confirm the phone is online.
-The hosted page is [nick1udwig.github.io/pebble-agent/config/](https://nick1udwig.github.io/pebble-agent/config/).
+The hosted page is [nick1udwig.github.io/codey/config/](https://nick1udwig.github.io/codey/config/).
 
+
+## Calendar
+
+Choose Calendar from the collection menu to see events in time order. The watch
+caches the first eight dated titles; opening the list refreshes them through the
+phone. Open an event for its end time, location, and description. Date-only events
+are all day; their end date is exclusive.
+
+Say “Add a calendar event: lunch tomorrow from noon to one at Café Central.”
+Codey asks for missing dates or times, then saves the event through the phone.
+Calendar defaults to Server only. For syncing, choose CalDAV in phone settings,
+follow the four steps, and use the same calendar account in your usual calendar
+app. See [backend setup](../README.md#backend-sync-setup). The agenda imports the
+next 90 days and recurring occurrences. Manage edits, invitations, and recurring
+series in your calendar app. This agenda lives in codey, separate from OS Timeline.
+
+The dashboard counts all active tasks, all notes, or upcoming events, including
+items beyond the cached first page. Completing a task updates the list from the
+phone cache immediately while delivery continues in the background.

@@ -50,5 +50,13 @@ int main(void) {
   touch_guard_reset(&g);tap(&g,1,7300,false);
   assert(touch_guard_down(&g,1,20,20,7400));
   assert(!touch_guard_up(&g,2,21,20,7450)); // a tap cannot change targets at an edge
+  touch_guard_reset(&g);
+  assert(touch_guard_down_mode(&g,1,20,20,8000,false));
+  assert(touch_guard_up(&g,1,20,20,8050));
+  assert(touch_guard_down_mode(&g,1,20,20,8100,false));
+  assert(touch_guard_up(&g,1,20,20,10100)); // single hold
+  touch_guard_reset(&g);
+  assert(!touch_guard_down_mode(&g,1,20,20,10200,true));
+  assert(!touch_guard_up(&g,1,20,20,10250));
   puts("✓ touch guard: per-target tap, tap-hold, tap-drag, expiry, consumption, reset, clock wrap");
 }

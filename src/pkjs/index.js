@@ -26,7 +26,7 @@ var watchReady = false;
 var failedDeliveries = {};
 var sessionId = loadSessionId();
 var commandSequence = loadCommandSequence();
-var collections=null, collectionViews=null, collectionError="", collectionTimer=null;
+var collections=null, collectionViews=null, collectionError="", collectionTimer=null, collectionCounts={};
 function collectionBase() {
  return (Endpoints.normalize(settings.endpoint)||"").replace(/\/v1\/agent$/,"").replace(/^ws:/,"http:").replace(/^wss:/,"https:");
 }
@@ -36,12 +36,24 @@ try {
  collections.journal.bridge(Date.now().toString(36)+"-"+Math.floor(Math.random()*0xffffff).toString(36));
 } catch(e){collectionError=e.message;}
 function collectionHandshake(){
+ collectionCounts={};
  if(!collections)return;
  var m={};m[Key.messageType]="bridge";m[Key.operation]="collections";m[Key.collectionProtocol]=1;m[Key.bridgeSession]=collections.journal.data.bridge;watchQueue.enqueue(m);
 }
 function syncCollections(){
  if(!collections||!collectionBase()||!settings.token)return;
- collections.connect(function(e){if(!e)collections.drain();});
+ collections.connect(function(e){
+  if(e)return;
+  var counts={task:0,note:0,event:0},changed=false;
+  collections.collections.forEach(function(c){counts[c.kind]=c.count||0;});
+  Object.keys(counts).forEach(function(kind){if(counts[kind]!==collectionCounts[kind])changed=true;});
+  if(changed){
+   var m={};m[Key.messageType]="bridge";m[Key.operation]="collection-counts";
+   m[Key.index]=counts.task;m[Key.flags]=counts.note;m[Key.eventSequence]=counts.event;
+   collectionCounts=counts;watchQueue.enqueue(m);
+  }
+  collections.drain();
+ });
  if(collectionTimer)clearTimeout(collectionTimer);
  collectionTimer=setTimeout(syncCollections,60000);
  if(collectionTimer&&collectionTimer.unref)collectionTimer.unref();
@@ -53,9 +65,11 @@ function renderCollection(requestId,error,view){
  var m={};m[Key.requestId]=requestId;m[Key.viewToken]=view.token;
  if(view.list){
   var list=view.list;m[Key.messageType]="collection-list";m[Key.operation]=list.kind;
-  m[Key.value]=list.titles.join("\n");m[Key.meta]=list.states;
+  m[Key.value]=list.titles.join("\n");m[Key.meta]=list.states;m[Key.index]=list.total;
   m[Key.flags]=(list.state==="completed"?1:0)|(list.next?2:0)|(list.stale?4:0)|(list.partial?8:0)|(list.first?16:0);
   m[Key.subtitle]=list.stale?"Cached · Server unavailable":list.pending?list.pending+" pending server":list.partial?"First 8 · More after sync":"Saved on server";
+  // A list may change the watch count optimistically, or be superseded before delivery.
+  if(list.state!=="completed"&&collectionCounts[list.kind]!==list.total)delete collectionCounts[list.kind];
   watchQueue.enqueue(m);
  }else{m[Key.messageType]="collection-view";watchQueue.enqueue(m);capabilityContext(requestId).renderPam(view.source);}
  sendAnswerNotification(requestId,"complete",true);
@@ -80,7 +94,7 @@ function handleCollectionRequest(kind,action,id,value,token,payload){
   var col=collections.collection(kind);var accepted=collections.accept({alias:id,view:viewToken,ingress:ingress,collection_id:col.id,generation:col.binding_generation,record_id:target.record.id,revision:target.record.revision,type:type,payload:action==="edit"?{body:value,whole_note:true}:action==="append"?{text:value}:{}});
   collectionAck(payload,"accepted_phone","Saved on phone · Pending server");
   collections.drain(function(e,data){if(!e&&data&&data.results.some(function(r){return r.operation_id===accepted.id&&r.durably_recorded&&r.outcome==="applied";}))collectionAck(payload,"accepted_server","Saved on server");else if(!e&&data&&data.results.some(function(r){return r.operation_id===accepted.id&&r.durably_recorded;}))collectionAck(payload,"needs_attention","Needs attention in server settings");});
-  collectionViews.list(kind,target.state||"active","","",function(e,v){if(e){sendStatus("Saved on phone · Pending server. List unavailable.","show",requestId);sendAnswerNotification(requestId,"complete",true);}else done(null,v);});
+  collectionViews.list(kind,target.state||"active",target.snapshot||"",target.cursor||"",function(e,v){if(e){sendStatus("Saved on phone · Pending server. List unavailable.","show",requestId);sendAnswerNotification(requestId,"complete",true);}else done(null,v);},true);
  }catch(e){collectionAck(payload,"rejected",e.message);sendStatus(e.message,"error",requestId);}
 }
 function phoneCollection(attrs,requestId,complete,job,commandIndex){
@@ -91,10 +105,10 @@ function phoneCollection(attrs,requestId,complete,job,commandIndex){
  });
 }
 function phoneCollectionReady(attrs,requestId,complete,job,commandIndex){
- var kind=attrs.type==="todo"?"task":"note";
+ var kind=attrs.type==="calendar"?"event":attrs.type==="todo"?"task":"note";
  function finish(e,op){if(e){sendStatus(e.message,"error",requestId);if(complete)complete(false);return;}var delivery="Saved on phone · Pending server";collections.drain(function(error,data){if(error||!op||!data)return;data.results.forEach(function(r){if(r.operation_id===op.id&&r.durably_recorded){delivery=r.outcome==="applied"?"Saved on server":"Needs attention in server settings";if(requestId===activeRequestId)sendStatus(delivery,"show",requestId);}});});collectionViews.list(kind,"active","","",function(e,v){if(e&&op){sendStatus(delivery+" · List unavailable","show",requestId);sendAnswerNotification(requestId,"complete",true);if(complete)complete(true);return;}renderCollection(requestId,e,v);if(op)sendStatus(delivery,"show",requestId);if(complete)complete(!e);});}
  try{if(!collections)throw new Error(collectionError);if(attrs.command==="list"||attrs.command==="archive"){collectionViews.list(kind,attrs.command==="archive"?"completed":"active","","",function(e,v){renderCollection(requestId,e,v);if(complete)complete(!e);});return;}if(attrs.command!=="add")throw new Error("Open the collection and choose a record to edit.");var col=collections.collection(kind),scope=collections.journal.data.scope;
- var input={ingress:job?"agent:"+scope.server_instance_id+":"+job.id+":"+commandIndex:"direct:"+scope.client_id+":"+nextCommandId(),collection_id:col.id,generation:col.binding_generation,type:kind+".create",payload:kind==="note"?{title:WatchProtocol.truncateUtf8(String(attrs.title||attrs.value).replace(/\s+/g," "),71),body:String(attrs.value||""),body_format:"plain"}:{title:String(attrs.value||attrs.title||"")}};
+ var input={ingress:job?"agent:"+scope.server_instance_id+":"+job.id+":"+commandIndex:"direct:"+scope.client_id+":"+nextCommandId(),collection_id:col.id,generation:col.binding_generation,type:kind+".create",payload:kind==="event"?{title:String(attrs.title||attrs.value||""),start:String(attrs.start||""),end:String(attrs.end||""),location:String(attrs.location||""),description:String(attrs.description||"")}:kind==="note"?{title:WatchProtocol.truncateUtf8(String(attrs.title||attrs.value).replace(/\s+/g," "),71),body:String(attrs.value||""),body_format:"plain"}:{title:String(attrs.value||attrs.title||"")}};
  if(job)collections.agent(input,finish);else finish(null,collections.accept(input));
  }catch(e){finish(e);}
 }
@@ -150,6 +164,7 @@ var watchQueue = new WatchProtocol.MessageQueue(function(message, success, failu
   maxRetries: 3,
   retryDelay: 120,
   onError: function(error, message) {
+    collectionCounts={}; // Retry counts after a failed or dropped Bluetooth delivery.
     if (message && message[Key.requestId]) { failedDeliveries[message[Key.requestId]] = true; watchQueue.clearRequest(message[Key.requestId]); }
     log("watch message failed", error);
   }
@@ -197,7 +212,7 @@ var dashboardStatus=new DashboardStatus({
 });
 function sendPreferences() {
   var m={};m[Key.messageType]="bridge";m[Key.operation]="preferences";
-  m[Key.flags]=settings.tapAnimation?1:0;watchQueue.enqueue(m);
+  m[Key.flags]=settings.tapAnimation?1:0;m[Key.index]=settings.doubleTap?1:0;watchQueue.enqueue(m);
 }
 function sendNoteMessage(command,id,value) {
   var m={};m[Key.messageType]="notes";m[Key.operation]=command;
@@ -306,6 +321,7 @@ var capabilityRegistry = Capabilities.installBuiltins(
   new Capabilities.CapabilityRegistry(),
   weatherHandler
 );
+capabilityRegistry.register("calendar", function(attrs, context) { attrs.type="calendar"; context.phoneNote(attrs); });
 capabilityRegistry.register("note", function(attrs, context) { attrs.type="note"; context.phoneNote(attrs); });
 capabilityRegistry.register("todo", function(attrs, context) { attrs.type="todo"; context.phoneNote(attrs); });
 
@@ -458,6 +474,7 @@ var jobManager = new JobModule.Jobs({
   storage: localStorage, XMLHttpRequest: typeof XMLHttpRequest !== "undefined" ? XMLHttpRequest : null,
   token: function() { return settings.token; },
   endpoint: function() { return JobModule.endpoint(settings.endpoint); },
+  dispatched: function(){var m={};m[Key.messageType]="bridge";m[Key.operation]="agent-dispatched";watchQueue.enqueue(m);},
   update: function(job, buzz) { if (!job.opened) { sendJob(job, buzz); } }
 });
 function sendJobPresented(job, requestId) {
@@ -518,7 +535,7 @@ function handleWatchMessage(event) {
     return;
   }
   if (type === "capability_event" && operation === "status") {dashboardStatus.refresh();return;}
-  if (type === "capability_event" && (operation === "note" || operation === "todo")) { handleCollectionRequest(operation==="note"?"note":"task",action,element,value,Number(read(payload,Key.meta,"Meta"))||0,payload);return; }
+  if (type === "capability_event" && (operation === "note" || operation === "todo" || operation === "calendar")) { handleCollectionRequest(operation==="calendar"?"event":operation==="note"?"note":"task",action,element,value,Number(read(payload,Key.meta,"Meta"))||0,payload);return; }
   if (type === "capability_event" && operation === "job") {
     if (action === "refresh") { jobManager.refreshAll(); return; }
     if (action === "retrieved" || action === "dismiss") {

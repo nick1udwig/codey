@@ -76,3 +76,6 @@ void agent_capabilities_refresh_now(AgentCapabilities *capabilities);
 
 void agent_capabilities_set_collection(AgentCapabilities *capabilities, bool notes);
 bool agent_capabilities_collection_is_notes(const AgentCapabilities *capabilities);
+
+void agent_capabilities_set_collection_kind(AgentCapabilities *c,int kind);
+int agent_capabilities_collection_kind(const AgentCapabilities *c);

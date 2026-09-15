@@ -76,3 +76,17 @@ For existing-record edits, open the collection and let the user select the recor
 Append or Replace entire note action. Do not invent canonical IDs or resolve records
 from ambiguous title matches. Provider setup and conflict resolution belong in the
 server management page, not in agent-generated capability commands.
+
+Calendar uses `capability type=calendar command=list` or
+`capability type=calendar command=add title="Lunch" start="2026-09-16T12:00:00-07:00" end="2026-09-16T13:00:00-07:00" location="Cafe" description="Optional agenda"`.
+Timed start/end must be RFC3339 with explicit offsets; all-day events use two
+YYYY-MM-DD dates with an exclusive end. End must follow start. Use device.now and
+utc_offset_minutes to resolve relative dates; ask for an unclear time, timezone
+or duration. These example dates are illustrative, never defaults. Do not create
+a reminder in place of a requested calendar event. Do not emit an additional
+screen after the capability; the phone renders the saved collection.
+Calendar defaults to server storage; optional CalDAV sync is configured in phone
+settings. The watch agenda includes the next 90 days of remote events and expanded
+recurrences. Edit events, invite attendees, and create recurring series in the
+user's calendar app; these operations are not watch capabilities. Long Down opens
+the To Do / Notes / Calendar menu and is reserved, just like Long Select.

@@ -674,6 +674,7 @@ test("configuration URL embeds normalized state without exposing it in the query
   var hash = url.slice(url.indexOf("#") + 1);
   var state = JSON.parse(decodeURIComponent(hash));
   assert.match(url, /\?v=nonce#/);
+  assert.strictEqual(url.slice(0, url.indexOf("?")), "https://nick1udwig.github.io/codey/config/");
   assert.strictEqual(url.slice(0, url.indexOf("#")).indexOf("secret"), -1);
   assert.strictEqual(state.endpoint, "https://agent.test");
   assert.strictEqual(state.token, "");
@@ -1378,12 +1379,51 @@ test("collection lists use one bounded Bluetooth payload with exact view aliases
   reply({protocol_version:1,server_instance_id:"s",store_epoch:"e",principal:"operator"});
   reply({client_id:"c",server_instance_id:"s",store_epoch:"e",principal:"operator"});
   reply([{id:"col_task",kind:"task",binding_generation:"1"}]);
-  reply({snapshot_id:"snap"});
   reply({snapshot_id:"snap",complete:false,next_cursor:"next",records:Array.from({length:8},function(_,i){return {id:"record"+i,title:"🌙".repeat(80),revision:"1",completed:false,capabilities:["task.complete"]};})});
   var lists=h.sent.filter(function(m){return m[0]==="collection-list";});assert.strictEqual(lists.length,1);
   assert.strictEqual(lists[0][8].split("\n").length,8);assert.ok(Buffer.byteLength(lists[0][8])<576);
   assert.ok(lists[0][16]);assert.strictEqual(lists[0][Watch.Key.flags]&18,18);
   assert.strictEqual(h.sent.filter(function(m){return m[0]==="render";}).length,0);
+ }finally{h.cleanup();}
+});
+
+test("unchanged counts skip Bluetooth but changed lists and reconnects refresh them", function(){
+ var requests=[],storage={};storage[Settings.STORAGE_KEY]=JSON.stringify({endpoint:"https://agent.test",token:"t"});
+ function XHR(){}XHR.prototype.open=function(method,url){this.url=url;};XHR.prototype.setRequestHeader=function(){};XHR.prototype.send=function(){requests.push(this);};
+ var h=loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
+ function reply(path,value){var i=requests.findIndex(function(r){return r.url.indexOf(path)>=0;});assert.ok(i>=0,path);var r=requests.splice(i,1)[0];r.status=200;r.responseText=JSON.stringify(value);r.onload();}
+ function info(){reply("/v1/sync/info",{protocol_version:1,server_instance_id:"s",store_epoch:"e",principal:"operator"});}
+ function counts(){reply("/v1/collections",[{id:"col_task",kind:"task",count:4,binding_generation:"1"}]);}
+ function countMessages(){return h.sent.filter(function(m){return m[2]==="collection-counts";}).length;}
+ function poll(){h.handlers.webviewclosed({response:JSON.stringify({endpoint:"https://agent.test",token:"t"})});info();counts();}
+ try{
+  h.handlers.appmessage({payload:{0:"ready"}});info();
+  reply("/v1/sync/clients",{client_id:"c",server_instance_id:"s",store_epoch:"e",principal:"operator"});counts();
+  assert.strictEqual(countMessages(),1);poll();assert.strictEqual(countMessages(),1);
+  h.handlers.appmessage({payload:{0:"capability_event",2:"todo",9:"list",8:"0"}});
+  reply("/v1/sync/snapshots",{snapshot_id:"s",total:3,complete:true,records:[]});
+  poll();assert.strictEqual(countMessages(),2,"server count corrects the last displayed list total");
+  h.handlers.appmessage({payload:{0:"ready"}});info();counts();
+  assert.strictEqual(countMessages(),3,"watch restart receives unchanged counts");
+ }finally{h.cleanup();}
+});
+
+test("agent calendar command durably creates an event and returns the agenda", function(){
+ var requests=[],storage={};storage[Settings.STORAGE_KEY]=JSON.stringify({endpoint:"https://agent.test",token:"t"});
+ function XHR(){}XHR.prototype.open=function(method,url){this.url=url;};XHR.prototype.setRequestHeader=function(){};XHR.prototype.send=function(body){this.body=body;requests.push(this);};
+ var h=loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
+ function reply(value,status){var r=requests.shift();r.status=status||200;r.responseText=JSON.stringify(value);r.onload();}
+ try{
+  h.handlers.appmessage({payload:{0:"input",2:"dictation",8:"Add lunch tomorrow from noon to one"}});
+  jobReply(h,requests.shift(),'pam version=1\ncapability type=calendar command=add title="Lunch" start="2099-09-16T12:00:00-07:00" end="2099-09-16T13:00:00-07:00" location="Cafe"\ndone\n');
+  assert.match(requests[0].url,/sync\/info$/);reply({protocol_version:1,server_instance_id:"s",store_epoch:"e",principal:"operator"});
+  reply({client_id:"c",server_instance_id:"s",store_epoch:"e",principal:"operator"});reply([{id:"col_event",kind:"event",binding_generation:"1"}]);
+  assert.match(requests[0].url,/sync\/ingress\//);reply({message:"Not found"},404);
+  assert.match(requests[0].url,/sync\/mutations$/);var op=JSON.parse(requests[0].body).operations[0];assert.strictEqual(op.type,"event.create");assert.strictEqual(op.collection_id,"col_event");assert.strictEqual(op.payload.start,"2099-09-16T12:00:00-07:00");assert.strictEqual(op.payload.location,"Cafe");
+  var record={id:op.record_id,collection_id:"col_event",kind:"event",revision:"1",title:"Lunch",start:op.payload.start,end:op.payload.end,location:"Cafe",capabilities:[]};
+  reply({results:[{operation_id:op.id,outcome:"applied",durably_recorded:true,record:record,revision:"1"}]});
+  reply({snapshot_id:"calendar",total:1,complete:true,records:[record]});
+  var list=h.sent.filter(function(m){return m[0]==="collection-list";}).pop();assert.ok(list);assert.strictEqual(list[2],"event");assert.strictEqual(list[12],1);assert.match(list[8],/Lunch/);assert.ok(h.sent.some(function(m){return m[0]==="job-result";}));
  }finally{h.cleanup();}
 });
 
@@ -1459,8 +1499,10 @@ test("Local commands leave earlier agent jobs running and unmatched dictation fa
     var unmatched = "Set a timer for five minutes and tell me a joke.";
     dictate(unmatched);
     assert.strictEqual(parse(requests[0].body)[2].attrs.text, unmatched);
+    assert.strictEqual(harness.sent.filter(function(m){return m[Watch.Key.operation]==="agent-dispatched";}).length,1);
     dictate("set a timer for 10 seconds");
     assert.strictEqual(aborted, 0);
+    assert.strictEqual(harness.sent.filter(function(m){return m[Watch.Key.operation]==="agent-dispatched";}).length,1);
     var count = harness.sent.length;
     requests[0].responseText = "pam version=1\ncapability type=timer command=start duration=5m\ndone\n";
     jobReply(harness, requests[0], requests[0].responseText, "done", false);

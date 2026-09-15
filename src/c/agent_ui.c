@@ -114,6 +114,7 @@ struct AgentUi {
   bool error;
 #if defined(PBL_TOUCH)
   bool tap_animation;
+  bool double_tap;
   TouchGuard touch_guard;
   ScrollGesture scroll_gesture;
   Layer *ripple_layer;
@@ -481,7 +482,7 @@ static bool prv_input_active(AgentUi *ui) {
 static void prv_paint(void *context) {
   AgentUi *ui=context;ui->refresh_timer=NULL;
   if(!ui->loaded || !ui->complete || !ui->dirty)return;
-  uint32_t delay=refresh_policy_delay(&ui->refresh_policy,prv_now_ms(),prv_input_active(ui));
+  uint32_t delay=refresh_policy_screen_delay(&ui->refresh_policy,prv_now_ms(),prv_input_active(ui),ui->root_dirty);
   if(delay){ui->refresh_timer=app_timer_register(delay,prv_paint,ui);return;}
   if (ui->root_dirty) {
     if (ui->number_window) {
@@ -507,7 +508,7 @@ static void prv_refresh(AgentUi *ui) {
   if(!ui)return;
   ui->dirty=true;
   if(!ui->loaded || !ui->complete)return;
-  uint32_t delay=refresh_policy_delay(&ui->refresh_policy,prv_now_ms(),prv_input_active(ui));
+  uint32_t delay=refresh_policy_screen_delay(&ui->refresh_policy,prv_now_ms(),prv_input_active(ui),ui->root_dirty);
   if(ui->refresh_timer) {
     if(delay)return; // Already have one pending flush, not a polling timer.
     app_timer_cancel(ui->refresh_timer);ui->refresh_timer=NULL;
@@ -1027,9 +1028,9 @@ static void prv_draw_dashboard(AgentUi *ui, GContext *ctx) {
         graphics_draw_rect(ctx, GRect(x+9,y+(h-22)/2,17,22));
         for (int line=0;line<3;line++) graphics_draw_line(ctx,GPoint(x+12,y+(h-22)/2+6+line*5),GPoint(x+23,y+(h-22)/2+6+line*5));
         graphics_context_set_stroke_width(ctx, 1);
-      } else prv_dashboard_icon(ui, ctx, 4, x + 5, y + (h - 24) / 2);
+      } else prv_dashboard_icon(ui, ctx, !strcmp(e->action,"local.events")?0:4, x + 5, y + (h - 24) / 2);
       char label[16];
-      snprintf(label, sizeof(label), "%s %s", e->value[0] ? e->value : "0", notes ? "NOTE" : "TODO");
+      snprintf(label, sizeof(label), "%s %s", e->value[0] ? e->value : "0", !strcmp(e->action,"local.events") ? "EVENT" : notes ? "NOTE" : "TODO");
       prv_pixel_text(ctx, label, x + 32, y + (h - 7) / 2, 1, 1, GColorBlack);
     }
   }
@@ -1404,7 +1405,7 @@ static void prv_handle_input(AgentUi *ui, const char *input) {
   }
   if (strcmp(ui->screen_id, "dashboard") == 0) {
     if (strcmp(input, "up") == 0) { prv_emit(ui, input, NULL, "local.dashboard.notifications", ""); return; }
-    if (strcmp(input, "down") == 0) { prv_emit(ui, input, NULL, "local.todos", ""); return; }
+    if (strcmp(input, "down") == 0) { AgentUiElement *tile=prv_find_element(ui,"todos");prv_emit(ui, input, NULL, tile?tile->action:"local.todos", ""); return; }
     if (strcmp(input, "select") == 0) { prv_emit(ui, input, NULL, "local.dictate", ""); return; }
   }
   AgentUiElement *binding = prv_find_binding(ui, input);
@@ -1450,6 +1451,8 @@ static void prv_back_click(ClickRecognizerRef recognizer, void *context) {
   }
 }
 
+static void prv_collection_menu(AgentUi *ui){const AgentUiMenuItem items[]={{"To Do","local.todos"},{"Notes","local.notes"},{"Calendar","local.events"}};agent_ui_open_menu(ui,items,3);}
+static void prv_down_long_click(ClickRecognizerRef r,void *context){(void)r;AgentUi *ui=context;prv_input(ui);prv_reset_touch_guard(ui);prv_collection_menu(ui);}
 static void prv_select_long_click(ClickRecognizerRef recognizer, void *context) {
   AgentUi *ui = context;
   (void)recognizer;
@@ -1526,10 +1529,6 @@ static void prv_todo_left(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; AgentUi *ui = context;
   if (ui->selected_element >= 0) { prv_pan_todo(ui, &ui->elements[ui->selected_element], -1); }
 }
-static void prv_todo_right(ClickRecognizerRef recognizer, void *context) {
-  (void)recognizer; AgentUi *ui = context;
-  if (ui->selected_element >= 0) { prv_pan_todo(ui, &ui->elements[ui->selected_element], 1); }
-}
 
 static void prv_click_config_provider(void *context) {
   (void)context;
@@ -1537,11 +1536,12 @@ static void prv_click_config_provider(void *context) {
     window_single_click_subscribe(BUTTON_ID_UP, prv_up_click);
     window_single_click_subscribe(BUTTON_ID_DOWN, prv_down_click);
     window_long_click_subscribe(BUTTON_ID_UP, 450, prv_todo_left, NULL);
-    window_long_click_subscribe(BUTTON_ID_DOWN, 450, prv_todo_right, NULL);
+    window_long_click_subscribe(BUTTON_ID_DOWN, 450, prv_down_long_click, NULL);
   } else {
     window_single_repeating_click_subscribe(BUTTON_ID_UP, 180, prv_up_click);
-    window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 180, prv_down_click);
+    window_single_click_subscribe(BUTTON_ID_DOWN, prv_down_click);
   }
+  window_long_click_subscribe(BUTTON_ID_DOWN,450,prv_down_long_click,NULL);
   window_single_click_subscribe(BUTTON_ID_SELECT, prv_select_click);
   window_long_click_subscribe(BUTTON_ID_SELECT, AGENT_UI_SELECT_HOLD_MS,
                               prv_select_long_click, NULL);
@@ -1603,9 +1603,8 @@ static void prv_touch_hold(void *context) {
   if (ui->touch_down && !ui->touch_dragged && strcmp(ui->screen_id, "dashboard") == 0) {
     ui->touch_consumed = true;
     AgentUiElement *hit = prv_hit_test(ui, ui->touch_down_x, ui->touch_down_y);
-    if (hit && !strcmp(hit->id, "todos")) {
-      const AgentUiMenuItem items[] = {{"Notes", "local.notes"}, {"To Do", "local.todos"}};
-      agent_ui_open_menu(ui, items, 2);
+    if (hit && (!strcmp(hit->id, "todos") || !strcmp(hit->id,"calendar"))) {
+      prv_collection_menu(ui);
     } else prv_agent_menu(ui);
   }
 }
@@ -1752,8 +1751,9 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
   switch (event->type) {
     case TouchEvent_Touchdown:
       prv_cancel_hold(ui);
-      allowed = touch_guard_down(&ui->touch_guard, prv_touch_target(ui,event->x,event->y),
-                                 event->x,event->y,prv_touch_now());
+      allowed = touch_guard_down_mode(&ui->touch_guard, prv_touch_target(ui,event->x,event->y),
+                                 event->x,event->y,prv_touch_now(),ui->double_tap);
+      if(!ui->double_tap)prv_start_ripple(ui,event->x,event->y);
       break;
     case TouchEvent_PositionUpdate:
       allowed = touch_guard_move(&ui->touch_guard,event->x,event->y);
@@ -1792,7 +1792,7 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
         }
         ui->touch_row = prv_todo_row(hit);
         if (ui->touch_row) { ui->selected_element = prv_index_of(ui, hit); }
-        if (hit && (!strcmp(hit->id, "dictate") || !strcmp(hit->id, "todos")) && strcmp(ui->screen_id, "dashboard") == 0) {
+        if (hit && (!strcmp(hit->id, "dictate") || !strcmp(hit->id, "todos") || !strcmp(hit->id,"calendar")) && strcmp(ui->screen_id, "dashboard") == 0) {
           ui->hold_timer = app_timer_register(AGENT_UI_SELECT_HOLD_MS, prv_touch_hold, ui);
         }
       }
@@ -1919,6 +1919,7 @@ static void prv_window_load(Window *window) {
   if (ui->menu_layer) { layer_add_child(root, ui->menu_layer); }
 
 #if defined(PBL_TOUCH)
+  ui->double_tap = !persist_exists(4396) || persist_read_int(4396)!=0;
   ui->tap_animation = !persist_exists(4397) || persist_read_int(4397) != 0;
   ui->ripple_layer = layer_create_with_data(bounds, sizeof(AgentUi *));
   if (ui->ripple_layer) {
@@ -2226,4 +2227,12 @@ void agent_ui_set_codex_status(AgentUi *ui,int remaining,int active,const char *
   if(ui->codex_remaining==remaining && ui->codex_active==active && !strcmp(ui->codex_state,state))return;
   ui->codex_remaining=remaining;ui->codex_active=active;agent_protocol_copy(ui->codex_state,sizeof(ui->codex_state),state);
   if(!strcmp(ui->screen_id,"dashboard"))prv_refresh(ui);
+}
+
+void agent_ui_set_double_tap(AgentUi *ui,bool enabled){
+#if defined(PBL_TOUCH)
+ ui->double_tap=enabled;prv_reset_touch_guard(ui);if(!persist_exists(4396)||(persist_read_int(4396)!=0)!=enabled)persist_write_int(4396,enabled?1:0);
+#else
+ (void)ui;(void)enabled;
+#endif
 }

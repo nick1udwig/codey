@@ -41,7 +41,7 @@ Jobs.prototype.http = function(job, method, suffix, body, seconds, callback) {
   };
   xhr.onerror = function() { finish(new Error("Connection lost. Tap to check again.")); };
   xhr.ontimeout = function() { finish(new Error("Status check timed out. Tap to check again.")); };
-  try { xhr.send(body || null); } catch (error) { finish(error); }
+  try { xhr.send(body || null); if(method==="POST"&&!suffix&&this.options.dispatched)this.options.dispatched(job); } catch (error) { finish(error); }
   return xhr;
 };
 Jobs.prototype.accept = function(job, data, buzz) {

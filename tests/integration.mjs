@@ -64,10 +64,10 @@ function request(port, { method = "POST", body = "" } = {}) {
 }
 
 function runConfig(hash, bridge, XHR) {
-  const ids = ["settings", "endpoint", "token", "units", "timeout", "location-label", "status", "codex-model", "codex-effort", "fast-mode", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review", "answer-vibrate", "tap-animation"];
+  const ids = ["settings", "endpoint", "token", "units", "timeout", "location-label", "status", "codex-model", "codex-effort", "fast-mode", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review", "answer-vibrate", "tap-animation", "double-tap"];
   const elements = {};
-  ids.push("todo-sync-provider","note-sync-provider","todo-sync-help","note-sync-help","token-status","new-session","collection-development-http","recover-collections");
-  ["todo","note"].forEach(kind=>["form","active","credentials","endpoint-label","username-label","secret-label","endpoint","username","secret","connect","destination","container","export","preview","stop","status","activate"].forEach(name=>ids.push(kind+"-sync-"+name)));
+  ids.push("calendar-sync-provider","calendar-sync-help","todo-sync-provider","note-sync-provider","todo-sync-help","note-sync-help","token-status","new-session","collection-development-http","recover-collections");
+  ["todo","note","calendar"].forEach(kind=>["back","progress","next","destination-title","secret-title","form","active","credentials","endpoint-label","username-label","secret-label","endpoint","username","secret","connect","destination","container","export","preview","stop","status","activate"].forEach(name=>ids.push(kind+"-sync-"+name)));
   let submit;
   ids.forEach(id => {
     elements[id] = {
@@ -210,13 +210,13 @@ test("configuration page hydrates state and closes with normalized form values",
   const saved = JSON.parse(decodeURIComponent(harness.location.href.split("#")[1]));
   assert.deepEqual(saved, {
     endpoint: "https://new.test/agent",
-    todoSyncProvider:"server",noteSyncProvider:"server",collectionDevelopmentHTTP:false,
+    todoSyncProvider:"server",noteSyncProvider:"server",calendarSyncProvider:"server",collectionDevelopmentHTTP:false,
     token: "secret",
     units: "metric",
     locationLabel: "Current location",
     timeoutSeconds: 90,
     codexModel: "gpt-5.6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
-    networkAccess: false, shellAccess: false, autoReview: false, answerVibrate: true, tapAnimation: true
+    networkAccess: false, shellAccess: false, autoReview: false, answerVibrate: true, tapAnimation: true, doubleTap: true
   });
 });
 
@@ -230,17 +230,31 @@ test("Nextcloud setup connects, previews, and activates without closing settings
  reply(state);
  assert.equal(h.elements["todo-sync-provider"].value,"server");assert.equal(h.elements["note-sync-provider"].value,"server");
  h.elements["note-sync-provider"].value="nextcloudnotes";h.elements["note-sync-provider"].handlers.change();
- assert.equal(h.elements["note-sync-credentials"].hidden,false);
+ assert.equal(h.elements["note-sync-credentials"].hidden,false);assert.match(h.elements["note-sync-progress"].textContent,/Step 1 of 4/);
  h.elements["note-sync-endpoint"].value="https://cloud.test";h.elements["note-sync-username"].value="nick";h.elements["note-sync-secret"].value="app-password";
  h.elements["note-sync-connect"].handlers.click();assert.equal(saved,undefined);
  assert.match(requests[0].body,/token=app-password/);reply({message:"Password rejected"},400);
  assert.match(h.elements["note-sync-status"].textContent,/Password rejected/);assert.equal(saved,undefined);
  h.elements["note-sync-secret"].value="valid-password";h.elements["note-sync-connect"].handlers.click();reply({...state,candidate_id:"candidate",containers:[{id:"category",name:"Work"}]});
- assert.equal(h.elements["note-sync-destination"].hidden,false);assert.equal(h.elements["note-sync-secret"].value,"");
- h.elements["note-sync-preview"].handlers.click();reply({...state,preview:"2 remote notes; no export"});assert.equal(h.elements["note-sync-activate"].hidden,false);
+ assert.match(h.elements["note-sync-progress"].textContent,/Step 2 of 4/);assert.equal(h.elements["note-sync-destination"].hidden,false);assert.equal(h.elements["note-sync-secret"].value,"");
+ h.elements["note-sync-preview"].handlers.click();reply({...state,preview:"2 remote notes; no export"});assert.equal(h.elements["note-sync-activate"].hidden,false);assert.match(h.elements["note-sync-progress"].textContent,/Step 3 of 4/);
  h.elements["note-sync-activate"].handlers.click();assert.match(requests[0].body,/action=apply/);reply({...state,active:{col_note:"nextcloudnotes"},message:"Destination activated"});
  assert.equal(saved,undefined);assert.match(h.elements["note-sync-active"].textContent,/Nextcloud Notes/);assert.match(h.location.href,/^https:\/\/config.test/);
+ assert.match(h.elements["note-sync-progress"].textContent,/Step 4 of 4/);assert.match(h.elements["note-sync-next"].textContent,/Open Notes/);
  h.submit({preventDefault(){}});assert.equal(saved.noteSyncProvider,"nextcloudnotes");assert.equal(saved.integrationSetup,undefined);assert.ok(!JSON.stringify(saved).includes("password"));
+});
+
+test("each task and calendar service has its own fields and numbered flow", () => {
+ const requests=[];
+ function XHR(){}XHR.prototype.open=function(m,u){this.url=u;};XHR.prototype.setRequestHeader=function(){};XHR.prototype.send=function(body){this.body=body;requests.push(this);};
+ const h=runConfig("#"+encodeURIComponent(JSON.stringify({endpoint:"https://agent.test",integrationSetup:{url:"https://agent.test/integrations/setup-api",token:"temporary"}})),{},XHR);
+ const state={collections:[{id:"col_task",binding_generation:"1"},{id:"col_event",binding_generation:"1"}],active:{col_task:"server",col_event:"server"}};
+ function reply(data){const r=requests.shift();r.status=200;r.responseText=JSON.stringify(data);r.onload();}
+ reply(state);
+ for(const provider of ["todoist","googletasks"]){h.elements["todo-sync-provider"].value=provider;h.elements["todo-sync-provider"].handlers.change();assert.ok(!h.elements["todo-sync-help"].textContent.includes("Nextcloud"));assert.equal(h.elements["todo-sync-endpoint-label"].hidden,true);assert.equal(h.elements["todo-sync-credentials"].hidden,provider==="googletasks");assert.match(h.elements["todo-sync-progress"].textContent,/Step 1 of 4/);}
+ h.elements["todo-sync-provider"].value="todoist";h.elements["todo-sync-provider"].handlers.change();assert.equal(h.elements["todo-sync-secret-title"].textContent,"Todoist API token");h.elements["todo-sync-secret"].value="api-token";h.elements["todo-sync-connect"].handlers.click();assert.match(requests[0].body,/provider=todoist/);reply({...state,candidate_id:"tasks",containers:[{id:"project",name:"Inbox"}]});assert.equal(h.elements["todo-sync-destination-title"].textContent,"Project");
+ h.elements["calendar-sync-provider"].value="caldav";h.elements["calendar-sync-provider"].handlers.change();assert.equal(h.elements["calendar-sync-endpoint-label"].hidden,false);h.elements["calendar-sync-endpoint"].value="https://cal.test/home/";h.elements["calendar-sync-username"].value="user";h.elements["calendar-sync-secret"].value="app-pass";h.elements["calendar-sync-connect"].handlers.click();assert.match(requests[0].body,/collection=col_event/);reply({...state,candidate_id:"events",containers:[{id:"calendar",name:"Personal"}]});assert.equal(h.elements["calendar-sync-destination-title"].textContent,"Calendar");
+ h.elements["calendar-sync-preview"].handlers.click();reply({...state,preview:"Two events"});assert.match(h.elements["calendar-sync-progress"].textContent,/Step 3 of 4/);h.elements["calendar-sync-back"].handlers.click();assert.match(h.elements["calendar-sync-progress"].textContent,/Step 2 of 4/);assert.equal(h.elements["calendar-sync-activate"].hidden,true);
 });
 
 test("missing setup sessions show inline instructions and never close settings", () => {
@@ -260,6 +274,8 @@ test("configuration page recovers from a bad hash and supports the native bridge
   assert.equal(harness.elements["answer-vibrate"].checked, true);
   assert.equal(harness.elements["tap-animation"].checked, true);
   harness.elements["tap-animation"].checked = false;
+  assert.equal(harness.elements["double-tap"].checked,true);
+  harness.elements["double-tap"].checked=false;
   harness.elements["answer-vibrate"].checked = false;
   assert.equal(harness.elements["web-search"].value, "live");
   assert.equal(harness.elements["location-label"].value, "Current location");
@@ -271,6 +287,7 @@ test("configuration page recovers from a bad hash and supports the native bridge
   assert.equal(submitted.timeoutSeconds, 30);
   assert.equal(submitted.answerVibrate, false);
   assert.equal(submitted.tapAnimation, false);
+  assert.equal(submitted.doubleTap,false);
   assert.equal(harness.location.href, "https://config.test/#%not-json");
 });
 

@@ -14,24 +14,31 @@
   acknowledged (Select) or snoozed ten minutes (Down). Background wakeups depend
   on the watch granting them. Stopwatch supports local controls. Clock alarms
   use the phone timezone; specify AM/PM or 24-hour time.
-- **To Do:** Down on home opens a persistent watch checklist. Say “make a to-do
+- **To Do:** Down on home opens a server-backed checklist. Say “make a to-do
   to buy milk.” Select or double-tap the checkbox archives it; archived items
-  can be restored. Up/Down scroll; hold Up/Down to pan long text.
-- **Notes:** Tap then hold the To Do/Notes tile to choose the collection. Say
+  can be restored. Up/Down scroll; hold Up to pan long text. Hold Down opens the collection menu.
+- **Notes:** Tap then hold the To Do/Notes/Calendar tile to choose the collection. Say
   “make a note Call Jane.” Open a note and choose Edit note to dictate its
-  replacement. Notes are stored on the phone and fetched in pages.
+  replacement. Notes are stored on the server with a durable phone queue and cached watch titles.
+- **Calendar:** Choose Calendar from the collection menu or open the date tile.
+  View upcoming events and dictate new events with a start and end. Optional CalDAV
+  syncing is configured independently in phone settings; see the protocol for
+  calendar add/list capabilities. Remote recurrences are displayed, but creation
+  of recurring series and editing/invitations happen in the calendar app.
 - **Weather:** Open the Weather tile for a forecast without an agent request.
   Requires phone location permission and connectivity; refreshes every 15 minutes.
 - **Controls:** Drag scrollable text and lists directly. Up/Down scroll when
   there is no assigned action or next control to select. Other touch interactions
   need an arming tap: tap twice to activate, or tap then hold/drag/swipe on the
-  control. The arm expires after 1.5 seconds. Back goes home, then exits.
+  control. The arm expires after 1.5 seconds. Disable Require double tap in settings for a
+  single tap or hold. Water ripple is independently configurable; both default on.
+  Hold Down opens To Do / Notes / Calendar. Back goes home, then exits.
   A watch Quick Launch shortcut starts dictation on launch.
 - **Setup:** In the Pebble phone app, open codey's gear/settings and enter the
   reachable service /v1/agent URL and matching bearer token. Model, reasoning,
   fast mode, search and backend permissions are configurable there. Voice needs
   the paired phone; local timers and To Do lists work offline. The server uses
-  the operator's authenticated Codex CLI. Calendar currently only shows a
-  placeholder; it cannot directly open the system Timeline.
+  the operator's authenticated Codex CLI. Calendar is an agenda inside codey,
+  separate from the system Timeline.
 - **Welcome tour:** A first-start notification stays available until Got it is
   selected. Users can ask the agent for help afterward.

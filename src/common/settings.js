@@ -3,12 +3,13 @@
 var Endpoints = require("./endpoints");
 
 var STORAGE_KEY = "pebble-agent.settings.v1";
-var CONFIG_URL = "https://nick1udwig.github.io/pebble-agent/config/";
+var CONFIG_URL = "https://nick1udwig.github.io/codey/config/";
 
 var DEFAULTS = Object.freeze({
   endpoint: "",
   todoSyncProvider: "server",
   noteSyncProvider: "server",
+  calendarSyncProvider: "server",
   collectionDevelopmentHTTP: false,
   token: "",
   units: "auto",
@@ -23,6 +24,7 @@ var DEFAULTS = Object.freeze({
   shellAccess: false,
   autoReview: false,
   tapAnimation: true,
+  doubleTap: true,
   answerVibrate: true
 });
 
@@ -35,6 +37,7 @@ function copyDefaults(value) {
   settings.endpoint = Endpoints.normalize(settings.endpoint) || "";
   settings.collectionDevelopmentHTTP = source.collectionDevelopmentHTTP === true;
   settings.todoSyncProvider = ["server", "todoist", "googletasks"].indexOf(source.todoSyncProvider)>=0?source.todoSyncProvider:"server";
+  settings.calendarSyncProvider = ["server", "caldav"].indexOf(source.calendarSyncProvider)>=0?source.calendarSyncProvider:"server";
   settings.noteSyncProvider = ["server", "nextcloudnotes"].indexOf(source.noteSyncProvider)>=0?source.noteSyncProvider:"server";
   settings.token = String(settings.token || "").trim();
   settings.units = settings.units === "imperial" || settings.units === "metric" ? settings.units : "auto";
@@ -46,7 +49,7 @@ function copyDefaults(value) {
   });
   settings.webSearch = ["cached", "live"].indexOf(settings.webSearch) >= 0 ? settings.webSearch : "disabled";
   settings.fileAccess = ["read-only", "workspace-write"].indexOf(settings.fileAccess) >= 0 ? settings.fileAccess : "none";
-  ["networkAccess", "shellAccess", "autoReview", "fastMode", "answerVibrate", "tapAnimation"].forEach(function(key) {
+  ["networkAccess", "shellAccess", "autoReview", "fastMode", "answerVibrate", "tapAnimation", "doubleTap"].forEach(function(key) {
     settings[key] = settings[key] === true;
   });
   return settings;

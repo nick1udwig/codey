@@ -267,7 +267,7 @@ func (s *Store) Ack(j Job, remote p.Remote) error {
 	return tx.Commit()
 }
 func contentHash(r c.Record) string {
-	return c.Hash([]any{r.Title, r.Body, r.Description, r.Completed, r.CompletedAt, r.Deleted, r.Due, r.Format, r.BodyComplete})
+	return c.Hash([]any{r.Title, r.Body, r.Description, r.Completed, r.CompletedAt, r.Deleted, r.Due, r.Format, r.BodyComplete, r.Start, r.End, r.Location})
 }
 
 // Import writes a canonical revision before advancing any provider checkpoint.
@@ -405,6 +405,9 @@ func (s *Store) ClaimJob(j Job) error {
 	return tx.Commit()
 }
 func (s *Store) ReconcileMissing(binding p.Binding, seen map[string]bool) error {
+	return s.ReconcileMissingWindow(binding, seen, time.Time{}, time.Time{})
+}
+func (s *Store) ReconcileMissingWindow(binding p.Binding, seen map[string]bool, start, end time.Time) error {
 	rows, e := s.DB.Query("SELECT data FROM mappings WHERE binding_id=?", binding.ID)
 	if e != nil {
 		return e
@@ -421,7 +424,13 @@ func (s *Store) ReconcileMissing(binding p.Binding, seen map[string]bool) error 
 			rows.Close()
 			return e
 		}
-		if !seen[m.Remote.ID] && !m.Remote.Record.Deleted {
+		inWindow := true
+		if !start.IsZero() {
+			a, e1 := c.EventTime(m.Remote.Record.Start)
+			z, e2 := c.EventTime(m.Remote.Record.End)
+			inWindow = e1 == nil && e2 == nil && a.Before(end) && !z.Before(start)
+		}
+		if inWindow && !seen[m.Remote.ID] && !m.Remote.Record.Deleted {
 			r := m.Remote
 			r.Record.Deleted = true
 			r.Version = "deleted:" + r.Version

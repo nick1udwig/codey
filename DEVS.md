@@ -211,7 +211,7 @@ Long Select is owned above agent bindings and must remain reserved for dictation
 The watchapp opens:
 
 ```text
-https://nick1udwig.github.io/pebble-agent/config/
+https://nick1udwig.github.io/codey/config/
 ```
 
 Source files live in `docs/config/`.
@@ -270,5 +270,5 @@ The project and watchapp are named codey; builds produce `codey.pbw` and `codey-
 The watch UUID, phone storage keys, server state directory, and `~/.codey/server.log` retain their existing identities so updates keep conversations, jobs, and settings. The backend-sync development upgrade deliberately does not migrate legacy notes/to-dos.
 `CODEY_*` environment variables take precedence over legacy `PEBBLE_AGENT_*` variables.
 The installer uses `~/.config/codey/environment` and `codey.service`, reusing the legacy token and disabling the old service when upgrading.
-GitHub repository URLs, the Go module path, and the hosted settings URL still use `nick1udwig/pebble-agent`; renaming the local project does not move those hosted resources.
+GitHub repository URLs and the Go module path still use `nick1udwig/pebble-agent`; the hosted settings URL is now `nick1udwig.github.io/codey/config/`.
 PAM protocol names and media types remain unchanged.

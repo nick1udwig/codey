@@ -79,7 +79,7 @@ func (m *Manager) serveInline(w http.ResponseWriter, r *http.Request) {
 	switch action {
 	case "connect", "disconnect", "authorize":
 		col := f.Get("collection")
-		if col != "col_note" && col != "col_task" {
+		if col != "col_note" && col != "col_task" && col != "col_event" {
 			inlineJSON(w, 400, map[string]string{"message": "Choose Notes or To-dos"})
 			return
 		}
@@ -125,7 +125,7 @@ func (m *Manager) inlinePage(w http.ResponseWriter, s session, message string, e
 		inlineJSON(w, 503, map[string]string{"message": "Binding state unavailable"})
 		return
 	}
-	active := map[string]string{"col_task": "server", "col_note": "server"}
+	active := map[string]string{"col_task": "server", "col_note": "server", "col_event": "server"}
 	for _, b := range bindings {
 		if b.State == "active" {
 			active[b.CollectionID] = b.Provider

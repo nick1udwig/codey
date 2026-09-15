@@ -121,3 +121,44 @@ func TestFailedEnumerationDoesNotDelete(t *testing.T) {
 		t.Fatal(r, err)
 	}
 }
+
+type deterministicAdapter struct {
+	fakeAdapter
+	remote p.Remote
+}
+
+func (f *deterministicAdapter) Describe() p.Descriptor {
+	return p.Descriptor{ID: "fake", Kind: "note", IdempotentWrites: true, AbsenceDeletion: true}
+}
+func (f *deterministicAdapter) CreateID(p.Binding, c.Record) (string, error) { return "remote-id", nil }
+func (f *deterministicAdapter) Apply(_ context.Context, b p.Binding, _ p.Credentials, _ string, in p.Intent, _ *p.Remote) (p.ApplyResult, error) {
+	f.applies++
+	f.remote = p.Remote{ID: "remote-id", Container: b.Container, Version: "v1", Record: in.Record}
+	if f.applies == 1 {
+		return p.ApplyResult{State: "delivery_unknown"}, nil
+	}
+	return p.ApplyResult{State: "applied", Remote: &f.remote}, nil
+}
+func (f *deterministicAdapter) Pull(context.Context, p.Binding, p.Credentials, string) (p.Page, error) {
+	return p.Page{Records: []p.Remote{f.remote}, Full: true}, nil
+}
+func TestUncertainDeterministicCreateIsNotImportedAsDuplicate(t *testing.T) {
+	s, e, _, b := fixture(t)
+	a := &deterministicAdapter{}
+	e.Adapters["fake"] = a
+	for i := 0; i < 3; i++ {
+		e.Tick(context.Background())
+		var count int
+		if err := s.DB.QueryRow("SELECT count(*) FROM records").Scan(&count); err != nil || count != 1 {
+			t.Fatal("duplicate after uncertain create", count, err)
+		}
+	}
+	r, err := s.Record(b.Operations[0].RecordID, "")
+	if err != nil || r.ProviderState != "synced" || a.applies != 2 {
+		t.Fatal(r, err, a.applies)
+	}
+	jobs, err := s.Pending("binding")
+	if err != nil || len(jobs) != 0 {
+		t.Fatal(jobs, err)
+	}
+}

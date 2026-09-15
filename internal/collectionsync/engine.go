@@ -5,6 +5,7 @@ import (
 	c "github.com/nick1udwig/pebble-agent/internal/collections"
 	"github.com/nick1udwig/pebble-agent/internal/collectionstore"
 	p "github.com/nick1udwig/pebble-agent/internal/providers"
+	"strings"
 	"sync"
 	"time"
 )
@@ -84,6 +85,16 @@ func (e *Engine) Tick(ctx context.Context) {
 		if err != nil {
 			continue
 		}
+		deferredCreates := map[string]bool{}
+		if creator, ok := a.(p.DeterministicCreator); ok {
+			for _, j := range jobs {
+				if strings.HasSuffix(j.Intent.Operation.Type, ".create") {
+					if id, err := creator.CreateID(b, j.Intent.Record); err == nil {
+						deferredCreates[id] = true
+					}
+				}
+			}
+		}
 		blocked := map[string]bool{}
 		for _, j := range jobs {
 			if ctx.Err() != nil {
@@ -139,6 +150,7 @@ func (e *Engine) Tick(ctx context.Context) {
 			}
 			if result.State == "applied" && result.Remote != nil {
 				if e.Store.Ack(j, *result.Remote) == nil {
+					delete(deferredCreates, result.Remote.ID)
 					blocked[j.RecordID] = false
 				}
 			} else {
@@ -157,6 +169,7 @@ func (e *Engine) Tick(ctx context.Context) {
 		success := true
 		checkpoint := b.Checkpoint
 		seen := map[string]bool{}
+		var windowStart, windowEnd time.Time
 		for pages := 0; pages < 10000; pages++ {
 			if ctx.Err() != nil {
 				return
@@ -170,8 +183,12 @@ func (e *Engine) Tick(ctx context.Context) {
 				success = false
 				break
 			}
+			windowStart, windowEnd = result.WindowStart, result.WindowEnd
 			for _, r := range result.Records {
 				seen[r.ID] = true
+				if deferredCreates[strings.SplitN(r.ID, "#", 2)[0]] {
+					continue
+				}
 				if err = e.Store.Import(b, r); err != nil {
 					success = false
 					break
@@ -196,7 +213,7 @@ func (e *Engine) Tick(ctx context.Context) {
 			}
 		}
 		if success && a.Describe().AbsenceDeletion {
-			if err = e.Store.ReconcileMissing(b, seen); err != nil {
+			if err = e.Store.ReconcileMissingWindow(b, seen, windowStart, windowEnd); err != nil {
 				success = false
 			}
 		}

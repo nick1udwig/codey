@@ -7,6 +7,9 @@
 
 * { box-sizing: border-box; }
 
+/* Field layouts must not override wizard visibility. */
+[hidden] { display: none !important; }
+
 body { margin: 0; padding: 24px 16px 48px; }
 
 main { width: min(100%, 620px); margin: 0 auto; }
@@ -86,3 +89,5 @@ legend { padding: 0 6px; font-weight: 700; }
 .toggle { display: flex; align-items: center; gap: 12px; }
 .toggle input { width: 22px; height: 22px; flex: 0 0 22px; }
 #model-status { font-size: .85rem; }
+
+.sync-progress { font-weight: 700; border-left: 3px solid #2563eb; padding-left: 12px; }

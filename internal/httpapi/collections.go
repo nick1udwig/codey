@@ -81,7 +81,8 @@ func (s *Server) collection(w http.ResponseWriter, r *http.Request) {
 		id, err = store.Enroll()
 		value = map[string]any{"client_id": id, "server_instance_id": store.ServerID, "store_epoch": store.Epoch, "principal": c.Principal}
 	case p == "/v1/collections" && r.Method == "GET":
-		value, err = store.Collections()
+		offset, _ := strconv.Atoi(q.Get("utc_offset_minutes"))
+		value, err = store.CollectionsInZone(offset)
 	case p == "/v1/sync/mutations" && r.Method == "POST":
 		var batch c.Batch
 		err = collectionDecode(w, r, &batch)
@@ -96,12 +97,18 @@ func (s *Server) collection(w http.ResponseWriter, r *http.Request) {
 		value, err = store.Receipt(strings.TrimPrefix(p, "/v1/sync/ingress/"), true)
 	case p == "/v1/sync/snapshots" && r.Method == "POST":
 		var input struct {
+			UTCOffset    int    `json:"utc_offset_minutes"`
+			Limit        int    `json:"limit"`
 			CollectionID string `json:"collection_id"`
 			State        string `json:"state"`
 		}
 		err = collectionDecode(w, r, &input)
 		if err == nil {
-			value, err = store.Snapshot(input.CollectionID, input.State)
+			if input.Limit > 0 {
+				value, err = store.SnapshotFirstPage(input.CollectionID, input.State, input.UTCOffset, input.Limit)
+			} else {
+				value, err = store.SnapshotInZone(input.CollectionID, input.State, input.UTCOffset)
+			}
 		}
 	case strings.HasPrefix(p, "/v1/sync/snapshots/") && r.Method == "GET":
 		value, err = store.SnapshotPage(strings.TrimPrefix(p, "/v1/sync/snapshots/"), q.Get("page_token"), n)

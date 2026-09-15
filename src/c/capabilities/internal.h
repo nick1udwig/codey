@@ -7,8 +7,7 @@
 
 bool agent_schedules_install(AgentCapabilities *capabilities);
 bool agent_jobs_install(AgentCapabilities *capabilities);
-bool agent_notes_install(AgentCapabilities *capabilities);
-bool agent_todos_install(AgentCapabilities *capabilities);
+bool agent_collections_install(AgentCapabilities *capabilities);
 bool agent_stopwatch_install(AgentCapabilities *capabilities);
 
 int32_t agent_capability_parse_duration(const char *value, int32_t fallback);

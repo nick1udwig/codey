@@ -63,6 +63,24 @@ Cache eviction never removes pending input. Queue exhaustion rejects the next
 save. When more than eight uncommitted creates exist, the view explicitly reports
 partial coverage; remaining records become browsable after server upload.
 
+## Read efficiency
+
+Opening the first list page uses one snapshot POST with `limit: 8`; subsequent
+pages use the same immutable snapshot. Counts use a SQLite expression index,
+and snapshot summaries omit bodies before decoding them into Go records.
+Canonical bodies and revision-pinned body reads remain intact.
+
+The phone sends one bounded list payload instead of building a second PAM list.
+Unchanged collection metadata does not rewrite its read cache, and unchanged
+counts do not generate Bluetooth traffic. A watch readiness handshake or delivery
+failure resets count suppression. List changes also trigger count reconciliation.
+Journal compaction writes only when durable work can actually be removed; pending
+operations and watch ingress receipts retain their existing guarantees.
+
+Watch preview updates invalidate the page, write only changed title rows, then
+mark it valid. An interrupted update cannot display a mixture of old and new rows.
+See [repeatable measurements](testing.md#collection-efficiency-regressions).
+
 ## Providers and recovery
 
 Todoist uses API v1 incremental synchronization and stable command UUIDs. Completed
@@ -93,3 +111,14 @@ than redirecting it. For a restored original server, the phone settings recovery
 See [server operations](collections-server-operations.md), the
 [implementation plan](notes-todos-backend-sync-plan.md), and the
 [implementation specification](notes-todos-backend-sync-spec.md).
+
+## Calendar
+
+Calendar is a third, independent collection, defaulting to Server only. Choose
+CalDAV in phone settings to connect a calendar with its URL, username, and app
+password. Setup shows four numbered steps and a completion message. The same
+phone journal, server receipts, encrypted credentials, and cached watch titles
+apply. The agenda imports 90 days of events with server-expanded recurrences;
+new single events sync outward using conditional, deterministic resource URLs.
+Use your calendar app for edits, invitations, and recurring-series creation.
+See [README setup](../README.md#backend-sync-setup) and [protocol](protocol.md).

@@ -66,10 +66,11 @@ type Remote struct {
 	Raw       json.RawMessage `json:"raw"`
 }
 type Page struct {
-	Records    []Remote
-	Next       string
-	Checkpoint string
-	Full       bool
+	WindowStart, WindowEnd time.Time
+	Records                []Remote
+	Next                   string
+	Checkpoint             string
+	Full                   bool
 }
 type Intent struct {
 	Operation   c.Operation `json:"operation"`
@@ -89,6 +90,13 @@ type Adapter interface {
 	Pull(context.Context, Binding, Credentials, string) (Page, error)
 	Fetch(context.Context, Binding, Credentials, string) (Remote, error)
 	Apply(context.Context, Binding, Credentials, string, Intent, *Remote) (ApplyResult, error)
+}
+
+// DeterministicCreator supplies the resource identity before a create is sent.
+// Pull must not import that resource as a second record while acknowledgement
+// of an uncertain create is pending. Calendar occurrence fragments share it.
+type DeterministicCreator interface {
+	CreateID(Binding, c.Record) (string, error)
 }
 type Failure struct {
 	State  string

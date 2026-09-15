@@ -41,6 +41,7 @@ func Next(v string) string { n, _ := strconv.ParseUint(v, 10, 64); return strcon
 func Now() string          { return time.Now().UTC().Format(time.RFC3339Nano) }
 
 type Collection struct {
+	Count      int    `json:"count"`
 	ID         string `json:"id"`
 	Kind       string `json:"kind"`
 	Name       string `json:"name"`
@@ -48,6 +49,9 @@ type Collection struct {
 	BindingID  string `json:"binding_id,omitempty"`
 }
 type Record struct {
+	Start         string          `json:"start,omitempty"`
+	End           string          `json:"end,omitempty"`
+	Location      string          `json:"location,omitempty"`
 	ID            string          `json:"id"`
 	CollectionID  string          `json:"collection_id"`
 	Kind          string          `json:"kind"`
@@ -128,7 +132,7 @@ func Apply(old *Record, op Operation, kind string) (Record, error) {
 	if old != nil {
 		r = *old
 	}
-	create := op.Type == "task.create" || op.Type == "note.create"
+	create := op.Type == "task.create" || op.Type == "note.create" || op.Type == "event.create"
 	if create && old != nil {
 		return r, Fail("record_exists", "Record already exists")
 	}
@@ -149,13 +153,17 @@ func Apply(old *Record, op Operation, kind string) (Record, error) {
 	if r.Deleted {
 		return r, Fail("deleted", "Deleted records cannot be edited")
 	}
-	if strings.HasPrefix(op.Type, "task.") && kind != "task" || strings.HasPrefix(op.Type, "note.") && kind != "note" {
+	if strings.HasPrefix(op.Type, "task.") && kind != "task" || strings.HasPrefix(op.Type, "note.") && kind != "note" || strings.HasPrefix(op.Type, "event.") && kind != "event" {
 		return r, Fail("invalid_input", "Operation kind does not match collection")
 	}
 	allowed := map[string]bool{}
 	switch op.Type {
 	case "task.create", "task.patch":
 		for _, k := range []string{"title", "description", "due"} {
+			allowed[k] = true
+		}
+	case "event.create":
+		for _, k := range []string{"title", "start", "end", "location", "description"} {
 			allowed[k] = true
 		}
 	case "note.create":
@@ -209,6 +217,12 @@ func Apply(old *Record, op Operation, kind string) (Record, error) {
 			return r, Fail("invalid_input", "Text field is invalid")
 		}
 		switch k {
+		case "start":
+			r.Start = s
+		case "end":
+			r.End = s
+		case "location":
+			r.Location = s
 		case "title":
 			r.Title = s
 		case "description":
@@ -241,10 +255,20 @@ func Apply(old *Record, op Operation, kind string) (Record, error) {
 	if (op.Type == "note.replace" || op.Type == "note.append") && !r.BodyComplete {
 		return r, Fail("permission_denied", "Incomplete content is read-only")
 	}
+	if kind == "event" {
+		r.Body = r.Description
+		start, e := EventTime(r.Start)
+		end, e2 := EventTime(r.End)
+		if e != nil || e2 != nil || !end.After(start) || (len(r.Start) == 10) != (len(r.End) == 10) || len(r.Location) > 4096 {
+			return r, Fail("invalid_input", "Events require start and end with time-zone offsets (or two dates), and end after start")
+		}
+	}
 	r.Revision = Next(r.Revision)
 	r.UpdatedAt = Now()
 	r.BodyHash = Hash(r.Body)
-	if kind == "note" {
+	if kind == "event" {
+		r.Capabilities = []string{}
+	} else if kind == "note" {
 		r.Capabilities = []string{"note.append", "note.replace", "record.delete"}
 	} else {
 		r.Capabilities = []string{"task.patch", "task.complete", "task.restore", "record.delete"}
@@ -263,4 +287,32 @@ func ValidateIdentity(client string, op Operation) error {
 		return Fail("invalid_input", fmt.Sprintf("Create requires client-owned record identity"))
 	}
 	return nil
+}
+
+// EventTime preserves date-only events; timed events always carry an explicit zone.
+func EventTime(v string) (time.Time, error) {
+	if len(v) == 10 {
+		return time.Parse("2006-01-02", v)
+	}
+	return time.Parse(time.RFC3339, v)
+}
+func Visible(r Record, state string, now time.Time) bool {
+	if r.Deleted {
+		return false
+	}
+	if state == "all" {
+		return true
+	}
+	if r.Kind == "event" {
+		end, e := EventTimeInZone(r.End, now.Location())
+		return e == nil && end.After(now)
+	}
+	return r.Kind == "note" || r.Completed == (state == "completed")
+}
+
+func EventTimeInZone(v string, loc *time.Location) (time.Time, error) {
+	if len(v) == 10 {
+		return time.ParseInLocation("2006-01-02", v, loc)
+	}
+	return EventTime(v)
 }

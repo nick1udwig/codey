@@ -21,6 +21,11 @@ static inline bool touch_guard_down(TouchGuard *g, int target, int x, int y, uin
   *g = (TouchGuard){.active=true, .allowed=allowed, .target=target, .x=x, .y=y, .down_at=now};
   return allowed;
 }
+static inline bool touch_guard_down_mode(TouchGuard *g,int target,int x,int y,uint32_t now,bool double_tap) {
+ bool allowed=touch_guard_down(g,target,x,y,now);
+ if(!double_tap)g->allowed=allowed=true;
+ return allowed;
+}
 static inline bool touch_guard_move(TouchGuard *g, int x, int y) {
   int dx = x - g->x, dy = y - g->y;
   if (dx > TOUCH_GUARD_SLOP || dx < -TOUCH_GUARD_SLOP ||

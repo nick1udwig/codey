@@ -9,6 +9,7 @@
 
 static time_t now = 100000;
 static int buzzes, canceled, writes_fail, writes, timer_callbacks;
+static int fail_write_at = -1;
 static bool wake_fail;
 static int next_wake;
 static WakeupId wake_id = -1;
@@ -43,7 +44,7 @@ WakeupId wakeup_schedule(time_t at, int32_t cookie, bool notify) {
 bool persist_exists(uint32_t key) { assert(key < 4700); return storage[key].size != 0; }
 int persist_write_data(uint32_t key, const void *data, size_t size) {
   assert(key < 4700 && size <= 256);
-  if (writes_fail) { return -1; }
+  if (writes_fail || writes == fail_write_at) { return -1; }
   ++writes;
   memcpy(storage[key].data, data, size); storage[key].size = size; return (int)size;
 }
@@ -118,7 +119,7 @@ static void event(AgentCapabilities *caps, const char *action) {
 }
 static void reset(void) {
   memset(storage, 0, sizeof(storage)); memset(timers, 0, sizeof(timers)); memset(&ui, 0, sizeof(ui));
-  wake_id = -1; buzzes = canceled = writes_fail = writes = timer_callbacks = 0; wake_fail = false; now = 100000;
+  wake_id = -1; buzzes = canceled = writes_fail = writes = timer_callbacks = 0; wake_fail = false; fail_write_at = -1; now = 100000;
 }
 static void test_weather_summary(void) {
   reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
@@ -139,7 +140,7 @@ static void todo_event(const char *type,const char *id,const char *action,const 
 }
 static void test_todos(void) {
   reset(); AgentCapabilities *caps=agent_capabilities_create(&ui,todo_event,NULL);
-  assert(!strcmp(ui.elements[element("todos")].value,"-"));int before=writes;
+  assert(!strcmp(ui.elements[element("todos")].value,"0"));int before=writes;
   event(caps,"local.todos");assert(!strcmp(todo_action,"list"));
   event(caps,"local.todo.complete");assert(!strcmp(todo_action,"complete"));
   event(caps,"local.todo.restore");assert(!strcmp(todo_action,"restore"));
@@ -149,14 +150,35 @@ static void test_todos(void) {
   agent_capabilities_destroy(caps);
 }
 
+static void test_preview_changed_rows_and_interrupted_write(void) {
+  reset();AgentCapabilities *caps=agent_capabilities_create(&ui,todo_event,NULL);
+  const char *initial="A\nB\nC\nD\nE\nF\nG\nH";
+  int before=writes;
+  collection_preview_receive(caps,0,initial,16,"Saved","");assert(writes-before==10);
+  before=writes;collection_preview_receive(caps,0,initial,16,"Saved","");assert(writes==before);
+  collection_preview_receive(caps,0,"New\nB\nC\nD\nE\nF\nG\nH",16,"Saved","");assert(writes-before==3);
+  before=writes;fail_write_at=writes+2; // Invalidation and one title persist; the next title fails.
+  collection_preview_receive(caps,0,"Changed\nOther\nC\nD\nE\nF\nG\nH",16,"Saved","");
+  assert(writes==before+2);assert(!collection_preview_show(caps,0));
+  fail_write_at=-1;before=writes;
+  collection_preview_receive(caps,0,"Changed\nOther\nC\nD\nE\nF\nG\nH",16,"Saved","");
+  assert(writes==before+3);assert(collection_preview_show(caps,0));
+  assert(!strcmp(ui.elements[element("r0")].value,"Changed"));
+  assert(!strcmp(ui.elements[element("r1")].value,"Other"));
+  agent_capabilities_destroy(caps);
+}
+
 static void test_collection_previews(void) {
   reset();AgentCapabilities *caps=agent_capabilities_create(&ui,todo_event,NULL);
   assert(!collection_preview_show(caps,false));
   collection_preview_receive(caps,false,"Buy milk\nCall José",16,"Saved on server","dp");
   assert(!strcmp(ui.elements[element("r0")].action,"local.todo.complete"));
   assert(!strcmp(ui.elements[element("r1")].subtitle,"Pending server"));
+  collection_preview_set_count(0,21);
+  event(caps,"local.todo.complete");assert(element("loading")<0);assert(element("r0")>=0);
   agent_capabilities_destroy(caps);
   caps=agent_capabilities_create(&ui,todo_event,NULL);
+  assert(!strcmp(ui.elements[element("todos")].value,"21"));
   assert(collection_preview_show(caps,false));
   assert(!strcmp(ui.elements[element("r0")].value,"Buy milk"));
   assert(!ui.elements[element("r0")].action[0]);
@@ -168,6 +190,10 @@ static void test_collection_previews(void) {
   assert(!strcmp(ui.elements[element("r0")].title,"Note title"));
   collection_preview_receive(caps,false,"",16,"Saved","");
   assert(collection_preview_show(caps,false));assert(element("r0")<0);
+  collection_preview_receive(caps,2,"Sep 15 12:00 · Lunch",16,"Saved","d");
+  assert(!strcmp(ui.screen,"calendar"));assert(!strcmp(ui.elements[element("r0")].action,"local.event.open"));
+  collection_preview_set_count(2,13);assert(collection_preview_show(caps,2));assert(!ui.elements[element("r0")].action[0]);
+  event(caps,"local.home");assert(!strcmp(ui.elements[element("todos")].action,"local.events"));assert(!strcmp(ui.elements[element("todos")].value,"13"));
   storage[4491].size=0;assert(!collection_preview_show(caps,true));
   agent_capabilities_destroy(caps);
 }
@@ -206,7 +232,8 @@ static void test_dashboard_destinations(void) {
     assert(strcmp(ui.elements[index].action, actions[i]) == 0);
   }
   event(caps, "local.calendar"); assert(strcmp(ui.screen, "calendar") == 0);
-  assert(strstr(ui.elements[element("placeholder")].value, "coming soon"));
+  assert(element("refresh")>=0);
+  assert(agent_capabilities_collection_kind(caps)==2);
   event(caps, "local.home");
   event(caps, "local.todos"); assert(strcmp(ui.screen, "todos") == 0);
   event(caps, "local.home");
@@ -467,7 +494,7 @@ static void test_welcome_tour(void) {
 int main(void) {
   test_welcome_tour();
    test_checkbox_double_tap(); test_notes(); test_idle_cadence();
-  test_weather_summary(); test_todos(); test_collection_previews(); test_dashboard_progress(); test_dashboard_destinations(); test_multiple_and_ack(); test_pause_cancel_restore(); test_failures_and_capacity(); test_stopwatch_dashboard();  test_explicit_replacement();
+  test_weather_summary(); test_todos(); test_collection_previews(); test_preview_changed_rows_and_interrupted_write(); test_dashboard_progress(); test_dashboard_destinations(); test_multiple_and_ack(); test_pause_cancel_restore(); test_failures_and_capacity(); test_stopwatch_dashboard();  test_explicit_replacement();
   test_reused_ids_and_screen_independent_expiry(); test_delivery_replay_after_relaunch();
    test_jobs();
   puts("✓ schedules: concurrent deadlines, repeated alerts, acknowledge, snooze, navigation, persistence, failures, bounds, stopwatch, jobs");

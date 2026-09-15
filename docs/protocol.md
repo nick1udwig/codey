@@ -393,16 +393,17 @@ AppMessage keys 0–12 retain their values. New keys are:
 
 `bridge operation=collections` supplies protocol/session readiness. `collection-view`
 sets the token for the matching render request. Lists instead use one
-`collection-list` message: Operation is `note` or `task`, Value contains up to eight
+`collection-list` message: Operation is `note`, `task`, or `event`, Value contains up to eight
 newline-separated titles (71 UTF-8 bytes each; embedded whitespace is normalized),
 ViewToken binds `r0` through `r7` to the exact phone records/revisions, and Meta has
 one delivery-state character per row (`p` pending server, `s` synced, `b` backend
 pending, `d` saved on server). Flags are completed=1, next page=2, stale=4,
-partial=8, first active page=16. Subtitle carries the overall status. Only first
+partial=8, first active page=16. Index is the full filtered collection count,
+not just the number of preview rows. Event titles include date/time. Subtitle carries the overall status. Only first
 active pages replace the persistent title preview. Preview rows have no mutation
 or read aliases until a live response arrives. All list messages are guarded by
 the same request/navigation checks as render messages. Existing `capability_event` messages
-with operation `note` or `todo` carry list/read/edit/append/complete/restore actions.
+with operation `note`, `todo`, or `calendar` carry list/read/edit/append/complete/restore actions.
 The phone resolves an alias only within that exact view. It checks an existing
 receipt before rejecting an expired view, so retransmission cannot target a reused
 row. `collection-ack` carries the original session/event and delivery state.
@@ -413,6 +414,11 @@ JSON collection routes, schemas, and recovery are documented in
 [JSON schema](collections-api.schema.json), and [operations](collections-server-operations.md).
 All routes require bearer authentication. Mutation revisions/sequences are decimal
 strings. Snapshot pages are fixed; body pages are UTF-8 safe and revision-pinned.
+`POST /v1/sync/snapshots` accepts an optional positive `limit` (capped at 200).
+With it, the response includes the first page's `records`, full `total`, `complete`,
+and optional `next_cursor`, along with `snapshot_id` and the high-water `cursor`.
+Without it, creation returns snapshot metadata with an empty `records` array.
+The phone uses `limit: 8` to avoid a second request for the first screen.
 Management uses a single-use `/v1/integration-sessions` ticket and server cookies.
 Its authenticated POST accepts `{public_url, provider, collection_id}` from phone settings. The
 HTTPS base (including any proxy prefix) is bound to the ticket/session, not inferred
@@ -436,3 +442,27 @@ allows only the hosted settings origin `https://nick1udwig.github.io`; no cookie
 authentication is used by this API. Provider credentials are omitted from every
 response. Candidates are tied to their originating setup session. Errors are JSON
 and displayed inline. The `webviewclosed` handler never opens another page.
+
+### Calendar and interaction preferences
+
+The third collection is `col_event`, kind `event`. `event.create` accepts title,
+start, end, optional location and description. Times require RFC3339 offsets, or
+two YYYY-MM-DD values for an all-day event with exclusive end. Read APIs retain
+start/end/location in summaries and return the description through body pages.
+Active event snapshots are chronological and exclude ended events. Snapshot
+creation accepts `utc_offset_minutes`; collection listing accepts the same query
+parameter, so all-day dates and counts follow the phone's local date.
+
+PAM uses `capability type=calendar command=list` and
+`capability type=calendar command=add title="Lunch" start="2026-09-16T12:00:00-07:00" end="2026-09-16T13:00:00-07:00"`.
+Phone journal/receipt semantics match notes and tasks. CalDAV performs deterministic
+conditional creates and 90-day expanded calendar-query reads. Absence reconciliation
+is restricted to the successfully read time window. Records remain read-only on
+the watch after creation; edits and recurring-series creation use a calendar client.
+
+`bridge operation=collection-counts` sends task count in Index, note count in Flags,
+and event count in EventSequence. Watch caches use ten keys per kind: 4480, 4490,
+4500; base+1..8 hold titles, base+9 holds the full count.
+`bridge operation=preferences` uses Flags for ripple enabled, Index for double-tap
+required (both default 1). `bridge operation=agent-dispatched` starts the blue
+request animation only after the phone submits an agent job over HTTP.

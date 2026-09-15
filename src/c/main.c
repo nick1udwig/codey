@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define OUTBOX_QUEUE_SIZE 12
+#define OUTBOX_QUEUE_SIZE 10 // Keep the static image within Pebble's 16-bit size limit.
 #define OUTBOX_RETRY_MS 100
 #define OUTBOX_VALUE_LENGTH 220
 #define DICTATION_LENGTH 220
@@ -240,7 +240,7 @@ static bool prv_queue_message(const char *type, uint32_t request_id, const char 
   agent_protocol_copy(message->action, sizeof(message->action), action);
   agent_protocol_copy(message->value, sizeof(message->value), value);
   agent_protocol_copy(message->meta, sizeof(message->meta), meta);
-  if (!strcmp(type,"capability_event") && (!strcmp(operation,"note") || !strcmp(operation,"todo"))) {
+  if (!strcmp(type,"capability_event") && (!strcmp(operation,"note") || !strcmp(operation,"todo") || !strcmp(operation,"calendar"))) {
     agent_protocol_copy(message->bridge,sizeof(message->bridge),s_collection_bridge);
     agent_protocol_copy(message->view,sizeof(message->view),s_collection_view);
     message->event=s_collection_event;
@@ -260,7 +260,6 @@ static void prv_background_request(const char *title) {
   AgentCapabilityCommand job = { .type="job", .command="upsert", .id="pending", .title=title,
     .subtitle="Sending to phone", .value="", .meta="" };
   agent_capabilities_handle_command(s_capabilities, &job);
-  agent_ui_animate_request(s_ui);
   prv_begin_request();
 }
 
@@ -394,7 +393,7 @@ static void prv_capability_event(const char *type, const char *id, const char *a
                                  const char *value, void *context) {
   (void)context;
   char token[16] = "";
-  if (!strcmp(type,"note") || !strcmp(type,"todo")) {
+  if (!strcmp(type,"note") || !strcmp(type,"todo") || !strcmp(type,"calendar")) {
     if (!connection_service_peek_pebble_app_connection() || !s_collection_bridge[0]) { agent_ui_set_status(s_ui,"Phone unavailable · Not saved",true,false); return; }
     if(s_collection_waiting && (!strcmp(action,"edit")||!strcmp(action,"append")||!strcmp(action,"complete")||!strcmp(action,"restore"))) {agent_ui_set_status(s_ui,"Waiting for phone save confirmation",false,false);return;}
     if (s_collection_event == INT32_MAX) { agent_ui_set_status(s_ui,"Reopen app to renew collection session",true,false); return; }
@@ -516,10 +515,14 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
     if (strcmp(bridge,s_collection_bridge)) { s_collection_event=0; s_collection_view[0]=0; }
     agent_protocol_copy(s_collection_bridge,sizeof(s_collection_bridge),bridge);return;
   }
+  if(!strcmp(type,"bridge")&&!strcmp(operation,"collection-counts")){collection_preview_set_count(0,prv_tuple_int(iter,MESSAGE_KEY_Index,0));collection_preview_set_count(1,prv_tuple_int(iter,MESSAGE_KEY_Flags,0));collection_preview_set_count(2,prv_tuple_int(iter,MESSAGE_KEY_EventSequence,0));agent_capabilities_refresh_dashboard(s_capabilities);return;}
+  if(!strcmp(type,"bridge")&&!strcmp(operation,"agent-dispatched")){agent_ui_animate_request(s_ui);return;}
   if (!strcmp(type,"collection-list")) {
     if(!watch_response_accepts(&s_response,request_id))return;
     agent_protocol_copy(s_collection_view,sizeof(s_collection_view),prv_tuple_string(iter,MESSAGE_KEY_ViewToken));
-    collection_preview_receive(s_capabilities,!strcmp(operation,"note"),prv_tuple_string(iter,MESSAGE_KEY_Value),prv_tuple_int(iter,MESSAGE_KEY_Flags,0),prv_tuple_string(iter,MESSAGE_KEY_Subtitle),prv_tuple_string(iter,MESSAGE_KEY_Meta));
+    int kind=!strcmp(operation,"event")?2:!strcmp(operation,"note")?1:0;
+    if(!(prv_tuple_int(iter,MESSAGE_KEY_Flags,0)&1))collection_preview_set_count(kind,prv_tuple_int(iter,MESSAGE_KEY_Index,0));
+    collection_preview_receive(s_capabilities,kind,prv_tuple_string(iter,MESSAGE_KEY_Value),prv_tuple_int(iter,MESSAGE_KEY_Flags,0),prv_tuple_string(iter,MESSAGE_KEY_Subtitle),prv_tuple_string(iter,MESSAGE_KEY_Meta));
     return;
   }
   if (!strcmp(type,"collection-view")) {
@@ -541,7 +544,8 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
     agent_ui_set_codex_status(s_ui,remaining,prv_tuple_int(iter,MESSAGE_KEY_Index,-1),prv_tuple_string(iter,MESSAGE_KEY_Subtitle));return;
   }
   if (!strcmp(type,"bridge") && !strcmp(operation,"preferences")) {
-    agent_ui_set_tap_animation(s_ui,prv_tuple_int(iter,MESSAGE_KEY_Flags,1)!=0);return;
+    agent_ui_set_tap_animation(s_ui,prv_tuple_int(iter,MESSAGE_KEY_Flags,1)!=0);
+    agent_ui_set_double_tap(s_ui,prv_tuple_int(iter,MESSAGE_KEY_Index,1)!=0);return;
   }
   if (strcmp(type, "job") == 0) {
     const char *id = prv_tuple_string(iter, MESSAGE_KEY_ElementId);

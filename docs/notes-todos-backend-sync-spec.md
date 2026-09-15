@@ -97,7 +97,7 @@ Paths marked “new” are proposed implementation targets, not existing files.
 | `src/pkjs/index.js` | Wire bridge readiness, collection requests, journal recovery, job capability routing, and settings. |
 | `src/common/settings.js`, `docs/config/` | Server base URL, provider descriptors, connection status, integration-management entry point. |
 | `src/common/watch-protocol.js`, `package.json`, native protocol handlers | Versioned collection messages and acknowledgments; retain existing key numbers. |
-| `src/c/capabilities/todos.c` | Remove normal task storage and toggling; request transient pages and emit explicit actions. |
+| `src/c/capabilities/collections.c` | Shared task/note/calendar routing, cached previews, and explicit collection actions. |
 | Native Notes capability and app input/connection handlers | Capability-driven edits, connection gating, current-view revision, RAM-only retries. |
 | `docs/collections.md`, `docs/architecture.md`, `docs/protocol.md`, `docs/server.md`, `docs/testing.md` | Replace obsolete ownership/offline descriptions; document final contracts and runbooks. |
 

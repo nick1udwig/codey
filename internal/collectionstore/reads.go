@@ -9,6 +9,7 @@ import (
 	c "github.com/nick1udwig/pebble-agent/internal/collections"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 )
 
 type Page struct {
+	Total      int        `json:"total"`
 	Records    []c.Record `json:"records"`
 	Next       string     `json:"next_cursor,omitempty"`
 	Cursor     string     `json:"cursor,omitempty"`
@@ -63,6 +65,23 @@ func limit(n int) int {
 	return n
 }
 func (s *Store) Snapshot(collection, state string) (Page, error) {
+	return s.SnapshotInZone(collection, state, 0)
+}
+func (s *Store) SnapshotInZone(collection, state string, offset int) (Page, error) {
+	return s.snapshot(collection, state, offset, 0)
+}
+
+// SnapshotFirstPage returns the first bounded page from the same in-memory
+// snapshot that is persisted, avoiding a second HTTP request and JSON decode.
+func (s *Store) SnapshotFirstPage(collection, state string, offset, n int) (Page, error) {
+	return s.snapshot(collection, state, offset, limit(n))
+}
+func (s *Store) snapshot(collection, state string, offset, firstSize int) (Page, error) {
+	if offset < -840 || offset > 840 {
+		return Page{}, c.Fail("invalid_input", "Invalid timezone offset")
+	}
+	loc := time.FixedZone("phone", offset*60)
+	now := time.Now().In(loc)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, e := s.DB.Begin()
@@ -81,7 +100,7 @@ func (s *Store) Snapshot(collection, state string) (Page, error) {
 	if e = tx.QueryRow("SELECT COALESCE(MAX(sequence),0) FROM changes").Scan(&seq); e != nil {
 		return Page{}, e
 	}
-	rows, e := tx.Query("SELECT data FROM records WHERE collection_id=? ORDER BY id", collection)
+	rows, e := tx.Query("SELECT json_remove(data,'$.body','$.description','$.extensions') FROM records WHERE collection_id=? ORDER BY id", collection)
 	if e != nil {
 		return Page{}, e
 	}
@@ -97,7 +116,7 @@ func (s *Store) Snapshot(collection, state string) (Page, error) {
 			rows.Close()
 			return Page{}, err
 		}
-		if !r.Deleted && (state == "all" || r.Kind == "note" || r.Completed == (state == "completed")) {
+		if c.Visible(r, state, now) {
 			records = append(records, r.Summary())
 		}
 	}
@@ -105,6 +124,13 @@ func (s *Store) Snapshot(collection, state string) (Page, error) {
 	rows.Close()
 	if e != nil {
 		return Page{}, e
+	}
+	if collection == "col_event" {
+		sort.SliceStable(records, func(i, j int) bool {
+			a, _ := c.EventTimeInZone(records[i].Start, loc)
+			b, _ := c.EventTimeInZone(records[j].Start, loc)
+			return a.Before(b)
+		})
 	}
 	id := c.ID("snap_")
 	cur := s.cursor("changes", collection, seq)
@@ -117,7 +143,10 @@ func (s *Store) Snapshot(collection, state string) (Page, error) {
 	if e = tx.Commit(); e != nil {
 		return Page{}, e
 	}
-	return Page{SnapshotID: id, Cursor: cur, Records: []c.Record{}}, nil
+	if firstSize > 0 {
+		return s.recordPage(records, id, cur, 0, firstSize), nil
+	}
+	return Page{Total: len(records), SnapshotID: id, Cursor: cur, Records: []c.Record{}}, nil
 }
 func (s *Store) SnapshotPage(id, token string, n int) (Page, error) {
 	var epoch, cur string
@@ -144,13 +173,17 @@ func (s *Store) SnapshotPage(id, token string, n int) (Page, error) {
 	if pos > int64(len(records)) {
 		return Page{}, c.Fail("cursor_expired", "Invalid snapshot offset")
 	}
-	end := min(int(pos)+limit(n), len(records))
-	page := Page{SnapshotID: id, Cursor: cur, Records: records[int(pos):end], Complete: end == len(records)}
+	return s.recordPage(records, id, cur, int(pos), n), nil
+}
+func (s *Store) recordPage(records []c.Record, id, cur string, pos, n int) Page {
+	end := min(pos+limit(n), len(records))
+	page := Page{Total: len(records), SnapshotID: id, Cursor: cur, Records: records[pos:end], Complete: end == len(records)}
 	if !page.Complete {
 		page.Next = s.cursor("snapshot", id, int64(end))
 	}
-	return page, nil
+	return page
 }
+
 func (s *Store) Changes(collection, token string, n int) (map[string]any, error) {
 	pos, e := s.parse(token, "changes", collection)
 	if e != nil {

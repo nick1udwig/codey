@@ -220,7 +220,7 @@ func run(arguments []string) error {
 		}
 	}
 	providerHTTP := providers.HTTP{Client: providers.SafeClient(integrationConfig.PrivateHosts)}
-	adapters := map[string]providers.Adapter{"todoist": providers.Todoist{HTTP: providerHTTP}, "googletasks": providers.Google{HTTP: providerHTTP}, "nextcloudnotes": providers.Nextcloud{HTTP: providerHTTP}}
+	adapters := map[string]providers.Adapter{"todoist": providers.Todoist{HTTP: providerHTTP}, "googletasks": providers.Google{HTTP: providerHTTP}, "nextcloudnotes": providers.Nextcloud{HTTP: providerHTTP}, "caldav": providers.CalDAV{HTTP: providerHTTP}}
 	integrations, err := integrationauth.New(collections, config.dataDir, integrationConfig, adapters)
 	if err != nil {
 		return err

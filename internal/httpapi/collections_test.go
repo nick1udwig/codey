@@ -81,3 +81,25 @@ func TestInlineSetupSessionIssuanceRequiresPhoneBearer(t *testing.T) {
 		t.Fatal(calls)
 	}
 }
+
+func TestSnapshotCanReturnFirstPageInOneRequest(t *testing.T) {
+	store, err := collectionstore.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	s := New(Config{Token: "secret", Collections: store})
+	for _, body := range []string{`{"collection_id":"col_note","state":"active","limit":8}`, `{"collection_id":"col_note","state":"active"}`} {
+		r := httptest.NewRequest("POST", "/v1/sync/snapshots", strings.NewReader(body))
+		r.Header.Set("Authorization", "Bearer secret")
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		var page collectionstore.Page
+		if err = json.Unmarshal(w.Body.Bytes(), &page); err != nil || w.Code != 200 || page.SnapshotID == "" || page.Records == nil {
+			t.Fatal(w.Code, w.Body.String(), err)
+		}
+		if strings.Contains(body, "limit") && !page.Complete {
+			t.Fatal("empty first page should be complete", page)
+		}
+	}
+}

@@ -22,6 +22,8 @@
       <form id="settings">
         <label class="toggle"><input id="new-session" type="checkbox" /><span>Start new conversation when I save</span></label>
         <p>Your next query starts a fresh conversation. Earlier conversations are kept.</p>
+        <label class="toggle"><input id="double-tap" type="checkbox" checked><span>Require double tap</span></label>
+        <p>On: tap once, then tap or hold to activate. Off: a single tap or hold activates.</p>
         <label class="toggle"><input id="tap-animation" type="checkbox" checked /><span>First-tap ripple animation</span></label>
         <label class="toggle"><input id="answer-vibrate" type="checkbox" checked /><span>Answer arrived vibration</span></label>
         <p>Vibrate when an answer finishes arriving. Quiet Time always silences this vibration.</p>
@@ -127,39 +129,67 @@
           <p id="todo-sync-help"></p>
           <div id="todo-sync-form">
  <p id="todo-sync-active"></p>
+ <p id="todo-sync-progress" class="sync-progress" aria-live="polite"></p>
+ <p id="todo-sync-next"></p>
  <div id="todo-sync-credentials">
-  <label id="todo-sync-endpoint-label">Nextcloud HTTPS base URL<input id="todo-sync-endpoint" type="url" autocomplete="off"></label>
-  <label id="todo-sync-username-label">Username<input id="todo-sync-username" type="text" autocomplete="off"></label>
-  <label id="todo-sync-secret-label">API token / app password<input id="todo-sync-secret" type="password" autocomplete="off"></label>
+  <label id="todo-sync-endpoint-label" hidden>Service URL<input id="todo-sync-endpoint" type="url" autocomplete="off"></label>
+  <label id="todo-sync-username-label" hidden>Username<input id="todo-sync-username" type="text" autocomplete="off"></label>
+  <label id="todo-sync-secret-label"><span id="todo-sync-secret-title">Todoist API token</span><input id="todo-sync-secret" type="password" autocomplete="off"></label>
  </div>
  <button id="todo-sync-connect" type="button">Connect</button>
  <div id="todo-sync-destination" hidden>
-  <label>Destination<select id="todo-sync-container"></select></label>
+  <label><span id="todo-sync-destination-title">Destination</span><select id="todo-sync-container"></select></label>
   <label><input id="todo-sync-export" type="checkbox"> Copy existing server records to this backend</label>
   <button id="todo-sync-preview" type="button">Preview connection</button>
  </div>
  <label><input id="todo-sync-stop" type="checkbox"> Stop pending delivery to the previous backend when switching or disconnecting</label>
  <p id="todo-sync-status" role="status"></p>
+ <button id="todo-sync-back" type="button" hidden>Change destination</button>
  <button id="todo-sync-activate" type="button" hidden>Activate this destination</button>
 </div>
           <label>Notes sync setup<select id="note-sync-provider"><option value="server">Server only</option><option value="nextcloudnotes">Nextcloud Notes</option></select></label>
           <p id="note-sync-help"></p>
           <div id="note-sync-form">
  <p id="note-sync-active"></p>
+ <p id="note-sync-progress" class="sync-progress" aria-live="polite"></p>
+ <p id="note-sync-next"></p>
  <div id="note-sync-credentials">
   <label id="note-sync-endpoint-label">Nextcloud HTTPS base URL<input id="note-sync-endpoint" type="url" autocomplete="off"></label>
   <label id="note-sync-username-label">Username<input id="note-sync-username" type="text" autocomplete="off"></label>
-  <label id="note-sync-secret-label">API token / app password<input id="note-sync-secret" type="password" autocomplete="off"></label>
+  <label id="note-sync-secret-label"><span id="note-sync-secret-title">App password</span><input id="note-sync-secret" type="password" autocomplete="off"></label>
  </div>
  <button id="note-sync-connect" type="button">Connect</button>
  <div id="note-sync-destination" hidden>
-  <label>Destination<select id="note-sync-container"></select></label>
+  <label><span id="note-sync-destination-title">Destination</span><select id="note-sync-container"></select></label>
   <label><input id="note-sync-export" type="checkbox"> Copy existing server records to this backend</label>
   <button id="note-sync-preview" type="button">Preview connection</button>
  </div>
  <label><input id="note-sync-stop" type="checkbox"> Stop pending delivery to the previous backend when switching or disconnecting</label>
  <p id="note-sync-status" role="status"></p>
+ <button id="note-sync-back" type="button" hidden>Change destination</button>
  <button id="note-sync-activate" type="button" hidden>Activate this destination</button>
+</div>
+          <label>Calendar sync setup<select id="calendar-sync-provider"><option value="server">Server only</option><option value="caldav">CalDAV Calendar</option></select></label>
+          <p id="calendar-sync-help"></p>
+          <div id="calendar-sync-form">
+ <p id="calendar-sync-active"></p>
+ <p id="calendar-sync-progress" class="sync-progress" aria-live="polite"></p>
+ <p id="calendar-sync-next"></p>
+ <div id="calendar-sync-credentials">
+  <label id="calendar-sync-endpoint-label">HTTPS calendar or calendar-home URL<input id="calendar-sync-endpoint" type="url" autocomplete="off"></label>
+  <label id="calendar-sync-username-label">Username<input id="calendar-sync-username" type="text" autocomplete="off"></label>
+  <label id="calendar-sync-secret-label"><span id="calendar-sync-secret-title">App password</span><input id="calendar-sync-secret" type="password" autocomplete="off"></label>
+ </div>
+ <button id="calendar-sync-connect" type="button">Connect</button>
+ <div id="calendar-sync-destination" hidden>
+  <label><span id="calendar-sync-destination-title">Destination</span><select id="calendar-sync-container"></select></label>
+  <label><input id="calendar-sync-export" type="checkbox"> Copy existing server records to this backend</label>
+  <button id="calendar-sync-preview" type="button">Preview connection</button>
+ </div>
+ <label><input id="calendar-sync-stop" type="checkbox"> Stop pending delivery to the previous backend when switching or disconnecting</label>
+ <p id="calendar-sync-status" role="status"></p>
+ <button id="calendar-sync-back" type="button" hidden>Change destination</button>
+ <button id="calendar-sync-activate" type="button" hidden>Activate this destination</button>
 </div>
           <p>Connect and activate below without closing settings. Sync changes apply immediately; Save &amp; close saves the other phone preferences.</p>
           <p><a href="https://github.com/nick1udwig/pebble-agent#backend-sync-setup" target="_blank" rel="noopener noreferrer">Server prerequisites and recovery instructions</a></p>

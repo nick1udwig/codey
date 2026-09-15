@@ -2,7 +2,7 @@
 
 A voice-driven assistant for **Pebble Time 2** and **Pebble Round 2**.
 Speak to your watch and get answers as lists, cards, forms, and other interactive screens.
-Timers, alarms, reminders, todos, notes, and weather are built in.
+Timers, alarms, reminders, todos, notes, calendars, and weather are built in.
 
 codey includes a watchapp and a self-hosted service that uses your Codex login.
 You run the service on your own computer or server.
@@ -41,20 +41,25 @@ Use HTTPS or WSS; unencrypted connections are only suitable for trusted private 
 
 ## Backend sync setup
 
-Notes and to-dos default to **Server only**: they are stored in `~/.codey/data`
+Notes, to-dos, and calendars default to **Server only**: they are stored in `~/.codey/data`
 without an external account. Configure them independently in phone settings:
 
 | Collection | Choices | Authentication |
 | --- | --- | --- |
 | To-dos | Server only, Todoist, Google Tasks | None, Todoist API token, Google OAuth |
 | Notes | Server only, Nextcloud Notes | None, Nextcloud username and app password |
+| Calendar | Server only, CalDAV | None, calendar username and app password |
 
-Select a service under **To-do sync setup** or **Notes sync setup**. Selecting
+Select a service under **To-do sync setup**, **Notes sync setup**, or **Calendar sync setup**. Selecting
 Nextcloud Notes reveals its HTTPS URL, username, and app-password fields in the
 same settings page. Todoist reveals an API-token field. **Connect**, choose a
 destination, **Preview connection**, then **Activate this destination**. Errors
 stay beside the fields; these buttons never save-and-close the Pebble webview.
-The active backend is shown separately from the dropdown selection.
+Each panel shows the current step out of four: connect account, choose destination,
+review and activate, then active. The last step explains how to open the collection
+on the watch. Use **Change destination** to return from review, or **Change account
+or destination** after activation. The active backend is shown separately from the
+dropdown selection.
 
 The phone obtains a short-lived, setup-only session before opening settings.
 The normal server bearer token is not sent to the settings website. Provider
@@ -71,6 +76,18 @@ preferences; activation/disconnection takes effect immediately on the server.
   a category, preview, and activate. The Nextcloud Notes app must be available.
   For a private Nextcloud hostname, add `"private_hosts": ["cloud.example"]` to
   `~/.codey/integrations.json` and restart codey.
+- **CalDAV:** enter the HTTPS calendar URL or calendar-home URL supplied by your
+  calendar app (for example, `https://cloud.example/remote.php/dav/calendars/USER/`),
+  username, and app password. Connect, select an event calendar, preview, and
+  activate. The server imports the next 90 days, including recurring events and
+  exceptions, and sends newly created events to that calendar. Edits/deletions
+  made in your calendar app appear on the next sync (normally within a minute).
+  Use the same CalDAV account in an Android or iOS calendar app to see the events
+  there. For a private hostname, add it to `private_hosts` in
+  `~/.codey/integrations.json` and restart codey. The server must support CalDAV
+  calendar-query recurrence expansion; setup reports incompatible servers.
+  Event editing, invitations, and creating recurring series use your calendar
+  app. Codey shows its own agenda; it does not publish Pebble OS Timeline pins.
 - **Google Tasks:** obtain a Google OAuth web client with access to the Tasks API
   and register the exact callback `<your-codey-HTTPS-base>/integrations/oauth/callback`.
   Put the following in `~/.codey/integrations.json` (merge with any existing config),
@@ -109,12 +126,13 @@ Try “start a five-minute timer,” “remind me in an hour to check the oven,�
 Common commands run locally; other requests go to your agent.
 
 - **Up** opens Notifications, where you can check requests and open completed answers.
-- **Down** opens Todos.
-  Notes are available by tapping, then holding the same tile.
+- **Down** opens the selected collection. **Hold Down** opens **To Do / Notes / Calendar**.
+  Tap then hold the collection tile to open the same menu. The date tile also opens Calendar.
 - **Hold Select** on the dashboard to choose **New Chat**; on other screens, it starts dictation.
 - **Back** returns home; pressing it again exits the app.
-- **Touch controls** generally need two taps to activate.
-  Drag lists or text directly to scroll.
+- **Touch controls** default to two taps, with a water ripple on the first tap.
+  Disable **Require double tap** for a single tap or hold. **First-tap ripple
+  animation** can be toggled independently. Drag lists or text directly to scroll.
 
 Requests can keep running while you use another screen.
 Open Notifications to check again after the completion notification window ends.

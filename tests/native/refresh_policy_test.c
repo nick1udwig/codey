@@ -14,6 +14,8 @@ int main(void) {
   assert(refresh_policy_delay(&p, 501, false) == 59999);
   refresh_policy_painted(&p, UINT32_MAX - 100);
   assert(refresh_policy_delay(&p, 50, false) == 59849);
+  assert(refresh_policy_screen_delay(&p,51,false,true)==0);
+  assert(refresh_policy_screen_delay(&p,51,false,false)>0);
   puts("✓ refresh policy: one passive frame per minute, immediate input, "
        "renewed deadline, clock wrap");
 }

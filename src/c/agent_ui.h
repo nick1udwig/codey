@@ -95,3 +95,5 @@ void agent_ui_refresh_clock(AgentUi *ui);
 void agent_ui_set_tap_animation(AgentUi *ui, bool enabled);
 
 void agent_ui_set_codex_status(AgentUi *ui, int remaining, int active, const char *state);
+
+void agent_ui_set_double_tap(AgentUi *ui, bool enabled);

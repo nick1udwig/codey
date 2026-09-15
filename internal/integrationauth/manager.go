@@ -223,7 +223,7 @@ func (m *Manager) Ticket(base, provider, collection string) (string, error) {
 	if provider != "" && provider != "server" && m.Adapters[provider] == nil {
 		return "", c.Fail("invalid_input", "Unknown sync service")
 	}
-	if collection != "" && collection != "col_task" && collection != "col_note" {
+	if collection != "" && collection != "col_task" && collection != "col_note" && collection != "col_event" {
 		return "", c.Fail("invalid_input", "Unknown collection")
 	}
 	if a := m.Adapters[provider]; a != nil && collection != "" && "col_"+a.Describe().Kind != collection {
