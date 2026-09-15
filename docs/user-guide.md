@@ -68,9 +68,9 @@ Tap a request to refresh its status; finished requests open their answer, and on
 Connection failures keep the job available for another check.
 Canceling does not undo work already performed.
 
-To Do, Notes, and Calendar share the collection tile. Tap, then hold it, or hold
-Down, to choose **To Do**, **Notes**, or **Calendar**. Down opens your selected
-collection; the date tile also opens Calendar.
+To Do and Notes share the collection tile. Tap, then hold it, or hold
+Down, to choose **To Do** or **Notes**. Down opens your selected
+collection; the top-left date tile opens Calendar.
 The last collection opened stays on the dashboard.
 Say “make a note Call Jane” or “note: Call Jane.”
 Open a note and select **Append to note** or **Replace entire note**.
@@ -87,7 +87,8 @@ with a single tap or hold. Both settings default to enabled.
 
 ## Timers, alerts, and Quick Launch
 
-Back returns to the dashboard without stopping anything; Back from the dashboard exits the app.
+Back from a note or calendar event returns to its list. Back from a list returns
+to the dashboard without stopping anything; Back from the dashboard exits the app.
 On a timer, the X (Down) cancels only that timer, Select pauses/resumes it, and the arrow (Up) returns home.
 
 You can have four timers and four alarms/reminders at once.
@@ -152,7 +153,7 @@ The hosted page is [nick1udwig.github.io/codey/config/](https://nick1udwig.githu
 
 ## Calendar
 
-Choose Calendar from the collection menu to see events in time order. The watch
+Tap the top-left date tile to see calendar events in time order. The watch
 caches the first eight dated titles; opening the list refreshes them through the
 phone. Open an event for its end time, location, and description. Date-only events
 are all day; their end date is exclusive.

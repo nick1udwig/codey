@@ -1451,7 +1451,7 @@ static void prv_back_click(ClickRecognizerRef recognizer, void *context) {
   }
 }
 
-static void prv_collection_menu(AgentUi *ui){const AgentUiMenuItem items[]={{"To Do","local.todos"},{"Notes","local.notes"},{"Calendar","local.events"}};agent_ui_open_menu(ui,items,3);}
+static void prv_collection_menu(AgentUi *ui){const AgentUiMenuItem items[]={{"To Do","local.todos"},{"Notes","local.notes"}};agent_ui_open_menu(ui,items,2);}
 static void prv_down_long_click(ClickRecognizerRef r,void *context){(void)r;AgentUi *ui=context;prv_input(ui);prv_reset_touch_guard(ui);prv_collection_menu(ui);}
 static void prv_select_long_click(ClickRecognizerRef recognizer, void *context) {
   AgentUi *ui = context;

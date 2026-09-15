@@ -193,7 +193,7 @@ static void test_collection_previews(void) {
   collection_preview_receive(caps,2,"Sep 15 12:00 · Lunch",16,"Saved","d");
   assert(!strcmp(ui.screen,"calendar"));assert(!strcmp(ui.elements[element("r0")].action,"local.event.open"));
   collection_preview_set_count(2,13);assert(collection_preview_show(caps,2));assert(!ui.elements[element("r0")].action[0]);
-  event(caps,"local.home");assert(!strcmp(ui.elements[element("todos")].action,"local.events"));assert(!strcmp(ui.elements[element("todos")].value,"13"));
+  event(caps,"local.home");assert(!strcmp(ui.elements[element("todos")].action,"local.todos"));assert(!strcmp(ui.elements[element("todos")].value,"21"));
   storage[4491].size=0;assert(!collection_preview_show(caps,true));
   agent_capabilities_destroy(caps);
 }
@@ -233,8 +233,18 @@ static void test_dashboard_destinations(void) {
   }
   event(caps, "local.calendar"); assert(strcmp(ui.screen, "calendar") == 0);
   assert(element("refresh")>=0);
-  assert(agent_capabilities_collection_kind(caps)==2);
+  assert(agent_capabilities_collection_kind(caps)==0);
+  event(caps, "local.notes");
+  event(caps, "local.calendar");
+  assert(agent_capabilities_collection_kind(caps)==1);
+  AgentUiEvent back = {.input="back", .action="local.notes", .element_id="", .value="", .meta=""};
+  assert(agent_capabilities_handle_ui_event(caps, &back));
+  assert(!strcmp(ui.screen,"notes-loading"));
+  strcpy(back.action,"local.events");
+  assert(agent_capabilities_handle_ui_event(caps, &back));
+  assert(!strcmp(ui.screen,"calendar"));
   event(caps, "local.home");
+  assert(!strcmp(ui.elements[element("todos")].action,"local.notes"));
   event(caps, "local.todos"); assert(strcmp(ui.screen, "todos") == 0);
   event(caps, "local.home");
   event(caps, "local.dashboard.notifications"); assert(strcmp(ui.screen, "notifications") == 0);

@@ -25,5 +25,5 @@ Views.prototype.body=function(record,cursor,done){var self=this,request=++this.r
  if(p.next_cursor){view.aliases.next={record:record,cursor:p.next_cursor};source+=line("item",{id:"next",title:"Next page",action:calendar?"local.event.page":"local.note.page",note:"next",value:"next"});}
  if(record.body_complete&&(record.capabilities||[]).indexOf("note.replace")>=0)source+=line("item",{id:"note",title:"Replace entire note",action:"local.note.edit"});
  if(record.body_complete&&(record.capabilities||[]).indexOf("note.append")>=0)source+=line("item",{id:"append",title:"Append to note",action:"local.note.append"});
- source+=line("item",{id:"back",title:calendar?"Back to calendar":"Back to notes",action:calendar?"local.events":"local.notes"});done(null,{source:source+"done\n",token:view.token});});};
+ source+=line("bind",{id:"back",input:"back",action:calendar?"local.events":"local.notes"});done(null,{source:source+"done\n",token:view.token});});};
 module.exports=Views;

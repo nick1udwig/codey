@@ -46,7 +46,7 @@ static void prv_show_tour(AgentCapabilities *capabilities) {
   static const char *pages[] = {
     "Drag to scroll. Tap twice to activate; change this in settings. Up/Down navigate. Back returns home.",
     "Hold Select to ask the agent. Try: what can this app do? Ask follow-ups for details.",
-    "Hold Down for To Do, Notes or Calendar. On home, hold Select for New Chat. Tap, then hold a tile for its menu."
+    "Hold Down for To Do or Notes. Tap the date for Calendar. On home, hold Select for New Chat. Tap, then hold a tile for its menu."
   };
   capabilities->navigation_revision += 1;
   agent_capabilities_set_active(capabilities, "tour", true);
@@ -108,7 +108,7 @@ AgentCapabilities *agent_capabilities_create(AgentUi *ui, AgentCapabilityEventHa
   s_wakeup_capabilities = capabilities;
   wakeup_service_subscribe(prv_wakeup_handler);
   capabilities->collection_kind = persist_read_int(COLLECTION_PREFERENCE_KEY);
-  if(capabilities->collection_kind<0||capabilities->collection_kind>2)capabilities->collection_kind=0;
+  if(capabilities->collection_kind<0||capabilities->collection_kind>1)capabilities->collection_kind=0;
   if (!agent_capabilities_install_builtins(capabilities)) {
     agent_capabilities_destroy(capabilities);
     return NULL;
@@ -170,7 +170,7 @@ bool agent_capabilities_handle_ui_event(AgentCapabilities *capabilities, const A
   uint8_t index;
   if (!capabilities || !event) { return false; }
   if (strcmp(event->action, "local.home") == 0 ||
-      (strcmp(event->input, "back") == 0 &&
+      (!event->action[0] && strcmp(event->input, "back") == 0 &&
        !agent_capabilities_is_active(capabilities, "dashboard"))) {
     agent_capabilities_show_dashboard(capabilities);
     return true;
@@ -224,7 +224,7 @@ void agent_capabilities_show_dashboard(AgentCapabilities *capabilities) {
   agent_capability_add_element(capabilities->ui, "item", "dictate", "Talk to codey",
                                "Hold Select", "", "local.dictate", "", 0);
   agent_capability_add_element(capabilities->ui, "item", "weather", "Weather", capabilities->weather_range, capabilities->weather_temperature, "local.weather", capabilities->weather_meta, 0);
-  agent_capability_add_element(capabilities->ui, "item", "todos", capabilities->collection_kind==2 ? "Calendar" : capabilities->collection_kind==1 ? "Notes" : "Todos", "", "", capabilities->collection_kind==2 ? "local.events" : capabilities->collection_kind==1 ? "local.notes" : "local.todos", "", 0);
+  agent_capability_add_element(capabilities->ui, "item", "todos", capabilities->collection_kind==1 ? "Notes" : "Todos", "", "", capabilities->collection_kind==1 ? "local.notes" : "local.todos", "", 0);
   prv_add_tour(capabilities);
   for (uint8_t i = 0; i < capabilities->module_count; ++i) {
     RegisteredModule *module = &capabilities->modules[i];
@@ -383,7 +383,7 @@ void agent_capabilities_set_weather(AgentCapabilities *c, const char *temperatur
 }
 
 void agent_capabilities_set_collection_kind(AgentCapabilities *capabilities,int kind) {
-  if(kind<0||kind>2||capabilities->collection_kind==kind)return;
+  if(kind<0||kind>1||capabilities->collection_kind==kind)return;
   if(persist_write_int(COLLECTION_PREFERENCE_KEY,kind)!=sizeof(int32_t)){agent_ui_set_status(capabilities->ui,"Could not save dashboard preference.",false,false);return;}
   capabilities->collection_kind=kind;
 }

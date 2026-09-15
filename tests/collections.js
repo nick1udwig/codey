@@ -44,7 +44,7 @@ console.log("✓ collection journal: durable recovery, torn slots, duplicate ing
 (function calendarViewsShowTimeAndReadOnlyDetails(){
  var record={id:"event",kind:"event",revision:"1",title:"Planning",start:"2099-09-15T16:00:00Z",end:"2099-09-15T17:00:00Z",location:"Room A",capabilities:[]};
  var views=new Views({list:function(k,s,snap,cur,done){assert.strictEqual(k,"event");done(null,{total:1,records:[record]});},body:function(r,c,done){done(null,{body:"Agenda",complete:true});}});
- views.list("event","active","","",function(e,v){assert.ifError(e);assert.match(v.list.titles[0],/Sep 15 .*Planning/);assert.strictEqual(views.resolve(v.token,"r0").record.kind,"event");assert.strictEqual(v.list.total,1);views.body(views.resolve(v.token,"r0").record,"",function(e,v){assert.ifError(e);assert.match(v.source,/Room A/);assert.match(v.source,/Agenda/);assert.match(v.source,/Back to calendar/);assert.ok(!v.source.includes("local.note.edit"));});});
+ views.list("event","active","","",function(e,v){assert.ifError(e);assert.match(v.list.titles[0],/Sep 15 .*Planning/);assert.strictEqual(views.resolve(v.token,"r0").record.kind,"event");assert.strictEqual(v.list.total,1);views.body(views.resolve(v.token,"r0").record,"",function(e,v){assert.ifError(e);assert.match(v.source,/Room A/);assert.match(v.source,/Agenda/);assert.match(v.source,/bind .*action=local.events.*input=back/);assert.ok(!v.source.includes("Back to calendar"));assert.ok(!v.source.includes("local.note.edit"));});});
 })();
 
 (function compactionOnlyWritesWhenDurableWorkCanBeRemoved(){

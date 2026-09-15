@@ -1,7 +1,21 @@
 {
   "version": 1,
-  "created_at": "2026-09-15T19:28:18.219675516+00:00",
+  "created_at": "2026-09-15T21:07:02.578766612+00:00",
   "documents": [
+    {
+      "id": "01a0a6e4-995b-7342-a080-8c8b3b64ae15",
+      "slug": "issues/collection-back-navigation",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Keep Calendar in date tile and return from details to lists",
+      "content": "Context: Calendar duplicated the date tile in the lower-right collection selector; physical Back from note/event details returned home. Acceptance: lower-right selector contains To Do and Notes only; opening Calendar preserves that preference; detail Back bindings return to the appropriate list with no visible Back row. Validated with phone view and native routing tests.",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-15T21:07:02.426323030Z",
+      "modified_at": "2026-09-15T21:07:02.426323030Z"
+    },
     {
       "id": "01a0a67e-e0ca-7c02-a820-4ca6b9c2e40f",
       "slug": "issues/collection-efficiency-and-simplicity",
@@ -274,10 +288,10 @@
     {
       "id": "01a09bc6-8200-7a03-932c-76782a4a3e2c",
       "slug": "reference/docs/user-guide",
-      "version": 8,
+      "version": 9,
       "doc_type": "reference",
       "title": "docs/user-guide.md",
-      "content": "Source: `docs/user-guide.md`\n\n# Using codey\n\nFor installation and first setup, see the [README](../README.md).\n\n## Controls and everyday use\n\nTap Talk to codey, then speak normally.\nThe phone first matches common commands locally.\nOnly unmatched dictation is sent to the configured Codex agent.\n**Thinking** can appear briefly while the phone processes the transcription.\n\nLocal examples: “start a five-minute timer,” “set a timer for one hour and thirty minutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up tomorrow at seven am,” “remind me in an hour to check the oven,” “pause the stopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”\nThese commands need no agent endpoint; weather still uses the phone's location and weather service.\n\nClock alarms use the phone's local timezone.\nAM/PM, noon/midnight, or 24-hour HH:MM notation is required; without a date they mean the next occurrence.\nAmbiguous times (“set an alarm for seven”), recurring alarms, commands targeting an individual timer, and requests with additional instructions fall back to Codex unchanged.\nMatching is for complete phrases, never just a command buried inside a longer sentence.\nRelative durations support 1 second through 7 days.\n\n## Dashboard\n\nOn the dashboard, Up opens Notifications, Down opens the selected collection, and Select starts dictation.\nTouch taps open each section:\n\n- **Clock / Calendar:** opens your upcoming calendar agenda.\n  The public SDK cannot directly open the system Timeline; it is accessible from the watchface.\n- **Weather:** shows current temperature, daily low/high, and a condition icon (including sun/moon and cloudy day/night variants).\n  It refreshes through the phone on startup and every 15 minutes; cached readings older than an hour are discarded on refresh.\n  Tapping opens the full forecast without an agent request.\n  Location permission and connectivity are required; missing readings show dashes.\n- **Notifications:** initially includes a **Welcome to codey** tour, which stays until you select **Got it**.\n  After dismissal it stays empty until items exist, then shows their labels.\n  Timer rings fill clockwise from 12 o’clock as elapsed time increases, freezing when paused and filling completely at completion.\n  Up to four entries fit; additional entries are indicated by a “MORE” count.\n  Select opens the complete live list of timers, alarms, reminders, and stopwatch controls.\n- **Talk to codey:** dictates into the current conversation.\n- **Todos:** shows the undone count and opens the active task list.\n  Tap a checkbox or press Select to archive an item; archived items can be restored.\n  Swipe vertically or use Up/Down to navigate.\n  Drag item text horizontally, or hold Up to pan the selected item. Hold Down opens the collection menu.\n  Add items by talking to codey: “make a to-do to buy milk,” “set a task to call José,” or “create a todo to book tickets.”\n  The bare prefix also works: “to-do send a birthday card to John.” Speech variants `2D`, `2 d`, `two`, `two two`, `two do`, `to`, and `to o` also create a to-do when followed by item text at the start of dictation. These short prefixes are ambiguous: “to note the address” creates a task called “note the address.” Use “note: …” or “make a note …” to save a note. Embedded phrases and negated commands do not trigger this shortcut; “set two timers …” is not a to-do.\n\n## Gestures and new chats\n\nDrag scrollable text or lists directly to scroll; no arming tap is needed.\nUp/Down scroll when they have no assigned action or next control to select.\nBy default, other touchscreen controls require an arming tap: tap twice to activate a control, or tap then hold/drag/swipe on the same target.\nThe arming tap expires after 1.5 seconds and is consumed by one gesture.\nAn unarmed hold or control-adjusting drag does nothing.\nMenus and screen changes clear the arm; physical buttons keep their existing behavior.\n\nTap then hold Talk to codey (or hold Select on the dashboard) to open an animated menu with **Talk to codey** and **New Chat**.\nThe dashboard stays visible behind it; tap twice outside or press Back to dismiss.\nNew Chat resets the conversation before starting dictation and reports an unavailable phone after eight seconds.\nOn other screens, hold Select to dictate into the current conversation.\n\n## Requests and stored items\n\nNotes and to-dos are saved on the server. The phone queues accepted changes during server outages; the watch needs its phone connection to save. Cached pages are marked stale when the server is unavailable. See [collection setup and recovery](collections.md).\nAgent requests animate into **Notifications** when the phone submits them. Local\ndictation shortcuts do not show this animation.\nA completed response buzzes during the configured notification window (45 seconds by default), without replacing the current screen.\nAfter that window there is no automatic polling.\nOpening Notifications immediately marks ongoing requests as **Checking** and refreshes them once.\nTap a request to refresh its status; finished requests open their answer, and ongoing requests offer **Cancel request**.\nConnection failures keep the job available for another check.\nCanceling does not undo work already performed.\n\nTo Do, Notes, and Calendar share the collection tile. Tap, then hold it, or hold\nDown, to choose **To Do**, **Notes**, or **Calendar**. Down opens your selected\ncollection; the date tile also opens Calendar.\nThe last collection opened stays on the dashboard.\nSay “make a note Call Jane” or “note: Call Jane.”\nOpen a note and select **Append to note** or **Replace entire note**.\nNotes live on the server; the phone loads bounded summaries and revision-pinned content pages.\nThe watch persists the first page of truncated titles and loads it immediately\nwhile refreshing from the phone. Full content is fetched in pages.\nSee [collection setup and backend sync](collections.md).\n\nThe arming tap shows a brief expanding ripple with edge reflection.\nThe next touch stops it immediately.\nDisable the effect with **First-tap ripple animation** in phone settings.\n**Require double tap** is a separate setting: turn it off to activate controls\nwith a single tap or hold. Both settings default to enabled.\n\n## Timers, alerts, and Quick Launch\n\nBack returns to the dashboard without stopping anything; Back from the dashboard exits the app.\nOn a timer, the X (Down) cancels only that timer, Select pauses/resumes it, and the arrow (Up) returns home.\n\nYou can have four timers and four alarms/reminders at once.\nFinished alerts return you to Notifications and buzz every three seconds until acknowledged or snoozed.\nOpen a finished entry and press Select to acknowledge, or Down to snooze ten minutes.\nAcknowledging one leaves other notifications active.\nIf you close codey with an unacknowledged alert, it requests a wakeup to remind you again in a minute.\nPebble only lets the app vibrate while running; if the system refuses a wakeup, codey displays “keep codey open” instead of silently promising a background alert.\n\nAssign codey to a button in the watch's Quick Launch settings.\nLaunching with that shortcut opens dictation automatically; opening codey from the app menu shows the dashboard, and a scheduled wakeup shows notifications.\n\n## Phone settings and conversations\n\nSettings default to GPT-5.6 Luna, extra-high reasoning effort, fast mode, and live web search.\nThe Fast mode toggle requests priority processing and can be turned off for standard speed.\nExplicitly saved preferences are preserved.\nUse **Load available models** to fetch the server's supported choices.\nPermissions control web search, user-file access, command execution, command networking, and auto-review.\nFilesystem, command, network, and auto-review permissions start off.\nAuto-review can approve exceptions to the selected baseline; when off, additional-permission requests are denied.\nChanging permissions uses a separate conversation.\nSee [backend settings](server.md#codex-configuration).\n\nThe gear icon is supplied by the Pebble mobile app.\nThe settings page requires internet access when it opens.\n\nTo start fresh, check **Start new conversation when I save** in phone settings and save.\nThe next query opens a new agent thread with no previous conversation context.\nExisting conversations are retained.\nThis is a one-time action; ordinary settings saves continue the current conversation.\n\n## Troubleshooting\n\n**A request is still working.**\nOpen Notifications and tap it to fetch current status.\nThe 45-second completion notification window does not stop the agent.\nCheck the server log for job acceptance/completion and agent activity.\nUnconfirmed delivery means the phone has not received an acknowledgement; checking can safely retry the same job ID.\nUpgrade both the server and watch app for the job API.\n\n**Where are the server logs?**\nStart debugging with `~/.codey/server.log`.\nThe server also writes the same records to stderr.\nIt rotates the file at 10 MiB and retains five backups, from `server.log.1` (newest) through `server.log.5` (oldest).\nSet `CODEY_LOG_FILE` or pass `--log-file /absolute/path` to move it; pass `--log-file -` for stderr only.\n\n**The home screen says Configure endpoint.**\nOpen codey's gear icon in the paired phone app, save a valid endpoint, then reopen the watchapp if needed.\n\n**Dictation reports Voice unavailable, Voice disabled, or Voice connection failed.**\nCheck microphone/voice permissions and the phone/watch connection, then retry.\nVoice recognition depends on the system dictation service.\n\n**Weather cannot get a location.**\nAllow location access for the Pebble mobile app and make sure the phone has network access.\n\n**The settings page will not open.**\nConfirm the phone is online.\nThe hosted page is [nick1udwig.github.io/pebble-agent/config/](https://nick1udwig.github.io/pebble-agent/config/).\n\n\n## Calendar\n\nChoose Calendar from the collection menu to see events in time order. The watch\ncaches the first eight dated titles; opening the list refreshes them through the\nphone. Open an event for its end time, location, and description. Date-only events\nare all day; their end date is exclusive.\n\nSay “Add a calendar event: lunch tomorrow from noon to one at Café Central.”\nCodey asks for missing dates or times, then saves the event through the phone.\nCalendar defaults to Server only. For syncing, choose CalDAV in phone settings,\nfollow the four steps, and use the same calendar account in your usual calendar\napp. See [backend setup](../README.md#backend-sync-setup). The agenda imports the\nnext 90 days and recurring occurrences. Manage edits, invitations, and recurring\nseries in your calendar app. This agenda lives in codey, separate from OS Timeline.\n\nThe dashboard counts all active tasks, all notes, or upcoming events, including\nitems beyond the cached first page. Completing a task updates the list from the\nphone cache immediately while delivery continues in the background.\n",
+      "content": "Source: `docs/user-guide.md`\n\n# Using codey\n\nFor installation and first setup, see the [README](../README.md).\n\n## Controls and everyday use\n\nTap Talk to codey, then speak normally.\nThe phone first matches common commands locally.\nOnly unmatched dictation is sent to the configured Codex agent.\n**Thinking** can appear briefly while the phone processes the transcription.\n\nLocal examples: “start a five-minute timer,” “set a timer for one hour and thirty minutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up tomorrow at seven am,” “remind me in an hour to check the oven,” “pause the stopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”\nThese commands need no agent endpoint; weather still uses the phone's location and weather service.\n\nClock alarms use the phone's local timezone.\nAM/PM, noon/midnight, or 24-hour HH:MM notation is required; without a date they mean the next occurrence.\nAmbiguous times (“set an alarm for seven”), recurring alarms, commands targeting an individual timer, and requests with additional instructions fall back to Codex unchanged.\nMatching is for complete phrases, never just a command buried inside a longer sentence.\nRelative durations support 1 second through 7 days.\n\n## Dashboard\n\nOn the dashboard, Up opens Notifications, Down opens the selected collection, and Select starts dictation.\nTouch taps open each section:\n\n- **Clock / Calendar:** opens your upcoming calendar agenda.\n  The public SDK cannot directly open the system Timeline; it is accessible from the watchface.\n- **Weather:** shows current temperature, daily low/high, and a condition icon (including sun/moon and cloudy day/night variants).\n  It refreshes through the phone on startup and every 15 minutes; cached readings older than an hour are discarded on refresh.\n  Tapping opens the full forecast without an agent request.\n  Location permission and connectivity are required; missing readings show dashes.\n- **Notifications:** initially includes a **Welcome to codey** tour, which stays until you select **Got it**.\n  After dismissal it stays empty until items exist, then shows their labels.\n  Timer rings fill clockwise from 12 o’clock as elapsed time increases, freezing when paused and filling completely at completion.\n  Up to four entries fit; additional entries are indicated by a “MORE” count.\n  Select opens the complete live list of timers, alarms, reminders, and stopwatch controls.\n- **Talk to codey:** dictates into the current conversation.\n- **Todos:** shows the undone count and opens the active task list.\n  Tap a checkbox or press Select to archive an item; archived items can be restored.\n  Swipe vertically or use Up/Down to navigate.\n  Drag item text horizontally, or hold Up to pan the selected item. Hold Down opens the collection menu.\n  Add items by talking to codey: “make a to-do to buy milk,” “set a task to call José,” or “create a todo to book tickets.”\n  The bare prefix also works: “to-do send a birthday card to John.” Speech variants `2D`, `2 d`, `two`, `two two`, `two do`, `to`, and `to o` also create a to-do when followed by item text at the start of dictation. These short prefixes are ambiguous: “to note the address” creates a task called “note the address.” Use “note: …” or “make a note …” to save a note. Embedded phrases and negated commands do not trigger this shortcut; “set two timers …” is not a to-do.\n\n## Gestures and new chats\n\nDrag scrollable text or lists directly to scroll; no arming tap is needed.\nUp/Down scroll when they have no assigned action or next control to select.\nBy default, other touchscreen controls require an arming tap: tap twice to activate a control, or tap then hold/drag/swipe on the same target.\nThe arming tap expires after 1.5 seconds and is consumed by one gesture.\nAn unarmed hold or control-adjusting drag does nothing.\nMenus and screen changes clear the arm; physical buttons keep their existing behavior.\n\nTap then hold Talk to codey (or hold Select on the dashboard) to open an animated menu with **Talk to codey** and **New Chat**.\nThe dashboard stays visible behind it; tap twice outside or press Back to dismiss.\nNew Chat resets the conversation before starting dictation and reports an unavailable phone after eight seconds.\nOn other screens, hold Select to dictate into the current conversation.\n\n## Requests and stored items\n\nNotes and to-dos are saved on the server. The phone queues accepted changes during server outages; the watch needs its phone connection to save. Cached pages are marked stale when the server is unavailable. See [collection setup and recovery](collections.md).\nAgent requests animate into **Notifications** when the phone submits them. Local\ndictation shortcuts do not show this animation.\nA completed response buzzes during the configured notification window (45 seconds by default), without replacing the current screen.\nAfter that window there is no automatic polling.\nOpening Notifications immediately marks ongoing requests as **Checking** and refreshes them once.\nTap a request to refresh its status; finished requests open their answer, and ongoing requests offer **Cancel request**.\nConnection failures keep the job available for another check.\nCanceling does not undo work already performed.\n\nTo Do and Notes share the collection tile. Tap, then hold it, or hold\nDown, to choose **To Do** or **Notes**. Down opens your selected\ncollection; the top-left date tile opens Calendar.\nThe last collection opened stays on the dashboard.\nSay “make a note Call Jane” or “note: Call Jane.”\nOpen a note and select **Append to note** or **Replace entire note**.\nNotes live on the server; the phone loads bounded summaries and revision-pinned content pages.\nThe watch persists the first page of truncated titles and loads it immediately\nwhile refreshing from the phone. Full content is fetched in pages.\nSee [collection setup and backend sync](collections.md).\n\nThe arming tap shows a brief expanding ripple with edge reflection.\nThe next touch stops it immediately.\nDisable the effect with **First-tap ripple animation** in phone settings.\n**Require double tap** is a separate setting: turn it off to activate controls\nwith a single tap or hold. Both settings default to enabled.\n\n## Timers, alerts, and Quick Launch\n\nBack from a note or calendar event returns to its list. Back from a list returns\nto the dashboard without stopping anything; Back from the dashboard exits the app.\nOn a timer, the X (Down) cancels only that timer, Select pauses/resumes it, and the arrow (Up) returns home.\n\nYou can have four timers and four alarms/reminders at once.\nFinished alerts return you to Notifications and buzz every three seconds until acknowledged or snoozed.\nOpen a finished entry and press Select to acknowledge, or Down to snooze ten minutes.\nAcknowledging one leaves other notifications active.\nIf you close codey with an unacknowledged alert, it requests a wakeup to remind you again in a minute.\nPebble only lets the app vibrate while running; if the system refuses a wakeup, codey displays “keep codey open” instead of silently promising a background alert.\n\nAssign codey to a button in the watch's Quick Launch settings.\nLaunching with that shortcut opens dictation automatically; opening codey from the app menu shows the dashboard, and a scheduled wakeup shows notifications.\n\n## Phone settings and conversations\n\nSettings default to GPT-5.6 Luna, extra-high reasoning effort, fast mode, and live web search.\nThe Fast mode toggle requests priority processing and can be turned off for standard speed.\nExplicitly saved preferences are preserved.\nUse **Load available models** to fetch the server's supported choices.\nPermissions control web search, user-file access, command execution, command networking, and auto-review.\nFilesystem, command, network, and auto-review permissions start off.\nAuto-review can approve exceptions to the selected baseline; when off, additional-permission requests are denied.\nChanging permissions uses a separate conversation.\nSee [backend settings](server.md#codex-configuration).\n\nThe gear icon is supplied by the Pebble mobile app.\nThe settings page requires internet access when it opens.\n\nTo start fresh, check **Start new conversation when I save** in phone settings and save.\nThe next query opens a new agent thread with no previous conversation context.\nExisting conversations are retained.\nThis is a one-time action; ordinary settings saves continue the current conversation.\n\n## Troubleshooting\n\n**A request is still working.**\nOpen Notifications and tap it to fetch current status.\nThe 45-second completion notification window does not stop the agent.\nCheck the server log for job acceptance/completion and agent activity.\nUnconfirmed delivery means the phone has not received an acknowledgement; checking can safely retry the same job ID.\nUpgrade both the server and watch app for the job API.\n\n**Where are the server logs?**\nStart debugging with `~/.codey/server.log`.\nThe server also writes the same records to stderr.\nIt rotates the file at 10 MiB and retains five backups, from `server.log.1` (newest) through `server.log.5` (oldest).\nSet `CODEY_LOG_FILE` or pass `--log-file /absolute/path` to move it; pass `--log-file -` for stderr only.\n\n**The home screen says Configure endpoint.**\nOpen codey's gear icon in the paired phone app, save a valid endpoint, then reopen the watchapp if needed.\n\n**Dictation reports Voice unavailable, Voice disabled, or Voice connection failed.**\nCheck microphone/voice permissions and the phone/watch connection, then retry.\nVoice recognition depends on the system dictation service.\n\n**Weather cannot get a location.**\nAllow location access for the Pebble mobile app and make sure the phone has network access.\n\n**The settings page will not open.**\nConfirm the phone is online.\nThe hosted page is [nick1udwig.github.io/pebble-agent/config/](https://nick1udwig.github.io/pebble-agent/config/).\n\n\n## Calendar\n\nTap the top-left date tile to see calendar events in time order. The watch\ncaches the first eight dated titles; opening the list refreshes them through the\nphone. Open an event for its end time, location, and description. Date-only events\nare all day; their end date is exclusive.\n\nSay “Add a calendar event: lunch tomorrow from noon to one at Café Central.”\nCodey asks for missing dates or times, then saves the event through the phone.\nCalendar defaults to Server only. For syncing, choose CalDAV in phone settings,\nfollow the four steps, and use the same calendar account in your usual calendar\napp. See [backend setup](../README.md#backend-sync-setup). The agenda imports the\nnext 90 days and recurring occurrences. Manage edits, invitations, and recurring\nseries in your calendar app. This agenda lives in codey, separate from OS Timeline.\n\nThe dashboard counts all active tasks, all notes, or upcoming events, including\nitems beyond the cached first page. Completing a task updates the list from the\nphone cache immediately while delivery continues in the background.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -287,7 +301,7 @@
         ]
       },
       "created_at": "2026-09-13T17:17:58.043845561Z",
-      "modified_at": "2026-09-15T19:12:59.246804929Z"
+      "modified_at": "2026-09-15T21:07:02.426323030Z"
     },
     {
       "id": "01a09900-a432-7840-9f5e-663d0da68b7b",
@@ -933,6 +947,181 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a0a6e5-0703-7501-80ce-f1ec0389194a",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Document collection navigation fixes",
+      "created_at": "2026-09-15T21:07:02.426323030Z",
+      "changes": [
+        {
+          "document_id": "01a0a6e4-995b-7342-a080-8c8b3b64ae15",
+          "slug": "issues/collection-back-navigation",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "204cff77acaf833e90ffd0148f8fbfb56b59aa71cca962aa80a86ca4c87a5aae",
+          "doc_type": "task",
+          "title": "Keep Calendar in date tile and return from details to lists"
+        },
+        {
+          "document_id": "01a09bc6-8200-7a03-932c-76782a4a3e2c",
+          "slug": "reference/docs/user-guide",
+          "change_type": "modified",
+          "previous_commit_id": "01a0a67c-9e09-7b11-bdbb-d055f9dfb201",
+          "previous_version": 8,
+          "new_version": 9,
+          "hunks": [
+            {
+              "old_start": 70,
+              "old_count": 9,
+              "new_start": 70,
+              "new_count": 9,
+              "context": "## Requests and stored items",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "Connection failures keep the job available for another check."
+                },
+                {
+                  "op": "context",
+                  "content": "Canceling does not undo work already performed."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "delete",
+                  "content": "To Do, Notes, and Calendar share the collection tile. Tap, then hold it, or hold"
+                },
+                {
+                  "op": "delete",
+                  "content": "Down, to choose **To Do**, **Notes**, or **Calendar**. Down opens your selected"
+                },
+                {
+                  "op": "delete",
+                  "content": "collection; the date tile also opens Calendar."
+                },
+                {
+                  "op": "add",
+                  "content": "To Do and Notes share the collection tile. Tap, then hold it, or hold"
+                },
+                {
+                  "op": "add",
+                  "content": "Down, to choose **To Do** or **Notes**. Down opens your selected"
+                },
+                {
+                  "op": "add",
+                  "content": "collection; the top-left date tile opens Calendar."
+                },
+                {
+                  "op": "context",
+                  "content": "The last collection opened stays on the dashboard."
+                },
+                {
+                  "op": "context",
+                  "content": "Say “make a note Call Jane” or “note: Call Jane.”"
+                },
+                {
+                  "op": "context",
+                  "content": "Open a note and select **Append to note** or **Replace entire note**."
+                }
+              ]
+            },
+            {
+              "old_start": 89,
+              "old_count": 7,
+              "new_start": 89,
+              "new_count": 8,
+              "context": "## Timers, alerts, and Quick Launch",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "## Timers, alerts, and Quick Launch"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "delete",
+                  "content": "Back returns to the dashboard without stopping anything; Back from the dashboard exits the app."
+                },
+                {
+                  "op": "add",
+                  "content": "Back from a note or calendar event returns to its list. Back from a list returns"
+                },
+                {
+                  "op": "add",
+                  "content": "to the dashboard without stopping anything; Back from the dashboard exits the app."
+                },
+                {
+                  "op": "context",
+                  "content": "On a timer, the X (Down) cancels only that timer, Select pauses/resumes it, and the arrow (Up) returns home."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "You can have four timers and four alarms/reminders at once."
+                }
+              ]
+            },
+            {
+              "old_start": 154,
+              "old_count": 7,
+              "new_start": 155,
+              "new_count": 7,
+              "context": "## Calendar",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "## Calendar"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "delete",
+                  "content": "Choose Calendar from the collection menu to see events in time order. The watch"
+                },
+                {
+                  "op": "add",
+                  "content": "Tap the top-left date tile to see calendar events in time order. The watch"
+                },
+                {
+                  "op": "context",
+                  "content": "caches the first eight dated titles; opening the list refreshes them through the"
+                },
+                {
+                  "op": "context",
+                  "content": "phone. Open an event for its end time, location, and description. Date-only events"
+                },
+                {
+                  "op": "context",
+                  "content": "are all day; their end date is exclusive."
+                }
+              ]
+            }
+          ],
+          "content_hash": "e595976061052343b4feefe4fde6d96913fba193f9eead965ae73276eeda1ee4",
+          "previous_hash": "4b07bd8c539228f472b66ae6cd4b312136342ce11a379a1dc2f9082640ad4231",
+          "doc_type": "reference",
+          "title": "docs/user-guide.md"
+        }
+      ]
+    },
     {
       "id": "01a0a68a-a06a-7f81-90da-358859de7410",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
