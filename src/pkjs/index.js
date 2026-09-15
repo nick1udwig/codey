@@ -9,6 +9,7 @@ var Settings = require("../common/settings");
 var Capabilities = require("../common/capabilities");
 var Weather = require("../common/weather");
 var DashboardStatus = require("../common/dashboard-status");
+var Poll = require("../common/poll");
 var CollectionClient = require("../common/collections/client").Client;
 var CollectionViews = require("../common/collection-views");
 var LocalDictation = require("../common/local-dictation");
@@ -23,7 +24,7 @@ var watchReady = false;
 var failedDeliveries = {};
 var sessionId = loadSessionId();
 var commandSequence = loadCommandSequence();
-var collections=null, collectionViews=null, collectionError="", collectionTimer=null, collectionCounts={};
+var collections=null, collectionViews=null, collectionError="", collectionCounts={};
 function collectionBase() {
  return (Endpoints.normalize(settings.endpoint)||"").replace(/\/v1\/agent$/,"").replace(/^ws:/,"http:").replace(/^wss:/,"https:");
 }
@@ -37,10 +38,10 @@ function collectionHandshake(){
  if(!collections)return;
  var m={};m[Key.messageType]="bridge";m[Key.operation]="collections";m[Key.collectionProtocol]=1;m[Key.bridgeSession]=collections.journal.data.bridge;watchQueue.enqueue(m);
 }
-function syncCollections(){
- if(!collections||!collectionBase()||!settings.token)return;
+var collectionPoll = new Poll(function(done) {
+ if(!collections||!collectionBase()||!settings.token){done(false);return;}
  collections.connect(function(e){
-  if(e)return;
+  if(e){done(false);return;}
   var counts={task:0,note:0,event:0},changed=false;
   collections.collections.forEach(function(c){counts[c.kind]=c.count||0;});
   Object.keys(counts).forEach(function(kind){if(counts[kind]!==collectionCounts[kind])changed=true;});
@@ -50,10 +51,12 @@ function syncCollections(){
    collectionCounts=counts;watchQueue.enqueue(m);
   }
   collections.drain();
+  done(changed||collections.journal.data.entries.some(function(e){return !e.receipt;}));
  });
- if(collectionTimer)clearTimeout(collectionTimer);
- collectionTimer=setTimeout(syncCollections,60000);
- if(collectionTimer&&collectionTimer.unref)collectionTimer.unref();
+});
+function syncCollections(){
+ if(!collections||!collectionBase()||!settings.token){collectionPoll.stop();return;}
+ collectionPoll.refresh();
 }
 function collectionAck(payload,state,text){var m={};m[Key.messageType]="collection-ack";m[Key.bridgeSession]=String(read(payload,Key.bridgeSession,"BridgeSession")||"");m[Key.eventSequence]=Number(read(payload,Key.eventSequence,"EventSequence")||0);m[Key.deliveryState]=state;m[Key.value]=text;if(state==="rejected")m[Key.errorCode]=/stale|session|view/i.test(text)?"stale_view":/reused/i.test(text)?"idempotency_mismatch":"invalid_input";watchQueue.enqueue(m);}
 function renderCollection(requestId,error,view){

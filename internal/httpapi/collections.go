@@ -89,6 +89,9 @@ func (s *Server) collection(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			var results []c.Result
 			results, err = store.Mutate(batch)
+			if err == nil && s.config.WakeCollections != nil {
+				s.config.WakeCollections()
+			}
 			value = map[string]any{"results": results}
 		}
 	case strings.HasPrefix(p, "/v1/sync/mutations/") && r.Method == "GET":

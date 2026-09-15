@@ -3,7 +3,10 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/nick1udwig/pebble-agent/internal/appserver"
 )
@@ -18,6 +21,9 @@ type statusSession struct {
 	t                   *testing.T
 	failRead, failQuota bool
 	threadState         string
+	readsCount          atomic.Int32
+	quotaStarted        chan struct{}
+	quotaRelease        chan struct{}
 }
 
 func (s *statusSession) Write(_ context.Context, payload []byte) error {
@@ -35,6 +41,10 @@ func (s *statusSession) Write(_ context.Context, payload []byte) error {
 	switch m.Method {
 	case "initialize":
 	case "account/rateLimits/read":
+		if s.quotaStarted != nil {
+			close(s.quotaStarted)
+			<-s.quotaRelease
+		}
 		failed = s.failQuota
 		result = map[string]any{"rateLimitsByLimitId": map[string]any{"codex": map[string]any{"primary": map[string]any{"usedPercent": 25}, "secondary": map[string]any{"usedPercent": 60}}}}
 	case "thread/loaded/list":
@@ -44,6 +54,7 @@ func (s *statusSession) Write(_ context.Context, payload []byte) error {
 			result = map[string]any{"data": []string{"a", "b"}, "nextCursor": "second"}
 		}
 	case "thread/read":
+		s.readsCount.Add(1)
 		if m.Params["includeTurns"] != false {
 			s.t.Error("status requested conversation contents")
 		}
@@ -68,6 +79,56 @@ func (s *statusSession) Write(_ context.Context, payload []byte) error {
 	}
 	s.reads <- data
 	return nil
+}
+
+func TestStatusSharesScanAndCancellationDoesNotCancelOtherCallers(t *testing.T) {
+	s := &statusSession{scriptedSession: (&scriptedServer{}).session(), t: t, quotaStarted: make(chan struct{}), quotaRelease: make(chan struct{})}
+	client := appserver.NewClient(appserver.ClientConfig{Connectors: []appserver.Connector{statusConnector{s}}})
+	defer client.Close()
+	a := New(client, nil, Config{})
+	ctx, cancel := context.WithCancel(context.Background())
+	first := make(chan error, 1)
+	go func() { _, err := a.DashboardStatus(ctx); first <- err }()
+	<-s.quotaStarted
+	cancel()
+	if err := <-first; err != context.Canceled {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			v, err := a.DashboardStatus(context.Background())
+			if err != nil || v.ActiveThreads == nil || *v.ActiveThreads != 2 {
+				t.Errorf("status: %+v, %v", v, err)
+			}
+		}()
+	}
+	close(s.quotaRelease)
+	wg.Wait()
+	if s.readsCount.Load() != 3 {
+		t.Fatal("duplicate thread scans", s.readsCount.Load())
+	}
+	v, err := a.DashboardStatus(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	*v.ActiveThreads = 99
+	v, _ = a.DashboardStatus(context.Background())
+	if *v.ActiveThreads != 2 {
+		t.Fatal("caller mutated cache")
+	}
+	a.statusMu.Lock()
+	a.statusExpires = time.Time{}
+	a.statusMu.Unlock()
+	s.quotaStarted = nil
+	if _, err = a.DashboardStatus(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if s.readsCount.Load() != 6 {
+		t.Fatal("expired cache reused")
+	}
 }
 func TestDashboardStatusCurrentAPI(t *testing.T) {
 	for _, tc := range []struct{ read, quota bool }{{false, false}, {true, false}, {false, true}} {

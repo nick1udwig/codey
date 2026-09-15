@@ -3,6 +3,27 @@ var assert=require("assert"),J=require("../src/common/collections/journal"),Clie
 function storage(){var values={},fail=false;return {values:values,getItem:function(k){return values[k]||null;},setItem:function(k,v){if(fail)throw new Error("disk full");values[k]=v;},removeItem:function(k){delete values[k];},fail:function(v){fail=v;}};}
 function enrolled(){var s=storage(),j=new J.Journal(s);j.enroll({client_id:"client_a",server_instance_id:"server_a",store_epoch:"epoch_a"});j.bridge("bridge_a");return {s:s,j:j};}
 function input(seq){return {ingress:"watch:bridge_a:"+seq,collection_id:"col_note",generation:"1",type:"note.create",payload:{title:"Unicode",body:"José 🌙 ".repeat(100)}};}
+(function pollingBacksOffAndCoalescesExplicitRefresh(){
+ var Poll=require("../src/common/poll"),pending=[],timers=[],cleared=[];
+ var poll=new Poll(function(done){pending.push(done);},{setTimeout:function(fn,delay){timers.push({fn:fn,delay:delay});return timers.length;},clearTimeout:function(id){cleared.push(id);}});
+ poll.refresh();pending.shift()(true);assert.strictEqual(timers[0].delay,60000);
+ timers.shift().fn();pending.shift()(false);assert.strictEqual(timers[0].delay,120000);
+ timers.shift().fn();pending.shift()(false);assert.strictEqual(timers[0].delay,240000);
+ timers.shift().fn();pending.shift()(false);assert.strictEqual(timers[0].delay,300000);
+ poll.refresh();assert.strictEqual(pending.length,1);poll.refresh();poll.refresh();assert.strictEqual(pending.length,1);
+ pending.shift()(false);assert.strictEqual(pending.length,1,"one follow-up for coalesced explicit requests");
+ var done=pending.shift();poll.stop();done(true);assert.strictEqual(poll.timer,null);
+ poll.refresh();assert.strictEqual(pending.length,1);pending.shift()(true);assert.strictEqual(timers[timers.length-1].delay,60000);
+ poll.stop();assert.ok(cleared.length);
+})();
+(function changedCredentialsCannotPopulateCollectionCaches(){
+ var base="https://old.test",token="old",requests=[];
+ function XHR(){requests.push(this);}XHR.prototype.open=function(){};XHR.prototype.setRequestHeader=function(){};XHR.prototype.send=function(){};
+ var client=new Client({storage:storage(),base:function(){return base;},token:function(){return token;},XMLHttpRequest:XHR});
+ var error;client.connect(function(e){error=e;});token="new";
+ var x=requests[0];x.status=200;x.responseText=JSON.stringify({protocol_version:1,server_instance_id:"old",store_epoch:"e"});x.onload();
+ assert.match(error.message,/settings changed/);assert.strictEqual(client.journal.data.scope,null);assert.strictEqual(requests.length,1);
+})();
 (function batchReceiptsAreAtomicAndSkipNoops(){
  var f=enrolled(),results=[];
  for(var i=0;i<20;i++){

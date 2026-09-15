@@ -7,6 +7,7 @@ import (
 	p "github.com/nick1udwig/pebble-agent/internal/providers"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -21,12 +22,37 @@ type Engine struct {
 	mu        sync.Mutex
 	owner     string
 	recovered bool
+	force     atomic.Bool
+	now       func() time.Time
+	pulls     map[string]*pullSchedule
+}
+
+type pullSchedule struct {
+	binding  p.Binding
+	next     time.Time
+	interval time.Duration
+}
+
+func (p *pullSchedule) finish(now time.Time, changed bool) {
+	if changed || p.interval == 0 {
+		p.interval = time.Minute
+	} else {
+		p.interval = min(5*time.Minute, p.interval*2)
+	}
+	p.next = now.Add(p.interval)
+	midnight := now.UTC().Truncate(24 * time.Hour).Add(24 * time.Hour)
+	if midnight.Before(p.next) {
+		p.next = midnight
+	}
 }
 
 func New(s *collectionstore.Store, adapters map[string]p.Adapter, secrets Secrets) *Engine {
-	return &Engine{Store: s, Adapters: adapters, Secrets: secrets, wake: make(chan struct{}, 1), owner: c.ID("worker_")}
+	return &Engine{Store: s, Adapters: adapters, Secrets: secrets, wake: make(chan struct{}, 1), owner: c.ID("worker_"), now: time.Now, pulls: make(map[string]*pullSchedule)}
 }
-func (e *Engine) Refresh() {
+func (e *Engine) Refresh() { e.force.Store(true); e.Wake() }
+
+// Mutation uploads wake the worker without forcing unrelated provider scans.
+func (e *Engine) Wake() {
 	select {
 	case e.wake <- struct{}{}:
 	default:
@@ -36,8 +62,9 @@ func (e *Engine) Run(ctx context.Context) {
 	defer e.Store.Release(e.owner)
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
+	e.force.Store(true)
 	for {
-		e.Tick(ctx)
+		e.tick(ctx, e.force.Swap(false))
 		select {
 		case <-ctx.Done():
 			return
@@ -46,7 +73,8 @@ func (e *Engine) Run(ctx context.Context) {
 		}
 	}
 }
-func (e *Engine) Tick(ctx context.Context) {
+func (e *Engine) Tick(ctx context.Context) { e.tick(ctx, true) }
+func (e *Engine) tick(ctx context.Context, force bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	var paused string
@@ -67,6 +95,15 @@ func (e *Engine) Tick(ctx context.Context) {
 	if err != nil {
 		return
 	}
+	active := map[string]bool{}
+	for _, b := range bindings {
+		active[b.ID] = true
+	}
+	for id := range e.pulls {
+		if !active[id] {
+			delete(e.pulls, id)
+		}
+	}
 	for _, b := range bindings {
 		if b.State == "disconnected" {
 			continue
@@ -75,9 +112,21 @@ func (e *Engine) Tick(ctx context.Context) {
 		if a == nil {
 			continue
 		}
+		identity := b
+		identity.Checkpoint = ""
+		identity.State = ""
+		plan := e.pulls[b.ID]
+		if plan == nil || plan.binding != identity {
+			plan = &pullSchedule{binding: identity}
+			e.pulls[b.ID] = plan
+		}
+		if !force && b.State == "auth_required" && e.now().Before(plan.next) {
+			continue
+		}
 		creds, err := e.Secrets.Credentials(ctx, b)
 		if err != nil {
 			b.State = "auth_required"
+			plan.finish(e.now(), false)
 			e.Store.SaveBinding(b)
 			continue
 		}
@@ -96,6 +145,7 @@ func (e *Engine) Tick(ctx context.Context) {
 			}
 		}
 		blocked := map[string]bool{}
+		wrote := false
 		for _, j := range jobs {
 			if ctx.Err() != nil {
 				return
@@ -110,7 +160,7 @@ func (e *Engine) Tick(ctx context.Context) {
 			if j.State != "pending" && !(j.State == "delivery_unknown" && a.Describe().IdempotentWrites) {
 				continue
 			}
-			if time.Now().Before(j.Intent.NextAttempt) {
+			if e.now().Before(j.Intent.NextAttempt) {
 				continue
 			}
 			mapping, err := e.Store.Mapping(b.ID, j.RecordID)
@@ -143,6 +193,7 @@ func (e *Engine) Tick(ctx context.Context) {
 			if err = e.Store.ClaimJob(j); err != nil {
 				continue
 			}
+			wrote = true
 			j.Intent.Attempts++
 			result, err := a.Apply(ctx, b, creds, j.ID, j.Intent, remote)
 			if err != nil {
@@ -157,7 +208,7 @@ func (e *Engine) Tick(ctx context.Context) {
 				state := result.State
 				if state == "retryable" {
 					state = "pending"
-					j.Intent.NextAttempt = time.Now().Add(time.Duration(1<<min(j.Intent.Attempts, 10)) * time.Second)
+					j.Intent.NextAttempt = e.now().Add(time.Duration(1<<min(j.Intent.Attempts, 10)) * time.Second)
 				}
 				if state == "" {
 					state = "delivery_unknown"
@@ -165,6 +216,11 @@ func (e *Engine) Tick(ctx context.Context) {
 				e.Store.JobState(j, state)
 			}
 		}
+		if !force && !wrote && e.now().Before(plan.next) {
+			continue
+		}
+		var before, after int64
+		beforeErr := e.Store.DB.QueryRow("SELECT COALESCE(MAX(sequence),0) FROM changes WHERE collection_id=?", b.CollectionID).Scan(&before)
 		page := ""
 		success := true
 		checkpoint := b.Checkpoint
@@ -221,6 +277,8 @@ func (e *Engine) Tick(ctx context.Context) {
 			b.Checkpoint = checkpoint
 			b.State = "active"
 		}
+		afterErr := e.Store.DB.QueryRow("SELECT COALESCE(MAX(sequence),0) FROM changes WHERE collection_id=?", b.CollectionID).Scan(&after)
+		plan.finish(e.now(), success && (beforeErr != nil || afterErr != nil || before != after))
 		e.Store.SaveBinding(b)
 	}
 }

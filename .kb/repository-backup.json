@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "created_at": "2026-09-15T22:27:57.261786878+00:00",
+  "created_at": "2026-09-15T22:36:12.663242010+00:00",
   "documents": [
     {
       "id": "01a0a723-e802-7400-9d5c-d99b90f3fb4d",
@@ -75,16 +75,16 @@
     {
       "id": "01a0a723-e810-7a22-a5fb-6834e83a4729",
       "slug": "issues/reduce-dashboard-status-scan-work",
-      "version": 1,
+      "version": 2,
       "doc_type": "task",
       "title": "Reduce repeated dashboard status RPC scans and idle refresh work",
-      "content": "Context: efficiency audit of source baseline 200b0c6 on 2026-09-15. See docs/efficiency-audit.md for the full audit and measurement limits.\n\n[syncCollections](../src/pkjs/index.js#L43) calls `connect` every minute, which\nrequests sync identity and collection metadata: **120 HTTP requests/hour**\nwhile that loop runs successfully, before mutations. Count suppression already\navoids unchanged count messages, but does not avoid those requests.\n\n[The capability clock](../src/c/agent_capabilities.c#L63) also emits a status\nrequest every minute even outside the dashboard. Each\n[DashboardStatus](../internal/agent/status.go#L42) call requests quota, lists\nloaded threads, and reads each thread's status separately. With 100 loaded\nthreads in one page, that is **102 sequential RPCs per successful refresh**,\nwith complete RPC logging on the server. These are source-derived counts.\n\n[The provider engine](../internal/collectionsync/engine.go#L35) pulls all\nbindings each minute and after a wake. Google Tasks and Nextcloud enumerate\ntheir selected collections; CalDAV requests the full agenda window. Todoist\nalready uses a checkpoint, so avoid applying a blanket full-scan diagnosis.\n\nAcceptance: measure idle requests/bytes and RPC latency; add bounded freshness,\nbackoff, and shared in-flight status results; investigate provider incremental\nsupport before choosing APIs. Preserve immediate mutation upload, explicit\nrefresh, external thread visibility, identity checks/quarantine, date-window\nrollover, recurrence and safe deletion reconciliation. Verify disconnect,\nreconnect, changed credentials, and stale responses. Physical power measurement\nis needed to quantify battery improvement.\nKB: existing `issues/incremental-collection-refresh`, plus\n`issues/reduce-dashboard-status-scan-work`.",
+      "content": "Context: efficiency audit of source baseline 200b0c6 on 2026-09-15. See docs/efficiency-audit.md for the full audit and measurement limits.\n\n[syncCollections](../src/pkjs/index.js#L43) calls `connect` every minute, which\nrequests sync identity and collection metadata: **120 HTTP requests/hour**\nwhile that loop runs successfully, before mutations. Count suppression already\navoids unchanged count messages, but does not avoid those requests.\n\n[The capability clock](../src/c/agent_capabilities.c#L63) also emits a status\nrequest every minute even outside the dashboard. Each\n[DashboardStatus](../internal/agent/status.go#L42) call requests quota, lists\nloaded threads, and reads each thread's status separately. With 100 loaded\nthreads in one page, that is **102 sequential RPCs per successful refresh**,\nwith complete RPC logging on the server. These are source-derived counts.\n\n[The provider engine](../internal/collectionsync/engine.go#L35) pulls all\nbindings each minute and after a wake. Google Tasks and Nextcloud enumerate\ntheir selected collections; CalDAV requests the full agenda window. Todoist\nalready uses a checkpoint, so avoid applying a blanket full-scan diagnosis.\n\nAcceptance: measure idle requests/bytes and RPC latency; add bounded freshness,\nbackoff, and shared in-flight status results; investigate provider incremental\nsupport before choosing APIs. Preserve immediate mutation upload, explicit\nrefresh, external thread visibility, identity checks/quarantine, date-window\nrollover, recurrence and safe deletion reconciliation. Verify disconnect,\nreconnect, changed credentials, and stale responses. Physical power measurement\nis needed to quantify battery improvement.\nKB: existing `issues/incremental-collection-refresh`, plus\n`issues/reduce-dashboard-status-scan-work`.\n\nImplemented and validated: Dashboard status scans now share one cancellable-waiter-safe in-flight scan and a connection-generation-scoped cache (60 seconds; partial data 5 seconds). The watch requests minute status only on the dashboard and refreshes on return. Concurrency/race tests verify 20 callers use one scan, one cancellation leaves other callers intact, cache expiry, and isolated result pointers. Native tests cover leaving/returning home; both watch builds pass.\n",
       "frontmatter": {
-        "status": "draft",
+        "status": "completed",
         "priority": "medium"
       },
       "created_at": "2026-09-15T22:16:07.935019550Z",
-      "modified_at": "2026-09-15T22:16:07.935019550Z"
+      "modified_at": "2026-09-15T22:35:45.488597725Z"
     },
     {
       "id": "01a0a723-e7b7-7a22-8eb1-fbafc3c4684e",
@@ -117,16 +117,16 @@
     {
       "id": "01a0a723-e845-73e2-b2e7-a22b4bcd17b2",
       "slug": "reference/docs/efficiency-audit",
-      "version": 8,
+      "version": 10,
       "doc_type": "reference",
       "title": "docs/efficiency-audit.md",
-      "content": "Source: `docs/efficiency-audit.md`\n\n# Efficiency audit — 2026-09-15\n\nSource baseline: `200b0c6`. The original opportunity assessment follows; implementation results are recorded\nat the end of this document. Measurements below use local builds and synthetic\ndata, not personal server logs or physical battery measurements.\n\n## Recommended order\n\n| Priority | Opportunity | Expected benefit | Scope |\n| --- | --- | --- | --- |\n| 1 | Remove write-only native element fields | 2,496 bytes less permanent watch heap; fewer copies | Small |\n| 1 | Remove unused icons and exclude other-platform artwork | 4,180 / 6,056 bytes less resource data on Emery / Gabbro; six fewer bitmap allocations | Small |\n| 1 | Bound opened phone job history | Stop unbounded retained results and whole-history save growth | Medium; preserve acknowledgment/replay |\n| 1 | Commit collection receipts as one batch | Up to 20 full journal writes become one per response | Medium; preserve durability |\n| 2 | Adapt idle polling and share dashboard status work | Fewer HTTP/Bluetooth requests and server RPCs | Medium |\n| 2 | Store immutable snapshot rows with bounded page reads | Avoid decoding all summaries to return eight records | Medium |\n| 2 | Remove bridge dead state and separate request serialization | Less JS allocation, bundle code, and maintenance | Small/medium |\n| 3 | Avoid redrawing static dashboard artwork during animation | Fewer resource reads, allocations, and drawing calls | Measure target rendering first |\n\n## 1. Remove write-only element fields\n\n[AgentUiElement](../src/c/agent_ui.c#L53) stores `kind_name[16]`,\n`parent_id[32]`, and `index` for each of 48 slots. Source references only declare\nand assign these fields; rendering uses `kind`, array order, and other fields.\nThey are not persisted. Keep the incoming protocol fields accepted; remove the\nunused retained copies and assignments.\n\nGDB inspection of the Emery ELF: `sizeof(AgentUi) = 42888`,\n`sizeof(AgentUiElement) = 868`, and the element array occupies 41,664 bytes.\nThe unused fields total 52 bytes per slot, giving an expected **2,496-byte**\nheap reduction before further redesign. Confirm the resulting struct layout on\nboth targets. Most remaining memory is bounded text storage; consider a string\npool only after measuring actual occupancy and accounting for patch/append\ncapacity, fragmentation, and allocation failures.\n\nAcceptance: remove only unread retained state; preserve add/patch/layout/input\nbehavior and 48-element capacity; build both targets and compare struct sizes.\nKB: `issues/remove-write-only-watch-fields`.\n\n## 2. Remove unused and wrong-platform image resources\n\n[Icon initialization](../src/c/agent_ui.c#L2109) allocates 13 bitmaps for the\nentire app lifetime. All calls to `prv_dashboard_icon` can select only indices\n0, 1, 2, 4, 8, 9, and 12. The six unused resources are `DASH_CHAT`,\n`DASH_TIMER`, `DASH_ALARM`, `DASH_BELL`, `DASH_BELL_SMALL`, and\n`DASH_TODOS_SMALL`. Their unique resource payloads total **820 bytes**.\n\n[package.json](../package.json) also includes both large Emery and Gabbro poses\nin each target. The renderer selects only its own platform's pair. Opposite\nplatform payloads occupy **3,360 bytes on Emery** and **5,236 on Gabbro**.\nTogether, these removals would reduce each 14,643-byte resource pack by\n**4,180 bytes (28.5%) / 6,056 bytes (41.4%)**. These are resource-pack savings,\nnot executable text savings or compressed PBW savings. Values come from actual\npack entries; `.reso` file sizes include serialization overhead and overstate\nthe savings. The pack's reserved table is fixed size.\n\nAcceptance: remove six unused loads/resources, scope large artwork to its\ntarget, verify both resource packs and dashboard/notification visuals, preserve\nall reachable icon roles, and measure heap before/after. Replace numeric icon\nindices with named roles while changing the table.\nKB: `issues/prune-watch-artwork`.\n\n## 3. Bound retained phone jobs\n\n[Jobs.acknowledge](../src/common/jobs.js#L131) marks a job opened but retains\nits result, request body, and command bookkeeping forever. `save()` serializes\nthe entire array; the 24-job submission limit only counts unopened jobs.\n[The bridge](../src/pkjs/index.js#L531) sends only unopened jobs to the watch.\n\nA fixture using the real `Jobs` class, in-memory storage, and a stubbed `http`\nmethod acknowledged 100 jobs with 16 KiB results. It retained **100 entries,\nzero unopened**, and **1,649,701 bytes per subsequent save**. This establishes\nunbounded storage/serialization growth; it is not a phone heap measurement.\n\nAcceptance: bound opened history and remove unnecessary large payloads after\nsafe handoff; retain pending acknowledgment retries and minimal replay identity\nas needed. Verify late long-wait responses, duplicate retrieval, restart,\nfailed local writes, failed server acknowledgments, command idempotency, and\n24 genuinely pending jobs. Do not delete unacknowledged results indiscriminately.\nKB: `issues/bound-opened-phone-jobs`.\n\n## 4. Batch durable journal receipts\n\n[Client.drain and recover](../src/common/collections/client.js#L19) loop over\nresults and call [Journal.receipt](../src/common/collections/journal.js#L24)\nseparately. Every call clones, serializes, checksums, writes, reads back, and\nvalidates the whole journal. Even unknown or nondurable receipts currently\nenter that write path.\n\nA real-Journal fixture with 20 pending notes, each with a 1 KiB body, then 20\ndurable applied receipts produced **20 storage writes / 2,072,804 UTF-8 bytes**\nof serialized envelopes. Final logical journal length was 100,743 characters.\nLocal Node processing took approximately 40 ms; storage was an in-memory mock.\n\nAcceptance: one verified two-slot commit for a changed response batch; zero\nwrites for an unchanged batch. Share this path between drain and recovery.\nPreserve operation dependencies, replay receipts, mixed results, quota failure,\nwrite/readback failure, and crash recovery. Measure writes/bytes per batch.\nKB: `issues/batch-collection-journal-receipts`.\n\n## 5. Reduce idle polling and repeated status scans\n\n[syncCollections](../src/pkjs/index.js#L43) calls `connect` every minute, which\nrequests sync identity and collection metadata: **120 HTTP requests/hour**\nwhile that loop runs successfully, before mutations. Count suppression already\navoids unchanged count messages, but does not avoid those requests.\n\n[The capability clock](../src/c/agent_capabilities.c#L63) also emits a status\nrequest every minute even outside the dashboard. Each\n[DashboardStatus](../internal/agent/status.go#L42) call requests quota, lists\nloaded threads, and reads each thread's status separately. With 100 loaded\nthreads in one page, that is **102 sequential RPCs per successful refresh**,\nwith complete RPC logging on the server. These are source-derived counts.\n\n[The provider engine](../internal/collectionsync/engine.go#L35) pulls all\nbindings each minute and after a wake. Google Tasks and Nextcloud enumerate\ntheir selected collections; CalDAV requests the full agenda window. Todoist\nalready uses a checkpoint, so avoid applying a blanket full-scan diagnosis.\n\nAcceptance: measure idle requests/bytes and RPC latency; add bounded freshness,\nbackoff, and shared in-flight status results; investigate provider incremental\nsupport before choosing APIs. Preserve immediate mutation upload, explicit\nrefresh, external thread visibility, identity checks/quarantine, date-window\nrollover, recurrence and safe deletion reconciliation. Verify disconnect,\nreconnect, changed credentials, and stale responses. Physical power measurement\nis needed to quantify battery improvement.\nKB: existing `issues/incremental-collection-refresh`, plus\n`issues/reduce-dashboard-status-scan-work`.\n\n## 6. Bound snapshot pagination work\n\n[snapshot](../internal/collectionstore/reads.go#L84) reads every record's JSON,\nprojects summaries, filters in Go, and persists one JSON array.\n[SnapshotPage](../internal/collectionstore/reads.go#L157) reloads and decodes\nthat entire array before slicing out a page. Paging all N records in groups of\neight therefore decodes roughly N × ceil(N/8) summaries.\n\nThe existing 100-note fixture (approximately 67 KiB per body), ten iterations,\nmeasured **15.48 ms / 268,221 allocated bytes per snapshot**. Indexed collection\ncounts already cost only **0.053 ms / 4,588 bytes**; they are not the priority.\nAlthough SQL removes bodies from output, it still processes the source JSON.\n\nAcceptance: retain small indexed summaries and store immutable snapshot rows\nby position, enabling bounded page queries. Preserve exact totals, stable\npagination across edits/deletion, cursor scope/expiry, chronological calendar\norder, timezone semantics, and complete canonical bodies. Benchmark first and\nlater pages at 100, 1,000, and 10,000 records. Do not substitute pagination over\nmutable current rows for immutable snapshots.\nKB: `issues/bound-collection-snapshot-page-cost`.\n\n## 7. Simplify the phone bridge and JS dependency graph\n\nIn [src/pkjs/index.js](../src/pkjs/index.js), `sendNoteMessage` has no callers;\n`activePipeline` is assigned but never read; the instantiated `AgentClient`\nonly receives `abort()` calls and never sends anything. Remote work uses\n`jobManager.submit`. `requestAgent` still builds a parser/model pipeline before\ndetermining whether input is local, allocating an unused pipeline for remote\njobs and retaining it through `activePipeline`.\n\n[jobs.js](../src/common/jobs.js#L4) imports `buildRequest` from the whole\n236-line transport module. Extract the shared request serializer so the watch\nbridge does not pull HTTP/WebSocket transport implementations into its bundle.\nThe transport remains exported by [the library](../src/common/index.js#L9) and\nhas tests; it is not globally dead code.\n\nAcceptance: remove bridge-only dead code/state, allocate pipelines where used,\nshare the request serializer, preserve the public library and transport tests,\nand compare generated JS size and local/remote dispatch behavior. Avoid replacing\nclear code with compressed one-line implementations to claim LOC savings.\nKB: `issues/simplify-phone-bridge-dependencies`.\n\n## 8. Reduce dashboard work during request animation\n\n[prv_activity_tick](../src/c/agent_ui.c#L2279) marks the full content layer dirty\nevery 30 ms for a short 20-frame animation. Each dashboard repaint invokes\n[prv_dashboard_codey](../src/c/agent_ui.c#L910), which allocates a row bitmap,\nreads the image header and palette, and reads/draws every image row.\nCurrent large artwork has 74 rows on Emery and 59 on Gabbro: **76 / 61 resource\nAPI reads per full dashboard paint**, or approximately **1,520 / 1,220** over\n20 paints. These count API calls, not physical flash transactions.\n\nAcceptance: instrument real repaint counts and CPU time; evaluate an overlay\nor bounded artwork cache with verified invalidation and heap headroom. Keep the\nshort animation, visual correctness, platform poses, and low-memory fallback.\nDo not assume a separate layer automatically avoids background redraws on the\nSDK. Cache only if measurements justify its retained memory cost.\nKB: `issues/reduce-dashboard-animation-redraw-cost`.\n\n## Validation and existing optimizations\n\n- `pebble build` passes for Emery and Gabbro. Executable binaries are 61,448 /\n  61,960 bytes; resource packs are 14,643 bytes each; generated JS is 127,857 bytes.\n- ELF text/data/BSS: Emery 60,710 / 424 / 740 bytes; Gabbro 61,222 / 424 / 740.\n  Heap allocations, including `AgentUi`, are additional to BSS.\n- `go test ./internal/collectionstore -run '^$' -bench\n  'Benchmark(CollectionCounts|NoteSnapshot)$' -benchtime=10x -benchmem` passes.\n- A server release-style build with `CGO_ENABLED=0`, `-trimpath`, and\n  `-ldflags='-s -w'` passes. Release CI already uses these size flags; stripping\n  is not a new opportunity. Watch builds already use `-Os` and section GC.\n- Existing minute redraw coalescing, bounded job long-waits, indexed counts,\n  summary-only collection responses, and unchanged preview/count suppression\n  should be preserved.\n- No emulator was started or used. Battery percentages and production CPU/RSS\n  reductions remain unmeasured. No runtime behavior changed, so this audit ran\n  builds, focused existing benchmarks, and synthetic probes rather than a full\n  behavioral regression suite.\n\n## Implementation results\n\n- **remove-write-only-watch-fields**: Removed three unread retained fields and their copies without changing protocol acceptance or capacity. Both watch builds and all nine native ASan/UBSan suites pass. On both targets AgentUi shrank from 42,888 to 40,392 bytes (2,496 bytes saved), and executable text/data shrank by 60 bytes.\n\n- **prune-watch-artwork**: Removed six unused bitmap loads and resource entries, introduced named icon roles, and limited each large pose pair to its target. Both SDK builds pass; pack inspection confirms nine resources per target and no opposite-platform artwork. Emery resources are 10,463 bytes (-4,180); Gabbro 8,587 (-6,056); executable footprint saves another 64 bytes per target, with six fewer bitmap allocations and 24 fewer pointer bytes. Final rendering verification is combined with the animation change.\n\n- **bound-opened-phone-jobs**: Opened jobs now durably replace delivered payloads with small acknowledgment receipts; successful/expired acknowledgments remove them, and reconnect/pane-open/submission retries preserve failed acknowledgments. A bounded receipt backlog prevents indefinite growth. Fixed terminal-result persistence rollback as well. 96 phone tests pass, including late responses, duplicate acknowledgment, restart, failed receipt/cleanup writes, 100 x 16 KiB results ending in a two-byte empty history, and the 24-pending-job limit.\n\n- **batch-collection-journal-receipts**: Drain and recovery now share one batch receipt transaction, cloning/writing only changed durable known receipts. The original 20-note fixture now writes one envelope (104,750 bytes) instead of 20 (2,072,804 bytes), a 94.9% reduction. Collection tests and all 96 phone tests pass, including mixed durable/nondurable results, failure preserving the old journal, restart, unknown/no-op receipts, and retained replay metadata.\n\n- **simplify-phone-bridge-dependencies**: Removed unused bridge client, pipeline retention, note sender, and eager remote-request pipelines. Jobs and the public transport now reuse a standalone request serializer; the transport export stays compatible. All 96 phone tests (including HTTP/WebSocket and dispatch) and both watch builds pass. Generated JS contains no AgentClient transport implementation and is about 123.3 KB versus the original 127.9 KB, despite the new durability logic.\n\n- **bound-collection-snapshot-page-cost**: Added transactionally maintained body-free summaries and immutable snapshot rows indexed by position. Atomic schema upgrade preserves existing snapshots, cursor keys and server identities; expiry cascades row cleanup. Full Go suite passes, including upgrade, canonical edits/deletes, pinned pages, corrupt off-page isolation, cursor bounds and calendar/timezone tests. The 100 large-note snapshot improved from 15.48 ms/268,221 B to 6.84 ms/6,059 B; later eight-row pages at 100/1,000/10,000 records allocate about 20 KB independent of collection size (0.54/0.60/0.94 ms in this run). First-page Go allocations stay about 24 KB.\n",
+      "content": "Source: `docs/efficiency-audit.md`\n\n# Efficiency audit — 2026-09-15\n\nSource baseline: `200b0c6`. The original opportunity assessment follows; implementation results are recorded\nat the end of this document. Measurements below use local builds and synthetic\ndata, not personal server logs or physical battery measurements.\n\n## Recommended order\n\n| Priority | Opportunity | Expected benefit | Scope |\n| --- | --- | --- | --- |\n| 1 | Remove write-only native element fields | 2,496 bytes less permanent watch heap; fewer copies | Small |\n| 1 | Remove unused icons and exclude other-platform artwork | 4,180 / 6,056 bytes less resource data on Emery / Gabbro; six fewer bitmap allocations | Small |\n| 1 | Bound opened phone job history | Stop unbounded retained results and whole-history save growth | Medium; preserve acknowledgment/replay |\n| 1 | Commit collection receipts as one batch | Up to 20 full journal writes become one per response | Medium; preserve durability |\n| 2 | Adapt idle polling and share dashboard status work | Fewer HTTP/Bluetooth requests and server RPCs | Medium |\n| 2 | Store immutable snapshot rows with bounded page reads | Avoid decoding all summaries to return eight records | Medium |\n| 2 | Remove bridge dead state and separate request serialization | Less JS allocation, bundle code, and maintenance | Small/medium |\n| 3 | Avoid redrawing static dashboard artwork during animation | Fewer resource reads, allocations, and drawing calls | Measure target rendering first |\n\n## 1. Remove write-only element fields\n\n[AgentUiElement](../src/c/agent_ui.c#L53) stores `kind_name[16]`,\n`parent_id[32]`, and `index` for each of 48 slots. Source references only declare\nand assign these fields; rendering uses `kind`, array order, and other fields.\nThey are not persisted. Keep the incoming protocol fields accepted; remove the\nunused retained copies and assignments.\n\nGDB inspection of the Emery ELF: `sizeof(AgentUi) = 42888`,\n`sizeof(AgentUiElement) = 868`, and the element array occupies 41,664 bytes.\nThe unused fields total 52 bytes per slot, giving an expected **2,496-byte**\nheap reduction before further redesign. Confirm the resulting struct layout on\nboth targets. Most remaining memory is bounded text storage; consider a string\npool only after measuring actual occupancy and accounting for patch/append\ncapacity, fragmentation, and allocation failures.\n\nAcceptance: remove only unread retained state; preserve add/patch/layout/input\nbehavior and 48-element capacity; build both targets and compare struct sizes.\nKB: `issues/remove-write-only-watch-fields`.\n\n## 2. Remove unused and wrong-platform image resources\n\n[Icon initialization](../src/c/agent_ui.c#L2109) allocates 13 bitmaps for the\nentire app lifetime. All calls to `prv_dashboard_icon` can select only indices\n0, 1, 2, 4, 8, 9, and 12. The six unused resources are `DASH_CHAT`,\n`DASH_TIMER`, `DASH_ALARM`, `DASH_BELL`, `DASH_BELL_SMALL`, and\n`DASH_TODOS_SMALL`. Their unique resource payloads total **820 bytes**.\n\n[package.json](../package.json) also includes both large Emery and Gabbro poses\nin each target. The renderer selects only its own platform's pair. Opposite\nplatform payloads occupy **3,360 bytes on Emery** and **5,236 on Gabbro**.\nTogether, these removals would reduce each 14,643-byte resource pack by\n**4,180 bytes (28.5%) / 6,056 bytes (41.4%)**. These are resource-pack savings,\nnot executable text savings or compressed PBW savings. Values come from actual\npack entries; `.reso` file sizes include serialization overhead and overstate\nthe savings. The pack's reserved table is fixed size.\n\nAcceptance: remove six unused loads/resources, scope large artwork to its\ntarget, verify both resource packs and dashboard/notification visuals, preserve\nall reachable icon roles, and measure heap before/after. Replace numeric icon\nindices with named roles while changing the table.\nKB: `issues/prune-watch-artwork`.\n\n## 3. Bound retained phone jobs\n\n[Jobs.acknowledge](../src/common/jobs.js#L131) marks a job opened but retains\nits result, request body, and command bookkeeping forever. `save()` serializes\nthe entire array; the 24-job submission limit only counts unopened jobs.\n[The bridge](../src/pkjs/index.js#L531) sends only unopened jobs to the watch.\n\nA fixture using the real `Jobs` class, in-memory storage, and a stubbed `http`\nmethod acknowledged 100 jobs with 16 KiB results. It retained **100 entries,\nzero unopened**, and **1,649,701 bytes per subsequent save**. This establishes\nunbounded storage/serialization growth; it is not a phone heap measurement.\n\nAcceptance: bound opened history and remove unnecessary large payloads after\nsafe handoff; retain pending acknowledgment retries and minimal replay identity\nas needed. Verify late long-wait responses, duplicate retrieval, restart,\nfailed local writes, failed server acknowledgments, command idempotency, and\n24 genuinely pending jobs. Do not delete unacknowledged results indiscriminately.\nKB: `issues/bound-opened-phone-jobs`.\n\n## 4. Batch durable journal receipts\n\n[Client.drain and recover](../src/common/collections/client.js#L19) loop over\nresults and call [Journal.receipt](../src/common/collections/journal.js#L24)\nseparately. Every call clones, serializes, checksums, writes, reads back, and\nvalidates the whole journal. Even unknown or nondurable receipts currently\nenter that write path.\n\nA real-Journal fixture with 20 pending notes, each with a 1 KiB body, then 20\ndurable applied receipts produced **20 storage writes / 2,072,804 UTF-8 bytes**\nof serialized envelopes. Final logical journal length was 100,743 characters.\nLocal Node processing took approximately 40 ms; storage was an in-memory mock.\n\nAcceptance: one verified two-slot commit for a changed response batch; zero\nwrites for an unchanged batch. Share this path between drain and recovery.\nPreserve operation dependencies, replay receipts, mixed results, quota failure,\nwrite/readback failure, and crash recovery. Measure writes/bytes per batch.\nKB: `issues/batch-collection-journal-receipts`.\n\n## 5. Reduce idle polling and repeated status scans\n\n[syncCollections](../src/pkjs/index.js#L43) calls `connect` every minute, which\nrequests sync identity and collection metadata: **120 HTTP requests/hour**\nwhile that loop runs successfully, before mutations. Count suppression already\navoids unchanged count messages, but does not avoid those requests.\n\n[The capability clock](../src/c/agent_capabilities.c#L63) also emits a status\nrequest every minute even outside the dashboard. Each\n[DashboardStatus](../internal/agent/status.go#L42) call requests quota, lists\nloaded threads, and reads each thread's status separately. With 100 loaded\nthreads in one page, that is **102 sequential RPCs per successful refresh**,\nwith complete RPC logging on the server. These are source-derived counts.\n\n[The provider engine](../internal/collectionsync/engine.go#L35) pulls all\nbindings each minute and after a wake. Google Tasks and Nextcloud enumerate\ntheir selected collections; CalDAV requests the full agenda window. Todoist\nalready uses a checkpoint, so avoid applying a blanket full-scan diagnosis.\n\nAcceptance: measure idle requests/bytes and RPC latency; add bounded freshness,\nbackoff, and shared in-flight status results; investigate provider incremental\nsupport before choosing APIs. Preserve immediate mutation upload, explicit\nrefresh, external thread visibility, identity checks/quarantine, date-window\nrollover, recurrence and safe deletion reconciliation. Verify disconnect,\nreconnect, changed credentials, and stale responses. Physical power measurement\nis needed to quantify battery improvement.\nKB: existing `issues/incremental-collection-refresh`, plus\n`issues/reduce-dashboard-status-scan-work`.\n\n## 6. Bound snapshot pagination work\n\n[snapshot](../internal/collectionstore/reads.go#L84) reads every record's JSON,\nprojects summaries, filters in Go, and persists one JSON array.\n[SnapshotPage](../internal/collectionstore/reads.go#L157) reloads and decodes\nthat entire array before slicing out a page. Paging all N records in groups of\neight therefore decodes roughly N × ceil(N/8) summaries.\n\nThe existing 100-note fixture (approximately 67 KiB per body), ten iterations,\nmeasured **15.48 ms / 268,221 allocated bytes per snapshot**. Indexed collection\ncounts already cost only **0.053 ms / 4,588 bytes**; they are not the priority.\nAlthough SQL removes bodies from output, it still processes the source JSON.\n\nAcceptance: retain small indexed summaries and store immutable snapshot rows\nby position, enabling bounded page queries. Preserve exact totals, stable\npagination across edits/deletion, cursor scope/expiry, chronological calendar\norder, timezone semantics, and complete canonical bodies. Benchmark first and\nlater pages at 100, 1,000, and 10,000 records. Do not substitute pagination over\nmutable current rows for immutable snapshots.\nKB: `issues/bound-collection-snapshot-page-cost`.\n\n## 7. Simplify the phone bridge and JS dependency graph\n\nIn [src/pkjs/index.js](../src/pkjs/index.js), `sendNoteMessage` has no callers;\n`activePipeline` is assigned but never read; the instantiated `AgentClient`\nonly receives `abort()` calls and never sends anything. Remote work uses\n`jobManager.submit`. `requestAgent` still builds a parser/model pipeline before\ndetermining whether input is local, allocating an unused pipeline for remote\njobs and retaining it through `activePipeline`.\n\n[jobs.js](../src/common/jobs.js#L4) imports `buildRequest` from the whole\n236-line transport module. Extract the shared request serializer so the watch\nbridge does not pull HTTP/WebSocket transport implementations into its bundle.\nThe transport remains exported by [the library](../src/common/index.js#L9) and\nhas tests; it is not globally dead code.\n\nAcceptance: remove bridge-only dead code/state, allocate pipelines where used,\nshare the request serializer, preserve the public library and transport tests,\nand compare generated JS size and local/remote dispatch behavior. Avoid replacing\nclear code with compressed one-line implementations to claim LOC savings.\nKB: `issues/simplify-phone-bridge-dependencies`.\n\n## 8. Reduce dashboard work during request animation\n\n[prv_activity_tick](../src/c/agent_ui.c#L2279) marks the full content layer dirty\nevery 30 ms for a short 20-frame animation. Each dashboard repaint invokes\n[prv_dashboard_codey](../src/c/agent_ui.c#L910), which allocates a row bitmap,\nreads the image header and palette, and reads/draws every image row.\nCurrent large artwork has 74 rows on Emery and 59 on Gabbro: **76 / 61 resource\nAPI reads per full dashboard paint**, or approximately **1,520 / 1,220** over\n20 paints. These count API calls, not physical flash transactions.\n\nAcceptance: instrument real repaint counts and CPU time; evaluate an overlay\nor bounded artwork cache with verified invalidation and heap headroom. Keep the\nshort animation, visual correctness, platform poses, and low-memory fallback.\nDo not assume a separate layer automatically avoids background redraws on the\nSDK. Cache only if measurements justify its retained memory cost.\nKB: `issues/reduce-dashboard-animation-redraw-cost`.\n\n## Validation and existing optimizations\n\n- `pebble build` passes for Emery and Gabbro. Executable binaries are 61,448 /\n  61,960 bytes; resource packs are 14,643 bytes each; generated JS is 127,857 bytes.\n- ELF text/data/BSS: Emery 60,710 / 424 / 740 bytes; Gabbro 61,222 / 424 / 740.\n  Heap allocations, including `AgentUi`, are additional to BSS.\n- `go test ./internal/collectionstore -run '^$' -bench\n  'Benchmark(CollectionCounts|NoteSnapshot)$' -benchtime=10x -benchmem` passes.\n- A server release-style build with `CGO_ENABLED=0`, `-trimpath`, and\n  `-ldflags='-s -w'` passes. Release CI already uses these size flags; stripping\n  is not a new opportunity. Watch builds already use `-Os` and section GC.\n- Existing minute redraw coalescing, bounded job long-waits, indexed counts,\n  summary-only collection responses, and unchanged preview/count suppression\n  should be preserved.\n- No emulator was started or used. Battery percentages and production CPU/RSS\n  reductions remain unmeasured. No runtime behavior changed, so this audit ran\n  builds, focused existing benchmarks, and synthetic probes rather than a full\n  behavioral regression suite.\n\n## Implementation results\n\n- **remove-write-only-watch-fields**: Removed three unread retained fields and their copies without changing protocol acceptance or capacity. Both watch builds and all nine native ASan/UBSan suites pass. On both targets AgentUi shrank from 42,888 to 40,392 bytes (2,496 bytes saved), and executable text/data shrank by 60 bytes.\n\n- **prune-watch-artwork**: Removed six unused bitmap loads and resource entries, introduced named icon roles, and limited each large pose pair to its target. Both SDK builds pass; pack inspection confirms nine resources per target and no opposite-platform artwork. Emery resources are 10,463 bytes (-4,180); Gabbro 8,587 (-6,056); executable footprint saves another 64 bytes per target, with six fewer bitmap allocations and 24 fewer pointer bytes. Final rendering verification is combined with the animation change.\n\n- **bound-opened-phone-jobs**: Opened jobs now durably replace delivered payloads with small acknowledgment receipts; successful/expired acknowledgments remove them, and reconnect/pane-open/submission retries preserve failed acknowledgments. A bounded receipt backlog prevents indefinite growth. Fixed terminal-result persistence rollback as well. 96 phone tests pass, including late responses, duplicate acknowledgment, restart, failed receipt/cleanup writes, 100 x 16 KiB results ending in a two-byte empty history, and the 24-pending-job limit.\n\n- **batch-collection-journal-receipts**: Drain and recovery now share one batch receipt transaction, cloning/writing only changed durable known receipts. The original 20-note fixture now writes one envelope (104,750 bytes) instead of 20 (2,072,804 bytes), a 94.9% reduction. Collection tests and all 96 phone tests pass, including mixed durable/nondurable results, failure preserving the old journal, restart, unknown/no-op receipts, and retained replay metadata.\n\n- **simplify-phone-bridge-dependencies**: Removed unused bridge client, pipeline retention, note sender, and eager remote-request pipelines. Jobs and the public transport now reuse a standalone request serializer; the transport export stays compatible. All 96 phone tests (including HTTP/WebSocket and dispatch) and both watch builds pass. Generated JS contains no AgentClient transport implementation and is about 123.3 KB versus the original 127.9 KB, despite the new durability logic.\n\n- **bound-collection-snapshot-page-cost**: Added transactionally maintained body-free summaries and immutable snapshot rows indexed by position. Atomic schema upgrade preserves existing snapshots, cursor keys and server identities; expiry cascades row cleanup. Full Go suite passes, including upgrade, canonical edits/deletes, pinned pages, corrupt off-page isolation, cursor bounds and calendar/timezone tests. The 100 large-note snapshot improved from 15.48 ms/268,221 B to 6.84 ms/6,059 B; later eight-row pages at 100/1,000/10,000 records allocate about 20 KB independent of collection size (0.54/0.60/0.94 ms in this run). First-page Go allocations stay about 24 KB.\n\n- **reduce-dashboard-status-scan-work**: Dashboard status scans now share one cancellable-waiter-safe in-flight scan and a connection-generation-scoped cache (60 seconds; partial data 5 seconds). The watch requests minute status only on the dashboard and refreshes on return. Concurrency/race tests verify 20 callers use one scan, one cancellation leaves other callers intact, cache expiry, and isolated result pointers. Native tests cover leaving/returning home; both watch builds pass.\n\n- **incremental-collection-refresh**: Added coalesced adaptive phone polling (60 to 300 seconds), bounded provider scan cooldowns with binding invalidation and UTC day rollover, and immediate provider wake after accepted mutations. Explicit refresh bypasses cooldown; pending work still dispatches immediately. Existing Todoist incremental checkpoints and complete CalDAV/Google/Nextcloud enumeration/deletion semantics are preserved. Added stale credential response rejection. JS tests cover backoff, coalescing, stop/reconnect and credentials; provider tests cover an idle-hour bound of at most 16 scans versus 60, pending writes and explicit refresh, plus boundary deadlines. Race tests and watch builds pass. Steady unchanged phone metadata traffic falls from 120 to 24 requests/hour; physical battery savings are unmeasured.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium"
       },
       "created_at": "2026-09-15T22:16:07.935019550Z",
-      "modified_at": "2026-09-15T22:27:55.187775162Z"
+      "modified_at": "2026-09-15T22:36:09.904867751Z"
     },
     {
       "id": "01a0a714-2780-7d21-8f54-b87646dd7c2c",
@@ -215,16 +215,16 @@
     {
       "id": "01a0a689-d1fd-7c30-bdd5-d911e380f445",
       "slug": "issues/incremental-collection-refresh",
-      "version": 1,
+      "version": 2,
       "doc_type": "task",
       "title": "Reduce idle collection polling and CalDAV scan cost",
-      "content": "Observed: src/pkjs/index.js syncCollections still requests sync identity and collection metadata every 60 seconds while PebbleKit JS runs; internal/collectionsync/engine.go ticks every minute and internal/providers/caldav.go Pull downloads and expands the entire 90-day agenda. Count/message suppression avoids watch traffic but not these HTTP requests. Acceptance: measure idle request/byte/CPU baselines; evaluate adaptive polling and provider sync-token/ETag support with capability discovery; preserve immediate upload, explicit refresh, identity quarantine, recurrence/window-boundary correctness and safe deletion reconciliation; test offline/reconnect and unchanged/changed calendars; measure physical phone/watch power before claiming battery savings.",
+      "content": "Observed: src/pkjs/index.js syncCollections still requests sync identity and collection metadata every 60 seconds while PebbleKit JS runs; internal/collectionsync/engine.go ticks every minute and internal/providers/caldav.go Pull downloads and expands the entire 90-day agenda. Count/message suppression avoids watch traffic but not these HTTP requests. Acceptance: measure idle request/byte/CPU baselines; evaluate adaptive polling and provider sync-token/ETag support with capability discovery; preserve immediate upload, explicit refresh, identity quarantine, recurrence/window-boundary correctness and safe deletion reconciliation; test offline/reconnect and unchanged/changed calendars; measure physical phone/watch power before claiming battery savings.\n\nImplemented and validated: Added coalesced adaptive phone polling (60 to 300 seconds), bounded provider scan cooldowns with binding invalidation and UTC day rollover, and immediate provider wake after accepted mutations. Explicit refresh bypasses cooldown; pending work still dispatches immediately. Existing Todoist incremental checkpoints and complete CalDAV/Google/Nextcloud enumeration/deletion semantics are preserved. Added stale credential response rejection. JS tests cover backoff, coalescing, stop/reconnect and credentials; provider tests cover an idle-hour bound of at most 16 scans versus 60, pending writes and explicit refresh, plus boundary deadlines. Race tests and watch builds pass. Steady unchanged phone metadata traffic falls from 120 to 24 requests/hour; physical battery savings are unmeasured.\n",
       "frontmatter": {
-        "status": "draft",
+        "status": "completed",
         "priority": "medium"
       },
       "created_at": "2026-09-15T19:28:17.009631205Z",
-      "modified_at": "2026-09-15T19:28:17.009631205Z"
+      "modified_at": "2026-09-15T22:36:09.904867751Z"
     },
     {
       "id": "01a0a66c-1f53-7561-921a-dc3fb9e54333",
@@ -631,16 +631,16 @@
     {
       "id": "01a09805-4759-7923-a05c-5f27bab32e2d",
       "slug": "reference/docs/collections",
-      "version": 10,
+      "version": 11,
       "doc_type": "reference",
       "title": "docs/collections.md",
-      "content": "Source: `docs/collections.md`\n\n# Notes and To-dos: server storage and backend sync\n\nNotes and to-dos are canonical server records. The phone keeps a durable mutation\njournal and a bounded disposable read cache. The watch persists up to eight truncated titles each for Notes and active To-dos.\nIt shows these noninteractive cached previews immediately while refreshing live\naliases from the phone; completed lists and later pages do not replace the preview.\nMutations and record identities are not stored in this display cache. Timers, alarms, and the remembered\nNotes/To-dos tile selection retain their existing persistence.\n\nThis is a breaking development upgrade. Legacy phone notes and native task slots\nare ignored; there is no migration or compatibility fallback. Existing collection\ndata was explicitly excluded from preservation for this implementation.\n\n## Setup\n\nConfigure the server bearer token (`CODEY_TOKEN`) and server URL in phone settings.\nCollections always use that same URL, stripping a trailing `/v1/agent` and\nconverting WebSocket schemes to HTTP(S). There is no separate collection URL.\nHTTPS is required unless **Allow HTTP for local development collections** is\nexplicitly enabled. The server creates one To-dos and one Notes collection.\nCollection APIs remain available when Codex is unavailable.\n\nChoose **To-do sync setup** or **Notes sync setup** independently; both default\nto Server only. Selecting Nextcloud Notes reveals its URL/username/app-password\nfields; Todoist reveals a token field. Connect, choose a destination, preview, and\nactivate directly in the settings page. Errors remain visible there. No setup\nbutton closes and reopens the Pebble settings webview. Google authorization\nnavigates within the current webview after its server OAuth prerequisites are met.\n\nA setup-only session is issued by the phone before opening settings. First save an\nHTTPS server URL and token; reopening settings then supplies a 30-minute session.\nThe static settings page never receives the main server bearer token. Provider\nsecrets are sent directly to the server, excluded from responses and phone settings,\nand encrypted when activated. The displayed active backend is authoritative;\nchanging a selector alone does not change it. See [setup instructions](../README.md#backend-sync-setup).\n\n## Saving and browsing\n\n- Dictate “note: Call Jane” or “todo: Buy milk” to create a record. These commands\n  and collection browsing do not need Codex.\n- Open a note to read revision-pinned pages, **Append to note**, or **Replace\n  entire note**. Replacement saves the complete new dictation, never the displayed\n  page. Ambiguous text-based edits direct you to the record picker.\n- Task checkboxes emit explicit complete/restore operations. Completed tasks have\n  a separate paginated view. Completion is distinct from deletion.\n- Lists contain at most eight records; bodies contain at most four UTF-8 chunks\n  per page. Large collections remain server-owned. Uncached offline pages are\n  reported unavailable; cached pages are marked stale.\n- Saves first show Sending, then **Saved on phone · Pending server**, then\n  **Saved on server**. External delivery is tracked separately in server settings.\n  A transport acknowledgment alone never means that the input was saved.\n\nThe phone may accept supported writes while the server is unavailable after\ninitial enrollment. The watch cannot create collection mutations without its\nphone connection/readiness handshake. Unaccepted input exists only in RAM and\ncan be lost when closing the watch app. Phone uploads resume when PebbleKit JS\nruns again; it is not a permanent background service. Uninstalling/clearing phone\nstorage can destroy input that has not reached the server.\n\nThe journal has two checksummed slots with read-back verification. Defaults are\n256 retained operations and 512 KiB per slot, plus a 1 MiB disposable cache.\nCache eviction never removes pending input. Queue exhaustion rejects the next\nsave. When more than eight uncommitted creates exist, the view explicitly reports\npartial coverage; remaining records become browsable after server upload.\n\n## Read efficiency\n\nOpening the first list page uses one snapshot POST with `limit: 8`; subsequent\npages use the same immutable snapshot. Counts use a SQLite expression index,\nand snapshot summaries omit bodies before decoding them into Go records.\nCanonical bodies and revision-pinned body reads remain intact.\n\nThe phone sends one bounded list payload instead of building a second PAM list.\nUnchanged collection metadata does not rewrite its read cache, and unchanged\ncounts do not generate Bluetooth traffic. A watch readiness handshake or delivery\nfailure resets count suppression. List changes also trigger count reconciliation.\nJournal compaction writes only when durable work can actually be removed; pending\noperations and watch ingress receipts retain their existing guarantees.\n\nWatch preview updates invalidate the page, write only changed title rows, then\nmark it valid. An interrupted update cannot display a mixture of old and new rows.\nSee [repeatable measurements](testing.md#collection-efficiency-regressions).\n\n## Providers and recovery\n\nTodoist uses API v1 incremental synchronization and stable command UUIDs. Completed\nhistory discovery covers the last 89 days; previously imported canonical history\nis retained. Recurring completion adopts the returned next occurrence. The API\nhas weaker concurrent-write guarantees than Nextcloud's conditional updates.\n\nGoogle Tasks includes hidden, completed, and deleted tasks in full paginated\nreads. Due values are date-only; assigned tasks are read-only. A create with an\nunknown remote outcome requires review before retrying.\n\nNextcloud Notes uses API v1.2+ chunk cursors and `If-Match` updates. All chunks must\nsucceed before missing mapped notes are treated as deleted. Category moves are\nnot treated as deletions. Read-only or incomplete notes do not offer replacement.\n\nManagement displays conflicts and pending/error/unknown provider operations.\nResolve conflicts against the observed current revision. For uncertain delivery,\ninspect the provider before linking a verified remote record, stopping delivery,\nor explicitly confirming that retrying cannot duplicate a write. Switching\nproviders preserves records and requires a decision about pending delivery;\nin-flight/unknown work prevents a switch.\n\nChanging the server URL, bearer-token identity, or restored store epoch quarantines\nold phone work. Restore the original connection to recover that journal rather\nthan redirecting it. For a restored original server, the phone settings recovery checkbox archives quarantined input as server conflicts without executing it, then re-enrolls only after durable handoff. Review those proposals before applying them. Developer recovery can also export complete JSON with\n`CollectionClient.exportJournal()` from the running phone bridge.\n\nSee [server operations](collections-server-operations.md), the\n[implementation plan](notes-todos-backend-sync-plan.md), and the\n[implementation specification](notes-todos-backend-sync-spec.md).\n\n## Calendar\n\nCalendar is a third, independent collection, defaulting to Server only. Choose\nCalDAV in phone settings to connect a calendar with its URL, username, and app\npassword. Setup shows four numbered steps and a completion message. The same\nphone journal, server receipts, encrypted credentials, and cached watch titles\napply. The agenda imports 90 days of events with server-expanded recurrences;\nnew single events sync outward using conditional, deterministic resource URLs.\nUse your calendar app for edits, invitations, and recurring-series creation.\nSee [README setup](../README.md#backend-sync-setup) and [protocol](protocol.md).\n",
+      "content": "Source: `docs/collections.md`\n\n# Notes and To-dos: server storage and backend sync\n\nNotes and to-dos are canonical server records. The phone keeps a durable mutation\njournal and a bounded disposable read cache. The watch persists up to eight truncated titles each for Notes and active To-dos.\nIt shows these noninteractive cached previews immediately while refreshing live\naliases from the phone; completed lists and later pages do not replace the preview.\nMutations and record identities are not stored in this display cache. Timers, alarms, and the remembered\nNotes/To-dos tile selection retain their existing persistence.\n\nThis is a breaking development upgrade. Legacy phone notes and native task slots\nare ignored; there is no migration or compatibility fallback. Existing collection\ndata was explicitly excluded from preservation for this implementation.\n\n## Setup\n\nConfigure the server bearer token (`CODEY_TOKEN`) and server URL in phone settings.\nCollections always use that same URL, stripping a trailing `/v1/agent` and\nconverting WebSocket schemes to HTTP(S). There is no separate collection URL.\nHTTPS is required unless **Allow HTTP for local development collections** is\nexplicitly enabled. The server creates one To-dos and one Notes collection.\nCollection APIs remain available when Codex is unavailable.\n\nChoose **To-do sync setup** or **Notes sync setup** independently; both default\nto Server only. Selecting Nextcloud Notes reveals its URL/username/app-password\nfields; Todoist reveals a token field. Connect, choose a destination, preview, and\nactivate directly in the settings page. Errors remain visible there. No setup\nbutton closes and reopens the Pebble settings webview. Google authorization\nnavigates within the current webview after its server OAuth prerequisites are met.\n\nA setup-only session is issued by the phone before opening settings. First save an\nHTTPS server URL and token; reopening settings then supplies a 30-minute session.\nThe static settings page never receives the main server bearer token. Provider\nsecrets are sent directly to the server, excluded from responses and phone settings,\nand encrypted when activated. The displayed active backend is authoritative;\nchanging a selector alone does not change it. See [setup instructions](../README.md#backend-sync-setup).\n\n## Saving and browsing\n\n- Dictate “note: Call Jane” or “todo: Buy milk” to create a record. These commands\n  and collection browsing do not need Codex.\n- Open a note to read revision-pinned pages, **Append to note**, or **Replace\n  entire note**. Replacement saves the complete new dictation, never the displayed\n  page. Ambiguous text-based edits direct you to the record picker.\n- Task checkboxes emit explicit complete/restore operations. Completed tasks have\n  a separate paginated view. Completion is distinct from deletion.\n- Lists contain at most eight records; bodies contain at most four UTF-8 chunks\n  per page. Large collections remain server-owned. Uncached offline pages are\n  reported unavailable; cached pages are marked stale.\n- Saves first show Sending, then **Saved on phone · Pending server**, then\n  **Saved on server**. External delivery is tracked separately in server settings.\n  A transport acknowledgment alone never means that the input was saved.\n\nThe phone may accept supported writes while the server is unavailable after\ninitial enrollment. The watch cannot create collection mutations without its\nphone connection/readiness handshake. Unaccepted input exists only in RAM and\ncan be lost when closing the watch app. Phone uploads resume when PebbleKit JS\nruns again; it is not a permanent background service. Uninstalling/clearing phone\nstorage can destroy input that has not reached the server.\n\nThe journal has two checksummed slots with read-back verification. Defaults are\n256 retained operations and 512 KiB per slot, plus a 1 MiB disposable cache.\nCache eviction never removes pending input. Queue exhaustion rejects the next\nsave. When more than eight uncommitted creates exist, the view explicitly reports\npartial coverage; remaining records become browsable after server upload.\n\n## Read efficiency\n\nOpening the first list page uses one snapshot POST with `limit: 8`; subsequent\npages use the same immutable snapshot. Counts use a SQLite expression index,\nand SQLite maintains body-free summaries when canonical records change.\nImmutable snapshot rows are indexed by position, so an eight-row page only\ndecodes eight summaries. Existing snapshots survive the schema upgrade.\nCanonical bodies and revision-pinned body reads remain intact.\n\nThe phone sends one bounded list payload instead of building a second PAM list.\nUnchanged collection metadata does not rewrite its read cache, and unchanged\ncounts do not generate Bluetooth traffic. A watch readiness handshake or delivery\nfailure resets count suppression. List changes also trigger count reconciliation.\nJournal compaction writes only when durable work can actually be removed; pending\noperations and watch ingress receipts retain their existing guarantees.\n\nWatch preview updates invalidate the page, write only changed title rows, then\nmark it valid. An interrupted update cannot display a mixture of old and new rows.\nSee [repeatable measurements](testing.md#collection-efficiency-regressions).\n\n## Providers and recovery\n\nTodoist uses API v1 incremental synchronization and stable command UUIDs. Completed\nhistory discovery covers the last 89 days; previously imported canonical history\nis retained. Recurring completion adopts the returned next occurrence. The API\nhas weaker concurrent-write guarantees than Nextcloud's conditional updates.\n\nGoogle Tasks includes hidden, completed, and deleted tasks in full paginated\nreads. Due values are date-only; assigned tasks are read-only. A create with an\nunknown remote outcome requires review before retrying.\n\nNextcloud Notes uses API v1.2+ chunk cursors and `If-Match` updates. All chunks must\nsucceed before missing mapped notes are treated as deleted. Category moves are\nnot treated as deletions. Read-only or incomplete notes do not offer replacement.\n\nManagement displays conflicts and pending/error/unknown provider operations.\nResolve conflicts against the observed current revision. For uncertain delivery,\ninspect the provider before linking a verified remote record, stopping delivery,\nor explicitly confirming that retrying cannot duplicate a write. Switching\nproviders preserves records and requires a decision about pending delivery;\nin-flight/unknown work prevents a switch.\n\nChanging the server URL, bearer-token identity, or restored store epoch quarantines\nold phone work. Restore the original connection to recover that journal rather\nthan redirecting it. For a restored original server, the phone settings recovery checkbox archives quarantined input as server conflicts without executing it, then re-enrolls only after durable handoff. Review those proposals before applying them. Developer recovery can also export complete JSON with\n`CollectionClient.exportJournal()` from the running phone bridge.\n\nSee [server operations](collections-server-operations.md), the\n[implementation plan](notes-todos-backend-sync-plan.md), and the\n[implementation specification](notes-todos-backend-sync-spec.md).\n\n## Calendar\n\nCalendar is a third, independent collection, defaulting to Server only. Choose\nCalDAV in phone settings to connect a calendar with its URL, username, and app\npassword. Setup shows four numbered steps and a completion message. The same\nphone journal, server receipts, encrypted credentials, and cached watch titles\napply. The agenda imports 90 days of events with server-expanded recurrences;\nnew single events sync outward using conditional, deterministic resource URLs.\nUse your calendar app for edits, invitations, and recurring-series creation.\nSee [README setup](../README.md#backend-sync-setup) and [protocol](protocol.md).\n\nBackground collection metadata and unchanged provider scans back off from one\nminute to at most five minutes. Pending phone operations retain the short retry\ninterval, accepted server mutations wake provider writes immediately, and Sync\nnow bypasses the scan cooldown. Calendar scan deadlines stop at the next UTC\nday boundary. Unchanged counts still generate no Bluetooth messages.\n\nReceipt batches use one verified journal commit. Once a job result is delivered\nto the watch or dismissed, the phone retains only a small server-acknowledgment\nreceipt, retrying it on reconnect, Notifications refresh, or a new submission.\nConfirmed or expired server acknowledgments remove the receipt.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium"
       },
       "created_at": "2026-09-12T23:49:15.056444193Z",
-      "modified_at": "2026-09-15T19:28:17.009631205Z"
+      "modified_at": "2026-09-15T22:36:09.904867751Z"
     },
     {
       "id": "01a097ea-d805-7c22-9326-792e1e76bdb5",
@@ -1129,6 +1129,338 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a0a736-a7dd-7ed3-b044-6aaa0ba83e0c",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Complete incremental-collection-refresh",
+      "created_at": "2026-09-15T22:36:09.904867751Z",
+      "changes": [
+        {
+          "document_id": "01a0a689-d1fd-7c30-bdd5-d911e380f445",
+          "slug": "issues/incremental-collection-refresh",
+          "change_type": "modified",
+          "previous_commit_id": "01a0a68a-a06a-7f81-90da-358859de7410",
+          "previous_version": 1,
+          "new_version": 2,
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 1,
+              "new_start": 1,
+              "new_count": 3,
+              "lines": [
+                {
+                  "op": "delete",
+                  "content": "Observed: src/pkjs/index.js syncCollections still requests sync identity and collection metadata every 60 seconds while PebbleKit JS runs; internal/collectionsync/engine.go ticks every minute and internal/providers/caldav.go Pull downloads and expands the entire 90-day agenda. Count/message suppression avoids watch traffic but not these HTTP requests. Acceptance: measure idle request/byte/CPU baselines; evaluate adaptive polling and provider sync-token/ETag support with capability discovery; preserve immediate upload, explicit refresh, identity quarantine, recurrence/window-boundary correctness and safe deletion reconciliation; test offline/reconnect and unchanged/changed calendars; measure physical phone/watch power before claiming battery savings."
+                },
+                {
+                  "op": "add",
+                  "content": "Observed: src/pkjs/index.js syncCollections still requests sync identity and collection metadata every 60 seconds while PebbleKit JS runs; internal/collectionsync/engine.go ticks every minute and internal/providers/caldav.go Pull downloads and expands the entire 90-day agenda. Count/message suppression avoids watch traffic but not these HTTP requests. Acceptance: measure idle request/byte/CPU baselines; evaluate adaptive polling and provider sync-token/ETag support with capability discovery; preserve immediate upload, explicit refresh, identity quarantine, recurrence/window-boundary correctness and safe deletion reconciliation; test offline/reconnect and unchanged/changed calendars; measure physical phone/watch power before claiming battery savings."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Implemented and validated: Added coalesced adaptive phone polling (60 to 300 seconds), bounded provider scan cooldowns with binding invalidation and UTC day rollover, and immediate provider wake after accepted mutations. Explicit refresh bypasses cooldown; pending work still dispatches immediately. Existing Todoist incremental checkpoints and complete CalDAV/Google/Nextcloud enumeration/deletion semantics are preserved. Added stale credential response rejection. JS tests cover backoff, coalescing, stop/reconnect and credentials; provider tests cover an idle-hour bound of at most 16 scans versus 60, pending writes and explicit refresh, plus boundary deadlines. Race tests and watch builds pass. Steady unchanged phone metadata traffic falls from 120 to 24 requests/hour; physical battery savings are unmeasured."
+                }
+              ]
+            }
+          ],
+          "metadata_changes": [
+            {
+              "field": "status",
+              "old_value": "draft",
+              "new_value": "completed"
+            }
+          ],
+          "content_hash": "b80e6db7a9850dadd098bc73956d8a0720e3f751bd6047353dca153643edeea6",
+          "previous_hash": "078c324bbd8673a834b2df57e6ae08c69840fdc5ba41b56c44c959c7eb35c277",
+          "doc_type": "task",
+          "title": "Reduce idle collection polling and CalDAV scan cost"
+        },
+        {
+          "document_id": "01a09805-4759-7923-a05c-5f27bab32e2d",
+          "slug": "reference/docs/collections",
+          "change_type": "modified",
+          "previous_commit_id": "01a0a68a-a06a-7f81-90da-358859de7410",
+          "previous_version": 10,
+          "new_version": 11,
+          "hunks": [
+            {
+              "old_start": 69,
+              "old_count": 7,
+              "new_start": 69,
+              "new_count": 9,
+              "context": "## Read efficiency",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Opening the first list page uses one snapshot POST with `limit: 8`; subsequent"
+                },
+                {
+                  "op": "context",
+                  "content": "pages use the same immutable snapshot. Counts use a SQLite expression index,"
+                },
+                {
+                  "op": "delete",
+                  "content": "and snapshot summaries omit bodies before decoding them into Go records."
+                },
+                {
+                  "op": "add",
+                  "content": "and SQLite maintains body-free summaries when canonical records change."
+                },
+                {
+                  "op": "add",
+                  "content": "Immutable snapshot rows are indexed by position, so an eight-row page only"
+                },
+                {
+                  "op": "add",
+                  "content": "decodes eight summaries. Existing snapshots survive the schema upgrade."
+                },
+                {
+                  "op": "context",
+                  "content": "Canonical bodies and revision-pinned body reads remain intact."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "The phone sends one bounded list payload instead of building a second PAM list."
+                }
+              ]
+            },
+            {
+              "old_start": 124,
+              "old_count": 3,
+              "new_start": 126,
+              "new_count": 14,
+              "context": "## Calendar",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "new single events sync outward using conditional, deterministic resource URLs."
+                },
+                {
+                  "op": "context",
+                  "content": "Use your calendar app for edits, invitations, and recurring-series creation."
+                },
+                {
+                  "op": "context",
+                  "content": "See [README setup](../README.md#backend-sync-setup) and [protocol](protocol.md)."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Background collection metadata and unchanged provider scans back off from one"
+                },
+                {
+                  "op": "add",
+                  "content": "minute to at most five minutes. Pending phone operations retain the short retry"
+                },
+                {
+                  "op": "add",
+                  "content": "interval, accepted server mutations wake provider writes immediately, and Sync"
+                },
+                {
+                  "op": "add",
+                  "content": "now bypasses the scan cooldown. Calendar scan deadlines stop at the next UTC"
+                },
+                {
+                  "op": "add",
+                  "content": "day boundary. Unchanged counts still generate no Bluetooth messages."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Receipt batches use one verified journal commit. Once a job result is delivered"
+                },
+                {
+                  "op": "add",
+                  "content": "to the watch or dismissed, the phone retains only a small server-acknowledgment"
+                },
+                {
+                  "op": "add",
+                  "content": "receipt, retrying it on reconnect, Notifications refresh, or a new submission."
+                },
+                {
+                  "op": "add",
+                  "content": "Confirmed or expired server acknowledgments remove the receipt."
+                }
+              ]
+            }
+          ],
+          "content_hash": "376073ad1b4e3cb83e7825cf47c81cafa8f971ac27d7e2d0f08c0578f46b6f9a",
+          "previous_hash": "dec9b2fedfa1a14b27c52eb9d54eafd73695b71f56f67827ce099579dbaba331",
+          "doc_type": "reference",
+          "title": "docs/collections.md"
+        },
+        {
+          "document_id": "01a0a723-e845-73e2-b2e7-a22b4bcd17b2",
+          "slug": "reference/docs/efficiency-audit",
+          "change_type": "modified",
+          "previous_commit_id": "01a0a736-465e-7282-98b4-e4195c9266ec",
+          "previous_version": 9,
+          "new_version": 10,
+          "hunks": [
+            {
+              "old_start": 222,
+              "old_count": 3,
+              "new_start": 222,
+              "new_count": 5,
+              "context": "## Implementation results",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "- **bound-collection-snapshot-page-cost**: Added transactionally maintained body-free summaries and immutable snapshot rows indexed by position. Atomic schema upgrade preserves existing snapshots, cursor keys and server identities; expiry cascades row cleanup. Full Go suite passes, including upgrade, canonical edits/deletes, pinned pages, corrupt off-page isolation, cursor bounds and calendar/timezone tests. The 100 large-note snapshot improved from 15.48 ms/268,221 B to 6.84 ms/6,059 B; later eight-row pages at 100/1,000/10,000 records allocate about 20 KB independent of collection size (0.54/0.60/0.94 ms in this run). First-page Go allocations stay about 24 KB."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "- **reduce-dashboard-status-scan-work**: Dashboard status scans now share one cancellable-waiter-safe in-flight scan and a connection-generation-scoped cache (60 seconds; partial data 5 seconds). The watch requests minute status only on the dashboard and refreshes on return. Concurrency/race tests verify 20 callers use one scan, one cancellation leaves other callers intact, cache expiry, and isolated result pointers. Native tests cover leaving/returning home; both watch builds pass."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "- **incremental-collection-refresh**: Added coalesced adaptive phone polling (60 to 300 seconds), bounded provider scan cooldowns with binding invalidation and UTC day rollover, and immediate provider wake after accepted mutations. Explicit refresh bypasses cooldown; pending work still dispatches immediately. Existing Todoist incremental checkpoints and complete CalDAV/Google/Nextcloud enumeration/deletion semantics are preserved. Added stale credential response rejection. JS tests cover backoff, coalescing, stop/reconnect and credentials; provider tests cover an idle-hour bound of at most 16 scans versus 60, pending writes and explicit refresh, plus boundary deadlines. Race tests and watch builds pass. Steady unchanged phone metadata traffic falls from 120 to 24 requests/hour; physical battery savings are unmeasured."
+                }
+              ]
+            }
+          ],
+          "content_hash": "e25c1fbcea8c3f64ecb6232ce5d46b0bd6e4b80eb47cf2e6e7a2c44146954aaa",
+          "previous_hash": "6201d3aa67dca90aa4451df70730968321f961256e8887a7ffed9938786c6634",
+          "doc_type": "reference",
+          "title": "docs/efficiency-audit.md"
+        }
+      ]
+    },
+    {
+      "id": "01a0a736-465e-7282-98b4-e4195c9266ec",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Complete reduce-dashboard-status-scan-work",
+      "created_at": "2026-09-15T22:35:45.488597725Z",
+      "changes": [
+        {
+          "document_id": "01a0a723-e810-7a22-a5fb-6834e83a4729",
+          "slug": "issues/reduce-dashboard-status-scan-work",
+          "change_type": "modified",
+          "previous_commit_id": "01a0a724-48b5-79d2-9951-5da9c8c760a0",
+          "previous_version": 1,
+          "new_version": 2,
+          "hunks": [
+            {
+              "old_start": 25,
+              "old_count": 4,
+              "new_start": 25,
+              "new_count": 6,
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "reconnect, changed credentials, and stale responses. Physical power measurement"
+                },
+                {
+                  "op": "context",
+                  "content": "is needed to quantify battery improvement."
+                },
+                {
+                  "op": "context",
+                  "content": "KB: existing `issues/incremental-collection-refresh`, plus"
+                },
+                {
+                  "op": "delete",
+                  "content": "`issues/reduce-dashboard-status-scan-work`."
+                },
+                {
+                  "op": "add",
+                  "content": "`issues/reduce-dashboard-status-scan-work`."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Implemented and validated: Dashboard status scans now share one cancellable-waiter-safe in-flight scan and a connection-generation-scoped cache (60 seconds; partial data 5 seconds). The watch requests minute status only on the dashboard and refreshes on return. Concurrency/race tests verify 20 callers use one scan, one cancellation leaves other callers intact, cache expiry, and isolated result pointers. Native tests cover leaving/returning home; both watch builds pass."
+                }
+              ]
+            }
+          ],
+          "metadata_changes": [
+            {
+              "field": "status",
+              "old_value": "draft",
+              "new_value": "completed"
+            }
+          ],
+          "content_hash": "26df647098206b2029596426243f3f5012e0853e089338639924d90637d56798",
+          "previous_hash": "c097703aec57d06973b0225804caf83ee1512241b29abdfb0c0e8f8dff38bc4f",
+          "doc_type": "task",
+          "title": "Reduce repeated dashboard status RPC scans and idle refresh work"
+        },
+        {
+          "document_id": "01a0a723-e845-73e2-b2e7-a22b4bcd17b2",
+          "slug": "reference/docs/efficiency-audit",
+          "change_type": "modified",
+          "previous_commit_id": "01a0a72f-18ee-7932-a63d-f2d8c8dbad1d",
+          "previous_version": 8,
+          "new_version": 9,
+          "hunks": [
+            {
+              "old_start": 220,
+              "old_count": 3,
+              "new_start": 220,
+              "new_count": 5,
+              "context": "## Implementation results",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "- **simplify-phone-bridge-dependencies**: Removed unused bridge client, pipeline retention, note sender, and eager remote-request pipelines. Jobs and the public transport now reuse a standalone request serializer; the transport export stays compatible. All 96 phone tests (including HTTP/WebSocket and dispatch) and both watch builds pass. Generated JS contains no AgentClient transport implementation and is about 123.3 KB versus the original 127.9 KB, despite the new durability logic."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "- **bound-collection-snapshot-page-cost**: Added transactionally maintained body-free summaries and immutable snapshot rows indexed by position. Atomic schema upgrade preserves existing snapshots, cursor keys and server identities; expiry cascades row cleanup. Full Go suite passes, including upgrade, canonical edits/deletes, pinned pages, corrupt off-page isolation, cursor bounds and calendar/timezone tests. The 100 large-note snapshot improved from 15.48 ms/268,221 B to 6.84 ms/6,059 B; later eight-row pages at 100/1,000/10,000 records allocate about 20 KB independent of collection size (0.54/0.60/0.94 ms in this run). First-page Go allocations stay about 24 KB."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "- **reduce-dashboard-status-scan-work**: Dashboard status scans now share one cancellable-waiter-safe in-flight scan and a connection-generation-scoped cache (60 seconds; partial data 5 seconds). The watch requests minute status only on the dashboard and refreshes on return. Concurrency/race tests verify 20 callers use one scan, one cancellation leaves other callers intact, cache expiry, and isolated result pointers. Native tests cover leaving/returning home; both watch builds pass."
+                }
+              ]
+            }
+          ],
+          "content_hash": "6201d3aa67dca90aa4451df70730968321f961256e8887a7ffed9938786c6634",
+          "previous_hash": "52ec6be1b7f3e2e1570961589c20c7f154143959646e0b9884e9b6aaff94d4eb",
+          "doc_type": "reference",
+          "title": "docs/efficiency-audit.md"
+        }
+      ]
+    },
     {
       "id": "01a0a72f-18ee-7932-a63d-f2d8c8dbad1d",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

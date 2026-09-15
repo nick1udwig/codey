@@ -69,7 +69,8 @@ static void prv_tick(void *context) {
   }
   agent_capabilities_refresh_dashboard(capabilities);
   agent_ui_refresh_clock(capabilities->ui);
-  agent_capabilities_emit(capabilities,"status","","refresh","");
+  if(agent_capabilities_is_active(capabilities,"dashboard"))
+    agent_capabilities_emit(capabilities,"status","","refresh","");
   if (++capabilities->weather_ticks >= 15) {
     capabilities->weather_ticks = 0;
     agent_capabilities_emit(capabilities, "weather", "", "refresh", "");
@@ -217,6 +218,7 @@ void agent_capabilities_show_dashboard(AgentCapabilities *capabilities) {
   if (!capabilities) { return; }
   capabilities->navigation_revision += 1;
   agent_capabilities_set_active(capabilities, "dashboard", true);
+  agent_capabilities_emit(capabilities,"status","","refresh","");
   agent_ui_begin(capabilities->ui, "dashboard", "list", "", "", "", 0);
   agent_capability_add_element(capabilities->ui, "item", "calendar", "Calendar", "", "", "local.calendar", "", 0);
   agent_capability_add_element(capabilities->ui, "item", "dashboard-summary", "Notifications",

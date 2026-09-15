@@ -14,7 +14,8 @@ func TestCollectionsRequireAuthAndWorkWithoutAgent(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer store.Close()
-	server := New(Config{Token: "secret", Collections: store})
+	wakes := 0
+	server := New(Config{Token: "secret", Collections: store, WakeCollections: func() { wakes++ }})
 	request := httptest.NewRequest("GET", "/v1/sync/info", nil)
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, request)
@@ -34,6 +35,24 @@ func TestCollectionsRequireAuthAndWorkWithoutAgent(t *testing.T) {
 	var response map[string]any
 	if e = json.Unmarshal(w.Body.Bytes(), &response); e != nil || response["client_id"] == "" {
 		t.Fatal(response, e)
+	}
+	client := response["client_id"].(string)
+	batch := map[string]any{"protocol_version": 1, "server_instance_id": store.ServerID, "store_epoch": store.Epoch, "client_id": client,
+		"operations": []any{map[string]any{"id": "op:" + client + ":1", "sequence": "1", "ingress_id": "fixture", "record_id": "rec:" + client + ":1", "collection_id": "col_note", "binding_generation": "1", "type": "note.create", "payload": map[string]string{"title": "Note", "body": "Body"}}}}
+	raw, _ := json.Marshal(batch)
+	request = httptest.NewRequest("POST", "/v1/sync/mutations", strings.NewReader(string(raw)))
+	request.Header.Set("Authorization", "Bearer secret")
+	w = httptest.NewRecorder()
+	server.ServeHTTP(w, request)
+	if w.Code != 200 || wakes != 1 {
+		t.Fatal(w.Code, w.Body.String(), wakes)
+	}
+	request = httptest.NewRequest("POST", "/v1/sync/mutations", strings.NewReader("{}"))
+	request.Header.Set("Authorization", "Bearer secret")
+	w = httptest.NewRecorder()
+	server.ServeHTTP(w, request)
+	if w.Code == 200 || wakes != 1 {
+		t.Fatal("invalid batch woke worker")
 	}
 }
 

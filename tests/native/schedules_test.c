@@ -508,7 +508,22 @@ static void test_welcome_tour(void) {
   agent_capabilities_destroy(caps);
 }
 
+static int status_refreshes;
+static void status_event(const char *type,const char *id,const char *action,const char *value,void *context) {
+  (void)id;(void)action;(void)value;(void)context;
+  if(!strcmp(type,"status"))status_refreshes++;
+}
+static void test_status_only_on_dashboard(void) {
+  reset();status_refreshes=0;
+  AgentCapabilities *caps=agent_capabilities_create(&ui,status_event,NULL);
+  assert(status_refreshes==1);advance(60);assert(status_refreshes==2);
+  event(caps,"local.todos");advance(180);assert(status_refreshes==2);
+  event(caps,"local.home");assert(status_refreshes==3);
+  agent_capabilities_destroy(caps);
+}
+
 int main(void) {
+  test_status_only_on_dashboard();
   test_welcome_tour();
    test_checkbox_double_tap(); test_notes(); test_idle_cadence();
   test_weather_summary(); test_todos(); test_collection_previews(); test_preview_changed_rows_and_interrupted_write(); test_dashboard_progress(); test_dashboard_destinations(); test_multiple_and_ack(); test_pause_cancel_restore(); test_failures_and_capacity(); test_stopwatch_dashboard();  test_explicit_replacement();

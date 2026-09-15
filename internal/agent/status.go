@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"fmt"
+	"github.com/nick1udwig/pebble-agent/internal/appserver"
+	"time"
 )
 
 // DashboardStatus deliberately uses the current multi-bucket quota API.
@@ -40,12 +42,75 @@ func remainingQuota(bucket rateSnapshot) *int {
 	}
 	return remaining
 }
-func (agent *Agent) DashboardStatus(ctx context.Context) (DashboardStatus, error) {
-	result := DashboardStatus{State: "unknown"}
-	connection, _, _, err := agent.client.Connection(ctx)
-	if err != nil {
-		return result, err
+
+type statusFlight struct {
+	generation uint64
+	done       chan struct{}
+	value      DashboardStatus
+	err        error
+}
+
+func copyStatus(value DashboardStatus) DashboardStatus {
+	if value.RemainingPercent != nil {
+		n := *value.RemainingPercent
+		value.RemainingPercent = &n
 	}
+	if value.ActiveThreads != nil {
+		n := *value.ActiveThreads
+		value.ActiveThreads = &n
+	}
+	return value
+}
+
+// Share a bounded scan across phones; canceling one HTTP request cannot cancel
+// another caller's scan. A reconnected app-server never inherits cached status.
+func (agent *Agent) DashboardStatus(ctx context.Context) (DashboardStatus, error) {
+	connection, generation, _, err := agent.client.Connection(ctx)
+	if err != nil {
+		return DashboardStatus{State: "unknown"}, err
+	}
+	agent.statusMu.Lock()
+	if agent.statusGeneration == generation && time.Now().Before(agent.statusExpires) {
+		value := copyStatus(agent.statusCache)
+		agent.statusMu.Unlock()
+		return value, nil
+	}
+	flight := agent.statusFlight
+	if flight == nil || flight.generation != generation {
+		flight = &statusFlight{generation: generation, done: make(chan struct{})}
+		agent.statusFlight = flight
+		go func() {
+			work, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+			defer cancel()
+			flight.value, flight.err = readDashboardStatus(work, connection)
+			agent.statusMu.Lock()
+			if agent.statusFlight == flight {
+				agent.statusFlight = nil
+				if flight.err == nil {
+					ttl := time.Minute
+					if flight.value.ActiveThreads == nil || flight.value.RemainingPercent == nil {
+						ttl = 5 * time.Second
+					}
+					agent.statusCache = flight.value
+					agent.statusGeneration = generation
+					agent.statusExpires = time.Now().Add(ttl)
+				}
+			}
+			close(flight.done)
+			agent.statusMu.Unlock()
+		}()
+	}
+	agent.statusMu.Unlock()
+	select {
+	case <-ctx.Done():
+		return DashboardStatus{State: "unknown"}, ctx.Err()
+	case <-flight.done:
+		return copyStatus(flight.value), flight.err
+	}
+}
+func readDashboardStatus(ctx context.Context, connection *appserver.Connection) (DashboardStatus, error) {
+	result := DashboardStatus{State: "unknown"}
+	var err error
 	var limits struct {
 		Buckets map[string]rateSnapshot `json:"rateLimitsByLimitId"`
 	}

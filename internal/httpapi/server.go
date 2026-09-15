@@ -26,6 +26,7 @@ type Responder interface {
 type Config struct {
 	Collections         *collectionstore.Store
 	RefreshCollections  func()
+	WakeCollections     func()
 	Integrations        http.Handler
 	IntegrationSetup    func(string) (map[string]string, error)
 	IntegrationTicket   func(string, string, string) (string, error)

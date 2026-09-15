@@ -35,9 +35,14 @@ type Agent struct {
 	store  *state.Store
 	config Config
 
-	loadedMu sync.Mutex
-	loaded   map[string]uint64
-	locks    sync.Map
+	loadedMu         sync.Mutex
+	loaded           map[string]uint64
+	locks            sync.Map
+	statusMu         sync.Mutex
+	statusFlight     *statusFlight
+	statusCache      DashboardStatus
+	statusGeneration uint64
+	statusExpires    time.Time
 }
 
 func New(client *appserver.Client, store *state.Store, config Config) *Agent {

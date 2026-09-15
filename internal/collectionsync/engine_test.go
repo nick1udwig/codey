@@ -7,6 +7,7 @@ import (
 	"github.com/nick1udwig/pebble-agent/internal/collectionstore"
 	p "github.com/nick1udwig/pebble-agent/internal/providers"
 	"testing"
+	"time"
 )
 
 type fakeSecrets struct{}
@@ -19,6 +20,7 @@ type fakeAdapter struct {
 	applies    int
 	unknown    bool
 	pullFail   bool
+	pulls      int
 	afterApply func()
 }
 
@@ -32,10 +34,84 @@ func (f *fakeAdapter) Fetch(context.Context, p.Binding, p.Credentials, string) (
 	return p.Remote{}, &p.Failure{State: "not_found"}
 }
 func (f *fakeAdapter) Pull(_ context.Context, b p.Binding, _ p.Credentials, page string) (p.Page, error) {
+	f.pulls++
 	if f.pullFail {
 		return p.Page{}, &p.Failure{State: "auth_required"}
 	}
 	return p.Page{Records: []p.Remote{{ID: "remote-id", Container: b.Container, Version: "v1", Record: c.Record{Kind: "note", Title: "A", Body: "B", BodyComplete: true}}}}, nil
+}
+
+func TestAdaptivePullsKeepExplicitRefreshAndPendingWritesImmediate(t *testing.T) {
+	s, e, a, batch := fixture(t)
+	a.pullFail = false
+	now := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
+	e.now = func() time.Time { return now }
+	for i := 0; i < 60; i++ {
+		e.tick(context.Background(), false)
+		now = now.Add(time.Minute)
+	}
+	if a.pulls > 16 {
+		t.Fatal("idle provider scanned every minute", a.pulls)
+	}
+	before := a.pulls
+	e.Refresh()
+	e.tick(context.Background(), e.force.Swap(false))
+	if a.pulls != before+1 {
+		t.Fatal("explicit refresh was delayed")
+	}
+	r, err := s.Record(batch.Operations[0].RecordID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	op := batch.Operations[0]
+	op.ID = "op:" + batch.ClientID + ":2"
+	op.Sequence = "2"
+	op.IngressID = "second"
+	op.Type = "note.append"
+	op.BaseRevision = r.Revision
+	op.Payload = map[string]json.RawMessage{"text": p.Raw("new")}
+	batch.Operations = []c.Operation{op}
+	if _, err = s.Mutate(batch); err != nil {
+		t.Fatal(err)
+	}
+	// The fixture's Fetch reports missing; use a fresh create to exercise dispatch.
+	op.ID = "op:" + batch.ClientID + ":3"
+	op.Sequence = "3"
+	op.RecordID = "rec:" + batch.ClientID + ":3"
+	op.IngressID = "third"
+	op.Type = "note.create"
+	op.BaseRevision = ""
+	op.Payload = map[string]json.RawMessage{"title": p.Raw("New"), "body": p.Raw("B")}
+	batch.Operations = []c.Operation{op}
+	if _, err = s.Mutate(batch); err != nil {
+		t.Fatal(err)
+	}
+	applies := a.applies
+	e.Wake()
+	e.tick(context.Background(), false)
+	if a.applies != applies+1 {
+		t.Fatal("pending write delayed by pull backoff")
+	}
+	before = a.pulls
+	e.tick(context.Background(), false)
+	if a.pulls != before {
+		t.Fatal("unchanged scan repeated")
+	}
+}
+
+func TestPullBackoffCapsAndStopsAtUTCWindowBoundary(t *testing.T) {
+	p := pullSchedule{}
+	now := time.Date(2026, 9, 15, 23, 59, 0, 0, time.UTC)
+	for i := 0; i < 10; i++ {
+		p.finish(now, false)
+	}
+	if p.interval != 5*time.Minute || !p.next.Equal(now.Add(time.Minute)) {
+		t.Fatal(p)
+	}
+	p.finish(now, true)
+	if p.interval != time.Minute {
+		t.Fatal(p)
+	}
 }
 func (f *fakeAdapter) Apply(_ context.Context, b p.Binding, _ p.Credentials, _ string, in p.Intent, _ *p.Remote) (p.ApplyResult, error) {
 	f.applies++

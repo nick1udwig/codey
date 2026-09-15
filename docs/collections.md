@@ -67,7 +67,9 @@ partial coverage; remaining records become browsable after server upload.
 
 Opening the first list page uses one snapshot POST with `limit: 8`; subsequent
 pages use the same immutable snapshot. Counts use a SQLite expression index,
-and snapshot summaries omit bodies before decoding them into Go records.
+and SQLite maintains body-free summaries when canonical records change.
+Immutable snapshot rows are indexed by position, so an eight-row page only
+decodes eight summaries. Existing snapshots survive the schema upgrade.
 Canonical bodies and revision-pinned body reads remain intact.
 
 The phone sends one bounded list payload instead of building a second PAM list.
@@ -122,3 +124,14 @@ apply. The agenda imports 90 days of events with server-expanded recurrences;
 new single events sync outward using conditional, deterministic resource URLs.
 Use your calendar app for edits, invitations, and recurring-series creation.
 See [README setup](../README.md#backend-sync-setup) and [protocol](protocol.md).
+
+Background collection metadata and unchanged provider scans back off from one
+minute to at most five minutes. Pending phone operations retain the short retry
+interval, accepted server mutations wake provider writes immediately, and Sync
+now bypasses the scan cooldown. Calendar scan deadlines stop at the next UTC
+day boundary. Unchanged counts still generate no Bluetooth messages.
+
+Receipt batches use one verified journal commit. Once a job result is delivered
+to the watch or dismissed, the phone retains only a small server-acknowledgment
+receipt, retrying it on reconnect, Notifications refresh, or a new submission.
+Confirmed or expired server acknowledgments remove the receipt.
