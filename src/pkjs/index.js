@@ -528,6 +528,7 @@ function handleWatchMessage(event) {
     watchReady = true;
     lastWeatherMessage = "";
     lastDashboardStatus="";dashboardStatus.last=null;dashboardStatus.refresh();
+    jobManager.retryAcknowledgements();
     sendJob({}, false, "reset");
     jobManager.entries.forEach(function(job) { if (!job.opened) { sendJob(job, false); } });
     sendConnection();

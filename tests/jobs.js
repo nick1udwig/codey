@@ -54,4 +54,50 @@ module.exports=function(test){
  test("No job is submitted if the phone cannot persist its ID",function(){
   var f=fixture();f.options.storage.setItem=function(){throw new Error("full");};assert.throws(function(){f.jobs.submit(request);},/not sent/);assert.strictEqual(f.requests.length,0);
  });
+ test("Opened payloads become durable receipts and failed acknowledgments survive restart",function(){
+  var f=fixture(),j=f.jobs.submit(request);f.reply(0,j,"working");
+  f.jobs.check(j.id,function(e){assert.ifError(e);});f.reply(2,j,"done","x".repeat(16384));
+  j.commands={0:123};f.jobs.save();
+  f.jobs.acknowledge(j);f.jobs.acknowledge(j);
+  assert.strictEqual(f.requests.length,4,"one in-flight acknowledgment");
+  assert.ok(f.data["pebble-agent.jobs.v1"].length<250);
+  assert.ok(!j.result&&!j.body&&!j.commands);
+  f.reply(1,j,"working");assert.strictEqual(j.status,"done");
+  f.requests[3].onerror();
+  var restored=fixture(f.data);restored.jobs.retryAcknowledgements();
+  assert.strictEqual(restored.requests.length,1);
+  var x=restored.requests[0];x.status=200;x.responseText=JSON.stringify({id:j.id,status:"done",retrieved:true});x.onload();
+  assert.strictEqual(restored.jobs.entries.length,0);
+  restored.jobs.accept(j,{id:j.id,status:"working"},true);
+  assert.strictEqual(restored.jobs.entries.length,0,"late response cannot resurrect the job");
+ });
+ test("Failed receipt writes preserve results and failed cleanup writes remain retryable",function(){
+  var f=fixture(),j=f.jobs.submit(request);f.reply(0,j,"done","PAM");
+  var save=f.options.storage.setItem;f.options.storage.setItem=function(){throw new Error("full");};
+  assert.throws(function(){f.jobs.acknowledge(j);},/full/);
+  assert.strictEqual(j.result,"PAM");assert.ok(!j.opened);assert.strictEqual(f.requests.length,1);
+  f.options.storage.setItem=save;f.jobs.acknowledge(j);
+  f.options.storage.setItem=function(){throw new Error("full");};
+  var x=f.requests[1];x.status=200;x.responseText=JSON.stringify({id:j.id,retrieved:true});x.onload();
+  assert.strictEqual(f.jobs.entries.length,1);
+  f.options.storage.setItem=save;f.jobs.retryAcknowledgements();
+  f.reply(2,j,"","",404);assert.strictEqual(f.jobs.entries.length,0,"expired server jobs need no ack");
+ });
+ test("Result persistence failure rolls back terminal status so a check can retry",function(){
+  var f=fixture(),j=f.jobs.submit(request),save=f.options.storage.setItem;
+  f.options.storage.setItem=function(){throw new Error("full");};f.reply(0,j,"done","PAM");
+  assert.strictEqual(j.status,"sending");assert.ok(!j.result);
+  f.options.storage.setItem=save;f.jobs.check(j.id,function(e){assert.ifError(e);});
+  f.reply(1,j,"done","PAM");assert.strictEqual(j.result,"PAM");
+ });
+ test("Acknowledged history stays empty while 24 pending jobs remain supported",function(){
+  var f=fixture();
+  for(var i=0;i<100;i++){
+   var n=f.requests.length,j=f.jobs.submit(request);f.reply(n,j,"done","x".repeat(16384));f.jobs.acknowledge(j);
+   var x=f.requests[n+1];x.status=200;x.responseText=JSON.stringify({id:j.id,retrieved:true});x.onload();
+  }
+  assert.strictEqual(f.data["pebble-agent.jobs.v1"],"[]");
+  for(var k=0;k<24;k++)f.jobs.submit(request);
+  assert.throws(function(){f.jobs.submit(request);},/24 pending/);
+ });
 };

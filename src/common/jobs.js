@@ -19,7 +19,11 @@ function Jobs(options) {
   if (!Array.isArray(this.entries)) { this.entries = []; }
   this.entries = this.entries.filter(function(j) { return j && /^[a-f0-9]{30}$/.test(j.id); });
 }
-Jobs.prototype.save = function() { this.options.storage.setItem(storageKey, JSON.stringify(this.entries)); };
+Jobs.prototype.save = function(entries) {
+  var next = entries || this.entries;
+  this.options.storage.setItem(storageKey, JSON.stringify(next));
+  this.entries = next;
+};
 Jobs.prototype.find = function(id) { return this.entries.filter(function(j) { return j.id === id; })[0]; };
 Jobs.prototype.update = function(job, buzz) { this.options.update(job, !!buzz); };
 Jobs.prototype.http = function(job, method, suffix, body, seconds, callback) {
@@ -48,15 +52,25 @@ Jobs.prototype.accept = function(job, data, buzz) {
   if (data.id !== job.id || !/^(working|canceling|done|failed|canceled)$/.test(data.status)) { throw new Error("Invalid job status"); }
   // A stale long-wait response must not overwrite a manual completion result.
   if (terminal(job) || (job.status === "canceling" && data.status === "working")) { return; }
+  var previous = Object.assign({}, job);
   job.status = data.status;
   job.error = data.error || "";
   job.result = data.result || "";
   job.accepted = true;
   if (data.retrieved && !job.result && data.status === "done") { job.status = "failed"; job.error = "Result was retrieved by another phone installation."; }
-  this.save(); // Never acknowledge a result that is only in volatile memory.
+  try { this.save(); } // Never acknowledge a result that is only in volatile memory.
+  catch (error) {
+    Object.keys(job).forEach(function(key) { delete job[key]; });
+    Object.assign(job, previous);
+    throw error;
+  }
   this.update(job, buzz && terminal(job));
 };
 Jobs.prototype.submit = function(request) {
+  this.retryAcknowledgements();
+  if (this.entries.filter(function(j) { return j.opened; }).length >= 256) {
+    throw new Error("Connect the original server to finish acknowledging opened requests.");
+  }
   if (!/^https?:\/\//i.test(endpoint(request.endpoint))) { throw new Error("Configure an agent endpoint in phone settings"); }
   if (this.entries.filter(function(j) { return !j.opened; }).length >= 24) { throw new Error("Open existing request results before adding more (24 pending requests)."); }
   var job = { id: uid(), title: request.input.text || request.input.value || "Agent request", session: request.session,
@@ -101,6 +115,7 @@ Jobs.prototype.check = function(id, callback) {
 // A pane-open refresh is one batch, never a recurring poll. Keep "checking"
 // transient so persisted server status and terminal-state guards remain valid.
 Jobs.prototype.refreshAll = function() {
+  this.retryAcknowledgements();
   var self = this;
   var pending = self.entries.filter(function(job) { return !job.opened && !terminal(job); });
   self.refreshing = self.refreshing || {};
@@ -128,9 +143,32 @@ Jobs.prototype.cancel = function(id, callback) {
     try { self.accept(job, data, false); callback(null, job); } catch(e) { callback(e); }
   });
 };
+// Once the watch confirms delivery (or the user dismisses the job), only the
+// server acknowledgment remains. Persist that intent before releasing payloads.
 Jobs.prototype.acknowledge = function(job) {
-  if (!terminal(job)) { return; }
-  job.opened = true; this.save();
-  this.http(job, "POST", "/ack", null, 10, function() {});
+  var self = this;
+  if (!terminal(job) || !this.find(job.id)) { return; }
+  if (!job.ackPending) {
+    var receipt = { id: job.id, endpoint: job.endpoint, status: job.status, opened: true, ackPending: true };
+    this.save(this.entries.map(function(j) { return j.id === job.id ? receipt : j; }));
+    Object.keys(job).forEach(function(key) { delete job[key]; });
+    Object.assign(job, receipt); // Late callbacks still see an opened terminal job.
+    job = receipt;
+  }
+  this.acknowledging = this.acknowledging || {};
+  if (this.acknowledging[job.id]) { return; }
+  this.acknowledging[job.id] = true;
+  this.http(job, "POST", "/ack", null, 10, function(error, data) {
+    delete self.acknowledging[job.id];
+    if (error ? error.status !== 404 : !data || data.id !== job.id || !data.retrieved) { return; }
+    // A lost cleanup write is safe: replaying /ack never repeats the job.
+    try { self.save(self.entries.filter(function(j) { return j.id !== job.id; })); } catch (_) {}
+  });
+};
+Jobs.prototype.retryAcknowledgements = function() {
+  var self = this;
+  this.entries.filter(function(j) { return j.opened && terminal(j); }).slice(0, 24).forEach(function(job) {
+    try { self.acknowledge(job); } catch (_) { /* Preserve the full entry if storage failed. */ }
+  });
 };
 module.exports = { Jobs: Jobs, terminal: terminal, endpoint: endpoint };

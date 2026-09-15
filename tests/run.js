@@ -1078,7 +1078,9 @@ test("Agent jobs notify without replacing the dashboard, render on tap, and ackn
     assert.strictEqual(requests.length,1,"no acknowledgement before watch confirms delivery");
     h.handlers.appmessage({payload:{0:"capability_event",2:"job",4:id,9:"retrieved"}});
     assert.ok(requests[1].url.endsWith("/ack"));
-    assert.ok(JSON.parse(storage["pebble-agent.jobs.v1"])[0].result);
+    var receipt = JSON.parse(storage["pebble-agent.jobs.v1"])[0];
+    assert.ok(receipt.opened && receipt.ackPending);
+    assert.ok(!receipt.result);
   } finally {h.cleanup();}
 });
 
