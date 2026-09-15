@@ -53,16 +53,13 @@ typedef enum {
 typedef struct {
   bool used;
   AgentUiElementKind kind;
-  char kind_name[AGENT_UI_KIND_LENGTH];
   char id[AGENT_UI_ID_LENGTH];
-  char parent_id[AGENT_UI_ID_LENGTH];
   char title[AGENT_UI_TITLE_LENGTH];
   char subtitle[AGENT_UI_SUBTITLE_LENGTH];
   char value[AGENT_UI_VALUE_LENGTH];
   char action[AGENT_UI_ACTION_LENGTH];
   char meta[AGENT_UI_META_LENGTH];
   int32_t flags;
-  int32_t index;
   GRect frame;
   uint16_t text_offset;
 } AgentUiElement;
@@ -2168,12 +2165,8 @@ static void prv_apply_spec(AgentUiElement *element, const AgentUiElementSpec *sp
   uint32_t present = patch ? spec->present : AgentUiPresentAll;
   if (present & AgentUiPresentKind) {
     element->kind = prv_element_kind(spec->kind);
-    agent_protocol_copy(element->kind_name, sizeof(element->kind_name), spec->kind);
   }
   if (present & AgentUiPresentId) { agent_protocol_copy(element->id, sizeof(element->id), spec->id); }
-  if (present & AgentUiPresentParentId) {
-    agent_protocol_copy(element->parent_id, sizeof(element->parent_id), spec->parent_id);
-  }
   if (present & AgentUiPresentTitle) { agent_protocol_copy(element->title, sizeof(element->title), spec->title); }
   if (present & AgentUiPresentSubtitle) {
     agent_protocol_copy(element->subtitle, sizeof(element->subtitle), spec->subtitle);
@@ -2184,7 +2177,6 @@ static void prv_apply_spec(AgentUiElement *element, const AgentUiElementSpec *sp
   }
   if (present & AgentUiPresentMeta) { agent_protocol_copy(element->meta, sizeof(element->meta), spec->meta); }
   if (present & AgentUiPresentFlags) { element->flags = spec->flags; }
-  if (present & AgentUiPresentIndex) { element->index = spec->index; }
 }
 
 bool agent_ui_add(AgentUi *ui, const AgentUiElementSpec *spec) {
