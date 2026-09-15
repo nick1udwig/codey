@@ -21,7 +21,20 @@ Journal.prototype.accept=function(input){var self=this;return this.update(functi
  var op={id:id,ingress_id:input.ingress,sequence:seq,collection_id:input.collection_id,binding_generation:input.generation,record_id:input.record_id||"rec:"+d.scope.client_id+":"+seq,type:input.type,base_revision:input.revision||"",depends_on:[],payload:input.payload};
  var previous=d.entries.filter(function(e){return e.operation.record_id===op.record_id;}).pop();if(previous){op.base_operation_id=previous.operation.id;op.base_revision="";op.depends_on=[previous.operation.id];}
  d.entries.push({operation:op,input:input});d.receipts[input.ingress]={hash:hash,operation:op,durable:false,alias:input.alias,view:input.view};return op;});};
-Journal.prototype.receipt=function(result){this.update(function(d){var e=d.entries.filter(function(e){return e.operation.id===result.operation_id;})[0];if(!e)return;if(result.durably_recorded!==true)return;e.receipt=result;d.receipts[e.operation.ingress_id].durable=true;});};
+// A server response is one durable transaction, including mixed outcomes.
+Journal.prototype.receipts=function(results){
+ var incoming=Object.create(null),changed=false;
+ results.forEach(function(r){if(r&&r.durably_recorded===true)incoming[r.operation_id]=r;});
+ this.data.entries.forEach(function(e){
+  var r=incoming[e.operation.id];
+  if(r&&stable(e.receipt)!==stable(r))changed=true;
+ });
+ if(!changed)return;
+ this.update(function(d){d.entries.forEach(function(e){
+  var r=incoming[e.operation.id];if(!r)return;
+  e.receipt=clone(r);d.receipts[e.operation.ingress_id].durable=true;
+ });});
+};
 Journal.prototype.compact=function(records){
  var data=this.data,retained=Object.create(null);
  var entries=data.entries.filter(function(e){

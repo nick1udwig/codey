@@ -1,20 +1,20 @@
 {
   "version": 1,
-  "created_at": "2026-09-15T22:21:59.290641702+00:00",
+  "created_at": "2026-09-15T22:23:23.770010749+00:00",
   "documents": [
     {
       "id": "01a0a723-e802-7400-9d5c-d99b90f3fb4d",
       "slug": "issues/batch-collection-journal-receipts",
-      "version": 1,
+      "version": 3,
       "doc_type": "task",
       "title": "Commit collection receipt batches with one verified journal write",
-      "content": "Context: efficiency audit of source baseline 200b0c6 on 2026-09-15. See docs/efficiency-audit.md for the full audit and measurement limits.\n\n[Client.drain and recover](../src/common/collections/client.js#L19) loop over\nresults and call [Journal.receipt](../src/common/collections/journal.js#L24)\nseparately. Every call clones, serializes, checksums, writes, reads back, and\nvalidates the whole journal. Even unknown or nondurable receipts currently\nenter that write path.\n\nA real-Journal fixture with 20 pending notes, each with a 1 KiB body, then 20\ndurable applied receipts produced **20 storage writes / 2,072,804 UTF-8 bytes**\nof serialized envelopes. Final logical journal length was 100,743 characters.\nLocal Node processing took approximately 40 ms; storage was an in-memory mock.\n\nAcceptance: one verified two-slot commit for a changed response batch; zero\nwrites for an unchanged batch. Share this path between drain and recovery.\nPreserve operation dependencies, replay receipts, mixed results, quota failure,\nwrite/readback failure, and crash recovery. Measure writes/bytes per batch.\nKB: `issues/batch-collection-journal-receipts`.",
+      "content": "Context: efficiency audit of source baseline 200b0c6 on 2026-09-15. See docs/efficiency-audit.md for the full audit and measurement limits.\n\n[Client.drain and recover](../src/common/collections/client.js#L19) loop over\nresults and call [Journal.receipt](../src/common/collections/journal.js#L24)\nseparately. Every call clones, serializes, checksums, writes, reads back, and\nvalidates the whole journal. Even unknown or nondurable receipts currently\nenter that write path.\n\nA real-Journal fixture with 20 pending notes, each with a 1 KiB body, then 20\ndurable applied receipts produced **20 storage writes / 2,072,804 UTF-8 bytes**\nof serialized envelopes. Final logical journal length was 100,743 characters.\nLocal Node processing took approximately 40 ms; storage was an in-memory mock.\n\nAcceptance: one verified two-slot commit for a changed response batch; zero\nwrites for an unchanged batch. Share this path between drain and recovery.\nPreserve operation dependencies, replay receipts, mixed results, quota failure,\nwrite/readback failure, and crash recovery. Measure writes/bytes per batch.\nKB: `issues/batch-collection-journal-receipts`.\n\nImplemented and validated: Drain and recovery now share one batch receipt transaction, cloning/writing only changed durable known receipts. The original 20-note fixture now writes one envelope (104,750 bytes) instead of 20 (2,072,804 bytes), a 94.9% reduction. Collection tests and all 96 phone tests pass, including mixed durable/nondurable results, failure preserving the old journal, restart, unknown/no-op receipts, and retained replay metadata.\n",
       "frontmatter": {
-        "status": "draft",
+        "status": "completed",
         "priority": "high"
       },
       "created_at": "2026-09-15T22:16:07.935019550Z",
-      "modified_at": "2026-09-15T22:16:07.935019550Z"
+      "modified_at": "2026-09-15T22:23:23.562442132Z"
     },
     {
       "id": "01a0a723-e81e-70b2-9126-2fce2433842f",
@@ -117,16 +117,16 @@
     {
       "id": "01a0a723-e845-73e2-b2e7-a22b4bcd17b2",
       "slug": "reference/docs/efficiency-audit",
-      "version": 4,
+      "version": 6,
       "doc_type": "reference",
       "title": "docs/efficiency-audit.md",
-      "content": "Source: `docs/efficiency-audit.md`\n\n# Efficiency audit — 2026-09-15\n\nSource baseline: `200b0c6`. The original opportunity assessment follows; implementation results are recorded\nat the end of this document. Measurements below use local builds and synthetic\ndata, not personal server logs or physical battery measurements.\n\n## Recommended order\n\n| Priority | Opportunity | Expected benefit | Scope |\n| --- | --- | --- | --- |\n| 1 | Remove write-only native element fields | 2,496 bytes less permanent watch heap; fewer copies | Small |\n| 1 | Remove unused icons and exclude other-platform artwork | 4,180 / 6,056 bytes less resource data on Emery / Gabbro; six fewer bitmap allocations | Small |\n| 1 | Bound opened phone job history | Stop unbounded retained results and whole-history save growth | Medium; preserve acknowledgment/replay |\n| 1 | Commit collection receipts as one batch | Up to 20 full journal writes become one per response | Medium; preserve durability |\n| 2 | Adapt idle polling and share dashboard status work | Fewer HTTP/Bluetooth requests and server RPCs | Medium |\n| 2 | Store immutable snapshot rows with bounded page reads | Avoid decoding all summaries to return eight records | Medium |\n| 2 | Remove bridge dead state and separate request serialization | Less JS allocation, bundle code, and maintenance | Small/medium |\n| 3 | Avoid redrawing static dashboard artwork during animation | Fewer resource reads, allocations, and drawing calls | Measure target rendering first |\n\n## 1. Remove write-only element fields\n\n[AgentUiElement](../src/c/agent_ui.c#L53) stores `kind_name[16]`,\n`parent_id[32]`, and `index` for each of 48 slots. Source references only declare\nand assign these fields; rendering uses `kind`, array order, and other fields.\nThey are not persisted. Keep the incoming protocol fields accepted; remove the\nunused retained copies and assignments.\n\nGDB inspection of the Emery ELF: `sizeof(AgentUi) = 42888`,\n`sizeof(AgentUiElement) = 868`, and the element array occupies 41,664 bytes.\nThe unused fields total 52 bytes per slot, giving an expected **2,496-byte**\nheap reduction before further redesign. Confirm the resulting struct layout on\nboth targets. Most remaining memory is bounded text storage; consider a string\npool only after measuring actual occupancy and accounting for patch/append\ncapacity, fragmentation, and allocation failures.\n\nAcceptance: remove only unread retained state; preserve add/patch/layout/input\nbehavior and 48-element capacity; build both targets and compare struct sizes.\nKB: `issues/remove-write-only-watch-fields`.\n\n## 2. Remove unused and wrong-platform image resources\n\n[Icon initialization](../src/c/agent_ui.c#L2109) allocates 13 bitmaps for the\nentire app lifetime. All calls to `prv_dashboard_icon` can select only indices\n0, 1, 2, 4, 8, 9, and 12. The six unused resources are `DASH_CHAT`,\n`DASH_TIMER`, `DASH_ALARM`, `DASH_BELL`, `DASH_BELL_SMALL`, and\n`DASH_TODOS_SMALL`. Their unique resource payloads total **820 bytes**.\n\n[package.json](../package.json) also includes both large Emery and Gabbro poses\nin each target. The renderer selects only its own platform's pair. Opposite\nplatform payloads occupy **3,360 bytes on Emery** and **5,236 on Gabbro**.\nTogether, these removals would reduce each 14,643-byte resource pack by\n**4,180 bytes (28.5%) / 6,056 bytes (41.4%)**. These are resource-pack savings,\nnot executable text savings or compressed PBW savings. Values come from actual\npack entries; `.reso` file sizes include serialization overhead and overstate\nthe savings. The pack's reserved table is fixed size.\n\nAcceptance: remove six unused loads/resources, scope large artwork to its\ntarget, verify both resource packs and dashboard/notification visuals, preserve\nall reachable icon roles, and measure heap before/after. Replace numeric icon\nindices with named roles while changing the table.\nKB: `issues/prune-watch-artwork`.\n\n## 3. Bound retained phone jobs\n\n[Jobs.acknowledge](../src/common/jobs.js#L131) marks a job opened but retains\nits result, request body, and command bookkeeping forever. `save()` serializes\nthe entire array; the 24-job submission limit only counts unopened jobs.\n[The bridge](../src/pkjs/index.js#L531) sends only unopened jobs to the watch.\n\nA fixture using the real `Jobs` class, in-memory storage, and a stubbed `http`\nmethod acknowledged 100 jobs with 16 KiB results. It retained **100 entries,\nzero unopened**, and **1,649,701 bytes per subsequent save**. This establishes\nunbounded storage/serialization growth; it is not a phone heap measurement.\n\nAcceptance: bound opened history and remove unnecessary large payloads after\nsafe handoff; retain pending acknowledgment retries and minimal replay identity\nas needed. Verify late long-wait responses, duplicate retrieval, restart,\nfailed local writes, failed server acknowledgments, command idempotency, and\n24 genuinely pending jobs. Do not delete unacknowledged results indiscriminately.\nKB: `issues/bound-opened-phone-jobs`.\n\n## 4. Batch durable journal receipts\n\n[Client.drain and recover](../src/common/collections/client.js#L19) loop over\nresults and call [Journal.receipt](../src/common/collections/journal.js#L24)\nseparately. Every call clones, serializes, checksums, writes, reads back, and\nvalidates the whole journal. Even unknown or nondurable receipts currently\nenter that write path.\n\nA real-Journal fixture with 20 pending notes, each with a 1 KiB body, then 20\ndurable applied receipts produced **20 storage writes / 2,072,804 UTF-8 bytes**\nof serialized envelopes. Final logical journal length was 100,743 characters.\nLocal Node processing took approximately 40 ms; storage was an in-memory mock.\n\nAcceptance: one verified two-slot commit for a changed response batch; zero\nwrites for an unchanged batch. Share this path between drain and recovery.\nPreserve operation dependencies, replay receipts, mixed results, quota failure,\nwrite/readback failure, and crash recovery. Measure writes/bytes per batch.\nKB: `issues/batch-collection-journal-receipts`.\n\n## 5. Reduce idle polling and repeated status scans\n\n[syncCollections](../src/pkjs/index.js#L43) calls `connect` every minute, which\nrequests sync identity and collection metadata: **120 HTTP requests/hour**\nwhile that loop runs successfully, before mutations. Count suppression already\navoids unchanged count messages, but does not avoid those requests.\n\n[The capability clock](../src/c/agent_capabilities.c#L63) also emits a status\nrequest every minute even outside the dashboard. Each\n[DashboardStatus](../internal/agent/status.go#L42) call requests quota, lists\nloaded threads, and reads each thread's status separately. With 100 loaded\nthreads in one page, that is **102 sequential RPCs per successful refresh**,\nwith complete RPC logging on the server. These are source-derived counts.\n\n[The provider engine](../internal/collectionsync/engine.go#L35) pulls all\nbindings each minute and after a wake. Google Tasks and Nextcloud enumerate\ntheir selected collections; CalDAV requests the full agenda window. Todoist\nalready uses a checkpoint, so avoid applying a blanket full-scan diagnosis.\n\nAcceptance: measure idle requests/bytes and RPC latency; add bounded freshness,\nbackoff, and shared in-flight status results; investigate provider incremental\nsupport before choosing APIs. Preserve immediate mutation upload, explicit\nrefresh, external thread visibility, identity checks/quarantine, date-window\nrollover, recurrence and safe deletion reconciliation. Verify disconnect,\nreconnect, changed credentials, and stale responses. Physical power measurement\nis needed to quantify battery improvement.\nKB: existing `issues/incremental-collection-refresh`, plus\n`issues/reduce-dashboard-status-scan-work`.\n\n## 6. Bound snapshot pagination work\n\n[snapshot](../internal/collectionstore/reads.go#L84) reads every record's JSON,\nprojects summaries, filters in Go, and persists one JSON array.\n[SnapshotPage](../internal/collectionstore/reads.go#L157) reloads and decodes\nthat entire array before slicing out a page. Paging all N records in groups of\neight therefore decodes roughly N × ceil(N/8) summaries.\n\nThe existing 100-note fixture (approximately 67 KiB per body), ten iterations,\nmeasured **15.48 ms / 268,221 allocated bytes per snapshot**. Indexed collection\ncounts already cost only **0.053 ms / 4,588 bytes**; they are not the priority.\nAlthough SQL removes bodies from output, it still processes the source JSON.\n\nAcceptance: retain small indexed summaries and store immutable snapshot rows\nby position, enabling bounded page queries. Preserve exact totals, stable\npagination across edits/deletion, cursor scope/expiry, chronological calendar\norder, timezone semantics, and complete canonical bodies. Benchmark first and\nlater pages at 100, 1,000, and 10,000 records. Do not substitute pagination over\nmutable current rows for immutable snapshots.\nKB: `issues/bound-collection-snapshot-page-cost`.\n\n## 7. Simplify the phone bridge and JS dependency graph\n\nIn [src/pkjs/index.js](../src/pkjs/index.js), `sendNoteMessage` has no callers;\n`activePipeline` is assigned but never read; the instantiated `AgentClient`\nonly receives `abort()` calls and never sends anything. Remote work uses\n`jobManager.submit`. `requestAgent` still builds a parser/model pipeline before\ndetermining whether input is local, allocating an unused pipeline for remote\njobs and retaining it through `activePipeline`.\n\n[jobs.js](../src/common/jobs.js#L4) imports `buildRequest` from the whole\n236-line transport module. Extract the shared request serializer so the watch\nbridge does not pull HTTP/WebSocket transport implementations into its bundle.\nThe transport remains exported by [the library](../src/common/index.js#L9) and\nhas tests; it is not globally dead code.\n\nAcceptance: remove bridge-only dead code/state, allocate pipelines where used,\nshare the request serializer, preserve the public library and transport tests,\nand compare generated JS size and local/remote dispatch behavior. Avoid replacing\nclear code with compressed one-line implementations to claim LOC savings.\nKB: `issues/simplify-phone-bridge-dependencies`.\n\n## 8. Reduce dashboard work during request animation\n\n[prv_activity_tick](../src/c/agent_ui.c#L2279) marks the full content layer dirty\nevery 30 ms for a short 20-frame animation. Each dashboard repaint invokes\n[prv_dashboard_codey](../src/c/agent_ui.c#L910), which allocates a row bitmap,\nreads the image header and palette, and reads/draws every image row.\nCurrent large artwork has 74 rows on Emery and 59 on Gabbro: **76 / 61 resource\nAPI reads per full dashboard paint**, or approximately **1,520 / 1,220** over\n20 paints. These count API calls, not physical flash transactions.\n\nAcceptance: instrument real repaint counts and CPU time; evaluate an overlay\nor bounded artwork cache with verified invalidation and heap headroom. Keep the\nshort animation, visual correctness, platform poses, and low-memory fallback.\nDo not assume a separate layer automatically avoids background redraws on the\nSDK. Cache only if measurements justify its retained memory cost.\nKB: `issues/reduce-dashboard-animation-redraw-cost`.\n\n## Validation and existing optimizations\n\n- `pebble build` passes for Emery and Gabbro. Executable binaries are 61,448 /\n  61,960 bytes; resource packs are 14,643 bytes each; generated JS is 127,857 bytes.\n- ELF text/data/BSS: Emery 60,710 / 424 / 740 bytes; Gabbro 61,222 / 424 / 740.\n  Heap allocations, including `AgentUi`, are additional to BSS.\n- `go test ./internal/collectionstore -run '^$' -bench\n  'Benchmark(CollectionCounts|NoteSnapshot)$' -benchtime=10x -benchmem` passes.\n- A server release-style build with `CGO_ENABLED=0`, `-trimpath`, and\n  `-ldflags='-s -w'` passes. Release CI already uses these size flags; stripping\n  is not a new opportunity. Watch builds already use `-Os` and section GC.\n- Existing minute redraw coalescing, bounded job long-waits, indexed counts,\n  summary-only collection responses, and unchanged preview/count suppression\n  should be preserved.\n- No emulator was started or used. Battery percentages and production CPU/RSS\n  reductions remain unmeasured. No runtime behavior changed, so this audit ran\n  builds, focused existing benchmarks, and synthetic probes rather than a full\n  behavioral regression suite.\n\n## Implementation results\n\n- **remove-write-only-watch-fields**: Removed three unread retained fields and their copies without changing protocol acceptance or capacity. Both watch builds and all nine native ASan/UBSan suites pass. On both targets AgentUi shrank from 42,888 to 40,392 bytes (2,496 bytes saved), and executable text/data shrank by 60 bytes.\n\n- **prune-watch-artwork**: Removed six unused bitmap loads and resource entries, introduced named icon roles, and limited each large pose pair to its target. Both SDK builds pass; pack inspection confirms nine resources per target and no opposite-platform artwork. Emery resources are 10,463 bytes (-4,180); Gabbro 8,587 (-6,056); executable footprint saves another 64 bytes per target, with six fewer bitmap allocations and 24 fewer pointer bytes. Final rendering verification is combined with the animation change.\n\n- **bound-opened-phone-jobs**: Opened jobs now durably replace delivered payloads with small acknowledgment receipts; successful/expired acknowledgments remove them, and reconnect/pane-open/submission retries preserve failed acknowledgments. A bounded receipt backlog prevents indefinite growth. Fixed terminal-result persistence rollback as well. 96 phone tests pass, including late responses, duplicate acknowledgment, restart, failed receipt/cleanup writes, 100 x 16 KiB results ending in a two-byte empty history, and the 24-pending-job limit.\n",
+      "content": "Source: `docs/efficiency-audit.md`\n\n# Efficiency audit — 2026-09-15\n\nSource baseline: `200b0c6`. The original opportunity assessment follows; implementation results are recorded\nat the end of this document. Measurements below use local builds and synthetic\ndata, not personal server logs or physical battery measurements.\n\n## Recommended order\n\n| Priority | Opportunity | Expected benefit | Scope |\n| --- | --- | --- | --- |\n| 1 | Remove write-only native element fields | 2,496 bytes less permanent watch heap; fewer copies | Small |\n| 1 | Remove unused icons and exclude other-platform artwork | 4,180 / 6,056 bytes less resource data on Emery / Gabbro; six fewer bitmap allocations | Small |\n| 1 | Bound opened phone job history | Stop unbounded retained results and whole-history save growth | Medium; preserve acknowledgment/replay |\n| 1 | Commit collection receipts as one batch | Up to 20 full journal writes become one per response | Medium; preserve durability |\n| 2 | Adapt idle polling and share dashboard status work | Fewer HTTP/Bluetooth requests and server RPCs | Medium |\n| 2 | Store immutable snapshot rows with bounded page reads | Avoid decoding all summaries to return eight records | Medium |\n| 2 | Remove bridge dead state and separate request serialization | Less JS allocation, bundle code, and maintenance | Small/medium |\n| 3 | Avoid redrawing static dashboard artwork during animation | Fewer resource reads, allocations, and drawing calls | Measure target rendering first |\n\n## 1. Remove write-only element fields\n\n[AgentUiElement](../src/c/agent_ui.c#L53) stores `kind_name[16]`,\n`parent_id[32]`, and `index` for each of 48 slots. Source references only declare\nand assign these fields; rendering uses `kind`, array order, and other fields.\nThey are not persisted. Keep the incoming protocol fields accepted; remove the\nunused retained copies and assignments.\n\nGDB inspection of the Emery ELF: `sizeof(AgentUi) = 42888`,\n`sizeof(AgentUiElement) = 868`, and the element array occupies 41,664 bytes.\nThe unused fields total 52 bytes per slot, giving an expected **2,496-byte**\nheap reduction before further redesign. Confirm the resulting struct layout on\nboth targets. Most remaining memory is bounded text storage; consider a string\npool only after measuring actual occupancy and accounting for patch/append\ncapacity, fragmentation, and allocation failures.\n\nAcceptance: remove only unread retained state; preserve add/patch/layout/input\nbehavior and 48-element capacity; build both targets and compare struct sizes.\nKB: `issues/remove-write-only-watch-fields`.\n\n## 2. Remove unused and wrong-platform image resources\n\n[Icon initialization](../src/c/agent_ui.c#L2109) allocates 13 bitmaps for the\nentire app lifetime. All calls to `prv_dashboard_icon` can select only indices\n0, 1, 2, 4, 8, 9, and 12. The six unused resources are `DASH_CHAT`,\n`DASH_TIMER`, `DASH_ALARM`, `DASH_BELL`, `DASH_BELL_SMALL`, and\n`DASH_TODOS_SMALL`. Their unique resource payloads total **820 bytes**.\n\n[package.json](../package.json) also includes both large Emery and Gabbro poses\nin each target. The renderer selects only its own platform's pair. Opposite\nplatform payloads occupy **3,360 bytes on Emery** and **5,236 on Gabbro**.\nTogether, these removals would reduce each 14,643-byte resource pack by\n**4,180 bytes (28.5%) / 6,056 bytes (41.4%)**. These are resource-pack savings,\nnot executable text savings or compressed PBW savings. Values come from actual\npack entries; `.reso` file sizes include serialization overhead and overstate\nthe savings. The pack's reserved table is fixed size.\n\nAcceptance: remove six unused loads/resources, scope large artwork to its\ntarget, verify both resource packs and dashboard/notification visuals, preserve\nall reachable icon roles, and measure heap before/after. Replace numeric icon\nindices with named roles while changing the table.\nKB: `issues/prune-watch-artwork`.\n\n## 3. Bound retained phone jobs\n\n[Jobs.acknowledge](../src/common/jobs.js#L131) marks a job opened but retains\nits result, request body, and command bookkeeping forever. `save()` serializes\nthe entire array; the 24-job submission limit only counts unopened jobs.\n[The bridge](../src/pkjs/index.js#L531) sends only unopened jobs to the watch.\n\nA fixture using the real `Jobs` class, in-memory storage, and a stubbed `http`\nmethod acknowledged 100 jobs with 16 KiB results. It retained **100 entries,\nzero unopened**, and **1,649,701 bytes per subsequent save**. This establishes\nunbounded storage/serialization growth; it is not a phone heap measurement.\n\nAcceptance: bound opened history and remove unnecessary large payloads after\nsafe handoff; retain pending acknowledgment retries and minimal replay identity\nas needed. Verify late long-wait responses, duplicate retrieval, restart,\nfailed local writes, failed server acknowledgments, command idempotency, and\n24 genuinely pending jobs. Do not delete unacknowledged results indiscriminately.\nKB: `issues/bound-opened-phone-jobs`.\n\n## 4. Batch durable journal receipts\n\n[Client.drain and recover](../src/common/collections/client.js#L19) loop over\nresults and call [Journal.receipt](../src/common/collections/journal.js#L24)\nseparately. Every call clones, serializes, checksums, writes, reads back, and\nvalidates the whole journal. Even unknown or nondurable receipts currently\nenter that write path.\n\nA real-Journal fixture with 20 pending notes, each with a 1 KiB body, then 20\ndurable applied receipts produced **20 storage writes / 2,072,804 UTF-8 bytes**\nof serialized envelopes. Final logical journal length was 100,743 characters.\nLocal Node processing took approximately 40 ms; storage was an in-memory mock.\n\nAcceptance: one verified two-slot commit for a changed response batch; zero\nwrites for an unchanged batch. Share this path between drain and recovery.\nPreserve operation dependencies, replay receipts, mixed results, quota failure,\nwrite/readback failure, and crash recovery. Measure writes/bytes per batch.\nKB: `issues/batch-collection-journal-receipts`.\n\n## 5. Reduce idle polling and repeated status scans\n\n[syncCollections](../src/pkjs/index.js#L43) calls `connect` every minute, which\nrequests sync identity and collection metadata: **120 HTTP requests/hour**\nwhile that loop runs successfully, before mutations. Count suppression already\navoids unchanged count messages, but does not avoid those requests.\n\n[The capability clock](../src/c/agent_capabilities.c#L63) also emits a status\nrequest every minute even outside the dashboard. Each\n[DashboardStatus](../internal/agent/status.go#L42) call requests quota, lists\nloaded threads, and reads each thread's status separately. With 100 loaded\nthreads in one page, that is **102 sequential RPCs per successful refresh**,\nwith complete RPC logging on the server. These are source-derived counts.\n\n[The provider engine](../internal/collectionsync/engine.go#L35) pulls all\nbindings each minute and after a wake. Google Tasks and Nextcloud enumerate\ntheir selected collections; CalDAV requests the full agenda window. Todoist\nalready uses a checkpoint, so avoid applying a blanket full-scan diagnosis.\n\nAcceptance: measure idle requests/bytes and RPC latency; add bounded freshness,\nbackoff, and shared in-flight status results; investigate provider incremental\nsupport before choosing APIs. Preserve immediate mutation upload, explicit\nrefresh, external thread visibility, identity checks/quarantine, date-window\nrollover, recurrence and safe deletion reconciliation. Verify disconnect,\nreconnect, changed credentials, and stale responses. Physical power measurement\nis needed to quantify battery improvement.\nKB: existing `issues/incremental-collection-refresh`, plus\n`issues/reduce-dashboard-status-scan-work`.\n\n## 6. Bound snapshot pagination work\n\n[snapshot](../internal/collectionstore/reads.go#L84) reads every record's JSON,\nprojects summaries, filters in Go, and persists one JSON array.\n[SnapshotPage](../internal/collectionstore/reads.go#L157) reloads and decodes\nthat entire array before slicing out a page. Paging all N records in groups of\neight therefore decodes roughly N × ceil(N/8) summaries.\n\nThe existing 100-note fixture (approximately 67 KiB per body), ten iterations,\nmeasured **15.48 ms / 268,221 allocated bytes per snapshot**. Indexed collection\ncounts already cost only **0.053 ms / 4,588 bytes**; they are not the priority.\nAlthough SQL removes bodies from output, it still processes the source JSON.\n\nAcceptance: retain small indexed summaries and store immutable snapshot rows\nby position, enabling bounded page queries. Preserve exact totals, stable\npagination across edits/deletion, cursor scope/expiry, chronological calendar\norder, timezone semantics, and complete canonical bodies. Benchmark first and\nlater pages at 100, 1,000, and 10,000 records. Do not substitute pagination over\nmutable current rows for immutable snapshots.\nKB: `issues/bound-collection-snapshot-page-cost`.\n\n## 7. Simplify the phone bridge and JS dependency graph\n\nIn [src/pkjs/index.js](../src/pkjs/index.js), `sendNoteMessage` has no callers;\n`activePipeline` is assigned but never read; the instantiated `AgentClient`\nonly receives `abort()` calls and never sends anything. Remote work uses\n`jobManager.submit`. `requestAgent` still builds a parser/model pipeline before\ndetermining whether input is local, allocating an unused pipeline for remote\njobs and retaining it through `activePipeline`.\n\n[jobs.js](../src/common/jobs.js#L4) imports `buildRequest` from the whole\n236-line transport module. Extract the shared request serializer so the watch\nbridge does not pull HTTP/WebSocket transport implementations into its bundle.\nThe transport remains exported by [the library](../src/common/index.js#L9) and\nhas tests; it is not globally dead code.\n\nAcceptance: remove bridge-only dead code/state, allocate pipelines where used,\nshare the request serializer, preserve the public library and transport tests,\nand compare generated JS size and local/remote dispatch behavior. Avoid replacing\nclear code with compressed one-line implementations to claim LOC savings.\nKB: `issues/simplify-phone-bridge-dependencies`.\n\n## 8. Reduce dashboard work during request animation\n\n[prv_activity_tick](../src/c/agent_ui.c#L2279) marks the full content layer dirty\nevery 30 ms for a short 20-frame animation. Each dashboard repaint invokes\n[prv_dashboard_codey](../src/c/agent_ui.c#L910), which allocates a row bitmap,\nreads the image header and palette, and reads/draws every image row.\nCurrent large artwork has 74 rows on Emery and 59 on Gabbro: **76 / 61 resource\nAPI reads per full dashboard paint**, or approximately **1,520 / 1,220** over\n20 paints. These count API calls, not physical flash transactions.\n\nAcceptance: instrument real repaint counts and CPU time; evaluate an overlay\nor bounded artwork cache with verified invalidation and heap headroom. Keep the\nshort animation, visual correctness, platform poses, and low-memory fallback.\nDo not assume a separate layer automatically avoids background redraws on the\nSDK. Cache only if measurements justify its retained memory cost.\nKB: `issues/reduce-dashboard-animation-redraw-cost`.\n\n## Validation and existing optimizations\n\n- `pebble build` passes for Emery and Gabbro. Executable binaries are 61,448 /\n  61,960 bytes; resource packs are 14,643 bytes each; generated JS is 127,857 bytes.\n- ELF text/data/BSS: Emery 60,710 / 424 / 740 bytes; Gabbro 61,222 / 424 / 740.\n  Heap allocations, including `AgentUi`, are additional to BSS.\n- `go test ./internal/collectionstore -run '^$' -bench\n  'Benchmark(CollectionCounts|NoteSnapshot)$' -benchtime=10x -benchmem` passes.\n- A server release-style build with `CGO_ENABLED=0`, `-trimpath`, and\n  `-ldflags='-s -w'` passes. Release CI already uses these size flags; stripping\n  is not a new opportunity. Watch builds already use `-Os` and section GC.\n- Existing minute redraw coalescing, bounded job long-waits, indexed counts,\n  summary-only collection responses, and unchanged preview/count suppression\n  should be preserved.\n- No emulator was started or used. Battery percentages and production CPU/RSS\n  reductions remain unmeasured. No runtime behavior changed, so this audit ran\n  builds, focused existing benchmarks, and synthetic probes rather than a full\n  behavioral regression suite.\n\n## Implementation results\n\n- **remove-write-only-watch-fields**: Removed three unread retained fields and their copies without changing protocol acceptance or capacity. Both watch builds and all nine native ASan/UBSan suites pass. On both targets AgentUi shrank from 42,888 to 40,392 bytes (2,496 bytes saved), and executable text/data shrank by 60 bytes.\n\n- **prune-watch-artwork**: Removed six unused bitmap loads and resource entries, introduced named icon roles, and limited each large pose pair to its target. Both SDK builds pass; pack inspection confirms nine resources per target and no opposite-platform artwork. Emery resources are 10,463 bytes (-4,180); Gabbro 8,587 (-6,056); executable footprint saves another 64 bytes per target, with six fewer bitmap allocations and 24 fewer pointer bytes. Final rendering verification is combined with the animation change.\n\n- **bound-opened-phone-jobs**: Opened jobs now durably replace delivered payloads with small acknowledgment receipts; successful/expired acknowledgments remove them, and reconnect/pane-open/submission retries preserve failed acknowledgments. A bounded receipt backlog prevents indefinite growth. Fixed terminal-result persistence rollback as well. 96 phone tests pass, including late responses, duplicate acknowledgment, restart, failed receipt/cleanup writes, 100 x 16 KiB results ending in a two-byte empty history, and the 24-pending-job limit.\n\n- **batch-collection-journal-receipts**: Drain and recovery now share one batch receipt transaction, cloning/writing only changed durable known receipts. The original 20-note fixture now writes one envelope (104,750 bytes) instead of 20 (2,072,804 bytes), a 94.9% reduction. Collection tests and all 96 phone tests pass, including mixed durable/nondurable results, failure preserving the old journal, restart, unknown/no-op receipts, and retained replay metadata.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium"
       },
       "created_at": "2026-09-15T22:16:07.935019550Z",
-      "modified_at": "2026-09-15T22:21:59.073571971Z"
+      "modified_at": "2026-09-15T22:23:23.562442132Z"
     },
     {
       "id": "01a0a714-2780-7d21-8f54-b87646dd7c2c",
@@ -1129,6 +1129,207 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a0a72a-ee46-73b3-9591-b14f5dde5940",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Correct measured journal envelope size",
+      "created_at": "2026-09-15T22:23:23.562442132Z",
+      "changes": [
+        {
+          "document_id": "01a0a723-e802-7400-9d5c-d99b90f3fb4d",
+          "slug": "issues/batch-collection-journal-receipts",
+          "change_type": "modified",
+          "previous_commit_id": "01a0a72a-c0b2-7231-8c39-711adc19b054",
+          "previous_version": 2,
+          "new_version": 3,
+          "hunks": [
+            {
+              "old_start": 17,
+              "old_count": 4,
+              "new_start": 17,
+              "new_count": 4,
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "write/readback failure, and crash recovery. Measure writes/bytes per batch."
+                },
+                {
+                  "op": "context",
+                  "content": "KB: `issues/batch-collection-journal-receipts`."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "delete",
+                  "content": "Implemented and validated: Drain and recovery now share one batch receipt transaction, cloning/writing only changed durable known receipts. The original 20-note fixture now writes one envelope (104,933 bytes) instead of 20 (2,072,804 bytes), a 94.9% reduction. Collection tests and all 96 phone tests pass, including mixed durable/nondurable results, failure preserving the old journal, restart, unknown/no-op receipts, and retained replay metadata."
+                },
+                {
+                  "op": "add",
+                  "content": "Implemented and validated: Drain and recovery now share one batch receipt transaction, cloning/writing only changed durable known receipts. The original 20-note fixture now writes one envelope (104,750 bytes) instead of 20 (2,072,804 bytes), a 94.9% reduction. Collection tests and all 96 phone tests pass, including mixed durable/nondurable results, failure preserving the old journal, restart, unknown/no-op receipts, and retained replay metadata."
+                }
+              ]
+            }
+          ],
+          "content_hash": "491136a11b1a05b433ff3f4191287aa92d903d8d494933f341669243f3cffd24",
+          "previous_hash": "4f4540cc46e568cdadab10f56123ba370a8fccc0af95fec88c8a7c78701e24fa",
+          "doc_type": "task",
+          "title": "Commit collection receipt batches with one verified journal write"
+        },
+        {
+          "document_id": "01a0a723-e845-73e2-b2e7-a22b4bcd17b2",
+          "slug": "reference/docs/efficiency-audit",
+          "change_type": "modified",
+          "previous_commit_id": "01a0a72a-c0b2-7231-8c39-711adc19b054",
+          "previous_version": 5,
+          "new_version": 6,
+          "hunks": [
+            {
+              "old_start": 215,
+              "old_count": 4,
+              "new_start": 215,
+              "new_count": 4,
+              "context": "## Implementation results",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "- **bound-opened-phone-jobs**: Opened jobs now durably replace delivered payloads with small acknowledgment receipts; successful/expired acknowledgments remove them, and reconnect/pane-open/submission retries preserve failed acknowledgments. A bounded receipt backlog prevents indefinite growth. Fixed terminal-result persistence rollback as well. 96 phone tests pass, including late responses, duplicate acknowledgment, restart, failed receipt/cleanup writes, 100 x 16 KiB results ending in a two-byte empty history, and the 24-pending-job limit."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "delete",
+                  "content": "- **batch-collection-journal-receipts**: Drain and recovery now share one batch receipt transaction, cloning/writing only changed durable known receipts. The original 20-note fixture now writes one envelope (104,933 bytes) instead of 20 (2,072,804 bytes), a 94.9% reduction. Collection tests and all 96 phone tests pass, including mixed durable/nondurable results, failure preserving the old journal, restart, unknown/no-op receipts, and retained replay metadata."
+                },
+                {
+                  "op": "add",
+                  "content": "- **batch-collection-journal-receipts**: Drain and recovery now share one batch receipt transaction, cloning/writing only changed durable known receipts. The original 20-note fixture now writes one envelope (104,750 bytes) instead of 20 (2,072,804 bytes), a 94.9% reduction. Collection tests and all 96 phone tests pass, including mixed durable/nondurable results, failure preserving the old journal, restart, unknown/no-op receipts, and retained replay metadata."
+                }
+              ]
+            }
+          ],
+          "content_hash": "b80776b3f6e02a4f48a0a332609a4b50874b66c3f7bb3779a3834efbe02dd423",
+          "previous_hash": "1f976f28d0c42ef44aef3e90cd0dc35007da11f08302d4f14a505fe597544475",
+          "doc_type": "reference",
+          "title": "docs/efficiency-audit.md"
+        }
+      ]
+    },
+    {
+      "id": "01a0a72a-c0b2-7231-8c39-711adc19b054",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Complete batch-collection-journal-receipts",
+      "created_at": "2026-09-15T22:23:11.895055844Z",
+      "changes": [
+        {
+          "document_id": "01a0a723-e802-7400-9d5c-d99b90f3fb4d",
+          "slug": "issues/batch-collection-journal-receipts",
+          "change_type": "modified",
+          "previous_commit_id": "01a0a724-48b5-79d2-9951-5da9c8c760a0",
+          "previous_version": 1,
+          "new_version": 2,
+          "hunks": [
+            {
+              "old_start": 15,
+              "old_count": 4,
+              "new_start": 15,
+              "new_count": 6,
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "writes for an unchanged batch. Share this path between drain and recovery."
+                },
+                {
+                  "op": "context",
+                  "content": "Preserve operation dependencies, replay receipts, mixed results, quota failure,"
+                },
+                {
+                  "op": "context",
+                  "content": "write/readback failure, and crash recovery. Measure writes/bytes per batch."
+                },
+                {
+                  "op": "delete",
+                  "content": "KB: `issues/batch-collection-journal-receipts`."
+                },
+                {
+                  "op": "add",
+                  "content": "KB: `issues/batch-collection-journal-receipts`."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Implemented and validated: Drain and recovery now share one batch receipt transaction, cloning/writing only changed durable known receipts. The original 20-note fixture now writes one envelope (104,933 bytes) instead of 20 (2,072,804 bytes), a 94.9% reduction. Collection tests and all 96 phone tests pass, including mixed durable/nondurable results, failure preserving the old journal, restart, unknown/no-op receipts, and retained replay metadata."
+                }
+              ]
+            }
+          ],
+          "metadata_changes": [
+            {
+              "field": "status",
+              "old_value": "draft",
+              "new_value": "completed"
+            }
+          ],
+          "content_hash": "4f4540cc46e568cdadab10f56123ba370a8fccc0af95fec88c8a7c78701e24fa",
+          "previous_hash": "b8e30080902bbfa94f175238756d08d4d233085b72ed89552489884c8613f176",
+          "doc_type": "task",
+          "title": "Commit collection receipt batches with one verified journal write"
+        },
+        {
+          "document_id": "01a0a723-e845-73e2-b2e7-a22b4bcd17b2",
+          "slug": "reference/docs/efficiency-audit",
+          "change_type": "modified",
+          "previous_commit_id": "01a0a729-a444-7533-9d3e-a2b07eeb4770",
+          "previous_version": 4,
+          "new_version": 5,
+          "hunks": [
+            {
+              "old_start": 214,
+              "old_count": 3,
+              "new_start": 214,
+              "new_count": 5,
+              "context": "## Implementation results",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "- **prune-watch-artwork**: Removed six unused bitmap loads and resource entries, introduced named icon roles, and limited each large pose pair to its target. Both SDK builds pass; pack inspection confirms nine resources per target and no opposite-platform artwork. Emery resources are 10,463 bytes (-4,180); Gabbro 8,587 (-6,056); executable footprint saves another 64 bytes per target, with six fewer bitmap allocations and 24 fewer pointer bytes. Final rendering verification is combined with the animation change."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "- **bound-opened-phone-jobs**: Opened jobs now durably replace delivered payloads with small acknowledgment receipts; successful/expired acknowledgments remove them, and reconnect/pane-open/submission retries preserve failed acknowledgments. A bounded receipt backlog prevents indefinite growth. Fixed terminal-result persistence rollback as well. 96 phone tests pass, including late responses, duplicate acknowledgment, restart, failed receipt/cleanup writes, 100 x 16 KiB results ending in a two-byte empty history, and the 24-pending-job limit."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "- **batch-collection-journal-receipts**: Drain and recovery now share one batch receipt transaction, cloning/writing only changed durable known receipts. The original 20-note fixture now writes one envelope (104,933 bytes) instead of 20 (2,072,804 bytes), a 94.9% reduction. Collection tests and all 96 phone tests pass, including mixed durable/nondurable results, failure preserving the old journal, restart, unknown/no-op receipts, and retained replay metadata."
+                }
+              ]
+            }
+          ],
+          "content_hash": "1f976f28d0c42ef44aef3e90cd0dc35007da11f08302d4f14a505fe597544475",
+          "previous_hash": "6de88f2e86c2f7e875bf26b5b186084b6f66256feb62363729ec7f0a07a68a82",
+          "doc_type": "reference",
+          "title": "docs/efficiency-audit.md"
+        }
+      ]
+    },
     {
       "id": "01a0a729-a444-7533-9d3e-a2b07eeb4770",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

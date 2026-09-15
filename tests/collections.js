@@ -3,10 +3,38 @@ var assert=require("assert"),J=require("../src/common/collections/journal"),Clie
 function storage(){var values={},fail=false;return {values:values,getItem:function(k){return values[k]||null;},setItem:function(k,v){if(fail)throw new Error("disk full");values[k]=v;},removeItem:function(k){delete values[k];},fail:function(v){fail=v;}};}
 function enrolled(){var s=storage(),j=new J.Journal(s);j.enroll({client_id:"client_a",server_instance_id:"server_a",store_epoch:"epoch_a"});j.bridge("bridge_a");return {s:s,j:j};}
 function input(seq){return {ingress:"watch:bridge_a:"+seq,collection_id:"col_note",generation:"1",type:"note.create",payload:{title:"Unicode",body:"José 🌙 ".repeat(100)}};}
+(function batchReceiptsAreAtomicAndSkipNoops(){
+ var f=enrolled(),results=[];
+ for(var i=0;i<20;i++){
+  var op=f.j.accept(input(i));results.push({operation_id:op.id,durably_recorded:true,outcome:i%2?"applied":"conflict",revision:"1"});
+ }
+ var writes=0,bytes=0,save=f.s.setItem;
+ f.s.setItem=function(k,v){writes++;bytes+=Buffer.byteLength(v);save(k,v);};
+ results.push({operation_id:"unknown",durably_recorded:true});
+ f.s.fail(true);assert.throws(function(){f.j.receipts(results);},/disk full/);
+ assert.ok(f.j.data.entries.every(function(e){return !e.receipt;}));
+ assert.ok(new J.Journal(f.s).data.entries.every(function(e){return !e.receipt;}));
+ f.s.fail(false);writes=bytes=0;f.j.receipts(results);
+ assert.strictEqual(writes,1);assert.ok(bytes<140000);
+ var restored=new J.Journal(f.s);assert.strictEqual(restored.generation,f.j.generation);
+ assert.ok(restored.data.entries.every(function(e){return e.receipt&&restored.data.receipts[e.operation.ingress_id].durable;}));
+ var generation=f.j.generation;
+ f.j.receipts(results);f.j.receipts([{operation_id:results[0].operation_id,durably_recorded:false}]);
+ f.j.receipts([{operation_id:"unknown",durably_recorded:true}]);
+ assert.strictEqual(f.j.generation,generation);assert.strictEqual(writes,1);
+ results[0].revision="changed";assert.strictEqual(f.j.data.entries[0].receipt.revision,"1");
+})();
+(function drainUsesOneVerifiedBatchAndPreservesPendingResults(){
+ var f=enrolled(),client=new Client({storage:f.s}),one=client.journal.accept(input(1)),two=client.journal.accept(input(2));
+ client.request=function(m,p,b,done){done(null,{results:[{operation_id:one.id,durably_recorded:true,outcome:"applied"},{operation_id:two.id,durably_recorded:false}]});};
+ var before=client.journal.generation;
+ client.drain(function(e){assert.ifError(e);});assert.strictEqual(client.journal.generation,before+1);
+ assert.ok(client.journal.data.entries[0].receipt);assert.ok(!client.journal.data.entries[1].receipt);
+})();
 (function durableHandoff(){var f=enrolled(),op=f.j.accept(input(1));assert.strictEqual(op.id,"op:client_a:1");var recovered=new J.Journal(f.s);assert.deepStrictEqual(recovered.accept(input(1)),op);assert.strictEqual(recovered.data.entries.length,1);var different=input(1);different.payload.body="other";assert.throws(function(){recovered.accept(different);},/reused/);f.s.fail(true);assert.throws(function(){recovered.accept(input(2));},/disk full/);f.s.fail(false);assert.strictEqual(new J.Journal(f.s).data.sequence,1);})();
 (function tornSlot(){var f=enrolled();f.j.accept(input(1));var previous=f.j.generation;f.s.values[J.PREFIX+(f.j.slot===0?1:0)]='{"schema":1,"generation":999,"payload":"torn"}';var j=new J.Journal(f.s);assert.strictEqual(j.generation,previous);assert.strictEqual(j.data.entries.length,1);})();
 (function dependentAndQuota(){var f=enrolled(),op=f.j.accept(input(1)),edit={ingress:"watch:bridge_a:2",collection_id:"col_note",generation:"1",record_id:op.record_id,type:"note.append",payload:{text:" more"}};var second=f.j.accept(edit);assert.strictEqual(second.base_operation_id,op.id);assert.strictEqual(second.base_revision,"");var j=new J.Journal(f.s,{maxOperations:2});assert.throws(function(){j.accept(input(3));},/full/);assert.strictEqual(new J.Journal(f.s).data.entries.length,2);})();
-(function staleSessionsAndOverlay(){var f=enrolled(),op=f.j.accept(input(1));f.j.receipt({operation_id:op.id,outcome:"applied",durably_recorded:true,revision:"1"});f.j.bridge("bridge_b");assert.throws(function(){f.j.accept(input(1));},/Stale/);var cache={pages:{},records:{}};var client=Object.create(Client.prototype);client.journal=f.j;client.cache=cache;f.j.update(function(d){d.bridge="bridge_a";});var next=f.j.accept(input(2));var page=client.project({records:[]},"note","active");assert.strictEqual(page.records[0].id,next.record_id);})();
+(function staleSessionsAndOverlay(){var f=enrolled(),op=f.j.accept(input(1));f.j.receipts([{operation_id:op.id,outcome:"applied",durably_recorded:true,revision:"1"}]);f.j.bridge("bridge_b");assert.throws(function(){f.j.accept(input(1));},/Stale/);var cache={pages:{},records:{}};var client=Object.create(Client.prototype);client.journal=f.j;client.cache=cache;f.j.update(function(d){d.bridge="bridge_a";});var next=f.j.accept(input(2));var page=client.project({records:[]},"note","active");assert.strictEqual(page.records[0].id,next.record_id);})();
 (function viewAliases(){var client={list:function(kind,state,snapshot,cursor,done){done(null,{records:[{id:"canonical-id-that-never-fits-native",title:"A",revision:"1",capabilities:[]}],complete:true});}},views=new Views(client);var first;views.list("note","active","","",function(e,v){assert.ifError(e);first=v;});assert.strictEqual(views.resolve(first.token,"r0").record.revision,"1");views.list("note","active","","",function(){});assert.throws(function(){views.resolve(first.token,"r0");},/Stale/);})();
 console.log("✓ collection journal: durable recovery, torn slots, duplicate ingress, dependencies, quota, stale sessions, overlays, view aliases");
 
@@ -52,7 +80,7 @@ console.log("✓ collection journal: durable recovery, torn slots, duplicate ing
  f.j.compact({});assert.strictEqual(f.j.generation,before);
  var op=f.j.accept(input(1));before=f.j.generation;
  f.j.compact({});assert.strictEqual(f.j.generation,before);
- f.j.receipt({operation_id:op.id,outcome:"applied",durably_recorded:true,revision:"10"});before=f.j.generation;
+ f.j.receipts([{operation_id:op.id,outcome:"applied",durably_recorded:true,revision:"10"}]);before=f.j.generation;
  var records={};records[op.record_id]={revision:"9"};f.j.compact(records);assert.strictEqual(f.j.generation,before);
  records[op.record_id].revision="10";f.s.fail(true);assert.throws(function(){f.j.compact(records);},/disk full/);
  assert.strictEqual(f.j.data.entries.length,1);f.s.fail(false);f.j.compact(records);
