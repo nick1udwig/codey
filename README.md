@@ -126,10 +126,10 @@ Try “start a five-minute timer,” “remind me in an hour to check the oven,�
 Common commands run locally; other requests go to your agent.
 
 - **Up** opens Notifications, where you can check requests and open completed answers.
-- **Down** opens the selected collection. **Hold Down** opens **To Do / Notes / Calendar**.
-  Tap then hold the collection tile to open the same menu. The date tile also opens Calendar.
+- **Down** opens the selected collection. **Hold Down** opens **To Do / Notes**.
+  Tap then hold the collection tile to open the same menu. The top-left date tile opens Calendar.
 - **Hold Select** on the dashboard to choose **New Chat**; on other screens, it starts dictation.
-- **Back** returns home; pressing it again exits the app.
+- **Back** returns from a note or event to its list, then home; pressing it on home exits the app.
 - **Touch controls** default to two taps, with a water ripple on the first tap.
   Disable **Require double tap** for a single tap or hold. **First-tap ripple
   animation** can be toggled independently. Drag lists or text directly to scroll.

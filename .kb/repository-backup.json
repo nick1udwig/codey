@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "created_at": "2026-09-15T21:07:02.578766612+00:00",
+  "created_at": "2026-09-15T21:22:26.261049502+00:00",
   "documents": [
     {
       "id": "01a0a6e4-995b-7342-a080-8c8b3b64ae15",
@@ -930,10 +930,10 @@
     {
       "id": "01a091eb-4925-72e2-a4c7-6c4fc5b284e8",
       "slug": "reference/readme",
-      "version": 26,
+      "version": 27,
       "doc_type": "reference",
       "title": "README.md",
-      "content": "Source: `README.md`\n\n# codey\n\nA voice-driven assistant for **Pebble Time 2** and **Pebble Round 2**.\nSpeak to your watch and get answers as lists, cards, forms, and other interactive screens.\nTimers, alarms, reminders, todos, notes, calendars, and weather are built in.\n\ncodey includes a watchapp and a self-hosted service that uses your Codex login.\nYou run the service on your own computer or server.\nOther Pebble models are not currently supported.\n\n## Get started\n\nYou need a supported watch paired with the Pebble mobile app, an internet-connected phone, and a computer running an installed, signed-in Codex CLI under the same user account as the service.\n\n### Run the agent service\n\nInstall the service on Linux or Apple Silicon macOS:\n\n```sh\ncurl -fsSL https://github.com/nick1udwig/pebble-agent/releases/latest/download/install.sh | bash\n```\n\nOn Linux, the installer offers to start a systemd user service and saves its generated bearer token in `~/.config/codey/environment` (or under `$XDG_CONFIG_HOME`).\nOtherwise, it prints manual startup instructions.\n\nFor private access from your phone over Wi-Fi or cellular, follow the [Tailscale setup](docs/server.md#private-phone-access-with-tailscale).\nIt gives you an HTTPS endpoint while keeping the backend on `127.0.0.1:8787`.\nSee [server setup](docs/server.md) for networking, manual startup, and configuration.\n\n### Install and connect the watchapp\n\n1. Install the codey `.pbw` through the paired Pebble mobile app.\n   To build the bundle yourself, see [Development](#development).\n2. Open **codey** in the phone app's watchapp list and tap its settings gear.\n3. Enter your server base URL (for example, `https://YOUR-SERVER/codey`) and bearer token, then tap **Save & close**.\n4. Launch **codey** on the watch.\n   The dashboard should say **codey connected**.\n\nThe phone needs internet access to open the settings page.\nUse HTTPS or WSS; unencrypted connections are only suitable for trusted private development networks.\n\n## Backend sync setup\n\nNotes, to-dos, and calendars default to **Server only**: they are stored in `~/.codey/data`\nwithout an external account. Configure them independently in phone settings:\n\n| Collection | Choices | Authentication |\n| --- | --- | --- |\n| To-dos | Server only, Todoist, Google Tasks | None, Todoist API token, Google OAuth |\n| Notes | Server only, Nextcloud Notes | None, Nextcloud username and app password |\n| Calendar | Server only, CalDAV | None, calendar username and app password |\n\nSelect a service under **To-do sync setup**, **Notes sync setup**, or **Calendar sync setup**. Selecting\nNextcloud Notes reveals its HTTPS URL, username, and app-password fields in the\nsame settings page. Todoist reveals an API-token field. **Connect**, choose a\ndestination, **Preview connection**, then **Activate this destination**. Errors\nstay beside the fields; these buttons never save-and-close the Pebble webview.\nEach panel shows the current step out of four: connect account, choose destination,\nreview and activate, then active. The last step explains how to open the collection\non the watch. Use **Change destination** to return from review, or **Change account\nor destination** after activation. The active backend is shown separately from the\ndropdown selection.\n\nThe phone obtains a short-lived, setup-only session before opening settings.\nThe normal server bearer token is not sent to the settings website. Provider\ncredentials go directly over HTTPS to your server and are never saved as phone\npreferences. On first use or after changing your server URL/token, save those\nconnection settings and reopen settings once to obtain a session. Sessions expire\nafter 30 minutes; reopen settings to renew. **Save & close** saves other phone\npreferences; activation/disconnection takes effect immediately on the server.\n\n- **Todoist:** enter your Todoist API token in the settings fields, connect,\n  select a project, preview, and activate the destination.\n- **Nextcloud Notes:** enter the HTTPS Nextcloud base URL (including its installation\n  subpath, if any), username, and an app password in the settings fields. Choose\n  a category, preview, and activate. The Nextcloud Notes app must be available.\n  For a private Nextcloud hostname, add `\"private_hosts\": [\"cloud.example\"]` to\n  `~/.codey/integrations.json` and restart codey.\n- **CalDAV:** enter the HTTPS calendar URL or calendar-home URL supplied by your\n  calendar app (for example, `https://cloud.example/remote.php/dav/calendars/USER/`),\n  username, and app password. Connect, select an event calendar, preview, and\n  activate. The server imports the next 90 days, including recurring events and\n  exceptions, and sends newly created events to that calendar. Edits/deletions\n  made in your calendar app appear on the next sync (normally within a minute).\n  Use the same CalDAV account in an Android or iOS calendar app to see the events\n  there. For a private hostname, add it to `private_hosts` in\n  `~/.codey/integrations.json` and restart codey. The server must support CalDAV\n  calendar-query recurrence expansion; setup reports incompatible servers.\n  Event editing, invitations, and creating recurring series use your calendar\n  app. Codey shows its own agenda; it does not publish Pebble OS Timeline pins.\n- **Google Tasks:** obtain a Google OAuth web client with access to the Tasks API\n  and register the exact callback `<your-codey-HTTPS-base>/integrations/oauth/callback`.\n  Put the following in `~/.codey/integrations.json` (merge with any existing config),\n  restrict its permissions to `0600`, and restart codey:\n\n  ```json\n  {\n    \"oauth\": {\n      \"googletasks\": {\n        \"client_id\": \"YOUR_CLIENT_ID\",\n        \"client_secret\": \"YOUR_CLIENT_SECRET\",\n        \"redirect_url\": \"https://YOUR-SERVER/codey/integrations/oauth/callback\"\n      }\n    }\n  }\n  ```\n\n  Then select Google Tasks and **Continue to Google authorization**. Navigation\n  happens inside the current webview, without closing/reopening it. Save other\n  changed phone preferences before navigating. Authorize Google, choose a task list, preview, and\n  activate. The server loads this file automatically; no extra startup flag is\n  needed. Provider tokens are encrypted on the server. Do not commit this file.\n- **Server only:** no setup is required for a new collection. To disconnect an\n  existing backend, select Server only for that collection and click **Use Server only**.\n  This preserves server and remote records; pending delivery may need an explicit\n  stop decision.\n\nExisting server records are exported to a backend only when you select the export\noption during setup. See [server-side configuration and recovery](docs/collections-server-operations.md)\nfor OAuth, private-host configuration, backups, and interrupted deliveries.\n\n## Everyday use\n\nPress **Select** on the dashboard to talk.\nTry “start a five-minute timer,” “remind me in an hour to check the oven,” “to-do buy milk,” or “what's the weather?”\nCommon commands run locally; other requests go to your agent.\n\n- **Up** opens Notifications, where you can check requests and open completed answers.\n- **Down** opens the selected collection. **Hold Down** opens **To Do / Notes / Calendar**.\n  Tap then hold the collection tile to open the same menu. The date tile also opens Calendar.\n- **Hold Select** on the dashboard to choose **New Chat**; on other screens, it starts dictation.\n- **Back** returns home; pressing it again exits the app.\n- **Touch controls** default to two taps, with a water ripple on the first tap.\n  Disable **Require double tap** for a single tap or hold. **First-tap ripple\n  animation** can be toggled independently. Drag lists or text directly to scroll.\n\nRequests can keep running while you use another screen.\nOpen Notifications to check again after the completion notification window ends.\nLocal lists work offline; voice and weather need the phone.\n\nSee the [user guide](docs/user-guide.md) for gestures, alarms and snoozing, notes, settings, and troubleshooting.\n\n## Development\n\nThe app uses C on the watch, JavaScript for the phone bridge, and Go for the agent service.\nInstall Node.js, Go 1.24+, and the Repebble SDK with Emery and Gabbro support, then run:\n\n```sh\nnpm test\nnpm run build:watch\nnpm run build:server\n```\n\nOutputs are `build/codey.pbw` and `build/codey-server`.\nNo npm runtime dependencies need installing.\n\nThe [developer guide](DEVS.md) covers the source layout, local demo server, UI changes, protocol, and testing.\nFor backend configuration and deployment, use [server setup](docs/server.md).\n\n## Privacy\n\nAgent requests go through your server to Codex.\nServer logs at `~/.pebble-agent/server.log` include prompts and responses; treat them and their backups as sensitive.\nWeather sends the phone's coordinates to Open-Meteo.\nThe bearer token is stored on the phone, so use an endpoint you trust.\n",
+      "content": "Source: `README.md`\n\n# codey\n\nA voice-driven assistant for **Pebble Time 2** and **Pebble Round 2**.\nSpeak to your watch and get answers as lists, cards, forms, and other interactive screens.\nTimers, alarms, reminders, todos, notes, calendars, and weather are built in.\n\ncodey includes a watchapp and a self-hosted service that uses your Codex login.\nYou run the service on your own computer or server.\nOther Pebble models are not currently supported.\n\n## Get started\n\nYou need a supported watch paired with the Pebble mobile app, an internet-connected phone, and a computer running an installed, signed-in Codex CLI under the same user account as the service.\n\n### Run the agent service\n\nInstall the service on Linux or Apple Silicon macOS:\n\n```sh\ncurl -fsSL https://github.com/nick1udwig/pebble-agent/releases/latest/download/install.sh | bash\n```\n\nOn Linux, the installer offers to start a systemd user service and saves its generated bearer token in `~/.config/codey/environment` (or under `$XDG_CONFIG_HOME`).\nOtherwise, it prints manual startup instructions.\n\nFor private access from your phone over Wi-Fi or cellular, follow the [Tailscale setup](docs/server.md#private-phone-access-with-tailscale).\nIt gives you an HTTPS endpoint while keeping the backend on `127.0.0.1:8787`.\nSee [server setup](docs/server.md) for networking, manual startup, and configuration.\n\n### Install and connect the watchapp\n\n1. Install the codey `.pbw` through the paired Pebble mobile app.\n   To build the bundle yourself, see [Development](#development).\n2. Open **codey** in the phone app's watchapp list and tap its settings gear.\n3. Enter your server base URL (for example, `https://YOUR-SERVER/codey`) and bearer token, then tap **Save & close**.\n4. Launch **codey** on the watch.\n   The dashboard should say **codey connected**.\n\nThe phone needs internet access to open the settings page.\nUse HTTPS or WSS; unencrypted connections are only suitable for trusted private development networks.\n\n## Backend sync setup\n\nNotes, to-dos, and calendars default to **Server only**: they are stored in `~/.codey/data`\nwithout an external account. Configure them independently in phone settings:\n\n| Collection | Choices | Authentication |\n| --- | --- | --- |\n| To-dos | Server only, Todoist, Google Tasks | None, Todoist API token, Google OAuth |\n| Notes | Server only, Nextcloud Notes | None, Nextcloud username and app password |\n| Calendar | Server only, CalDAV | None, calendar username and app password |\n\nSelect a service under **To-do sync setup**, **Notes sync setup**, or **Calendar sync setup**. Selecting\nNextcloud Notes reveals its HTTPS URL, username, and app-password fields in the\nsame settings page. Todoist reveals an API-token field. **Connect**, choose a\ndestination, **Preview connection**, then **Activate this destination**. Errors\nstay beside the fields; these buttons never save-and-close the Pebble webview.\nEach panel shows the current step out of four: connect account, choose destination,\nreview and activate, then active. The last step explains how to open the collection\non the watch. Use **Change destination** to return from review, or **Change account\nor destination** after activation. The active backend is shown separately from the\ndropdown selection.\n\nThe phone obtains a short-lived, setup-only session before opening settings.\nThe normal server bearer token is not sent to the settings website. Provider\ncredentials go directly over HTTPS to your server and are never saved as phone\npreferences. On first use or after changing your server URL/token, save those\nconnection settings and reopen settings once to obtain a session. Sessions expire\nafter 30 minutes; reopen settings to renew. **Save & close** saves other phone\npreferences; activation/disconnection takes effect immediately on the server.\n\n- **Todoist:** enter your Todoist API token in the settings fields, connect,\n  select a project, preview, and activate the destination.\n- **Nextcloud Notes:** enter the HTTPS Nextcloud base URL (including its installation\n  subpath, if any), username, and an app password in the settings fields. Choose\n  a category, preview, and activate. The Nextcloud Notes app must be available.\n  For a private Nextcloud hostname, add `\"private_hosts\": [\"cloud.example\"]` to\n  `~/.codey/integrations.json` and restart codey.\n- **CalDAV:** enter the HTTPS calendar URL or calendar-home URL supplied by your\n  calendar app (for example, `https://cloud.example/remote.php/dav/calendars/USER/`),\n  username, and app password. Connect, select an event calendar, preview, and\n  activate. The server imports the next 90 days, including recurring events and\n  exceptions, and sends newly created events to that calendar. Edits/deletions\n  made in your calendar app appear on the next sync (normally within a minute).\n  Use the same CalDAV account in an Android or iOS calendar app to see the events\n  there. For a private hostname, add it to `private_hosts` in\n  `~/.codey/integrations.json` and restart codey. The server must support CalDAV\n  calendar-query recurrence expansion; setup reports incompatible servers.\n  Event editing, invitations, and creating recurring series use your calendar\n  app. Codey shows its own agenda; it does not publish Pebble OS Timeline pins.\n- **Google Tasks:** obtain a Google OAuth web client with access to the Tasks API\n  and register the exact callback `<your-codey-HTTPS-base>/integrations/oauth/callback`.\n  Put the following in `~/.codey/integrations.json` (merge with any existing config),\n  restrict its permissions to `0600`, and restart codey:\n\n  ```json\n  {\n    \"oauth\": {\n      \"googletasks\": {\n        \"client_id\": \"YOUR_CLIENT_ID\",\n        \"client_secret\": \"YOUR_CLIENT_SECRET\",\n        \"redirect_url\": \"https://YOUR-SERVER/codey/integrations/oauth/callback\"\n      }\n    }\n  }\n  ```\n\n  Then select Google Tasks and **Continue to Google authorization**. Navigation\n  happens inside the current webview, without closing/reopening it. Save other\n  changed phone preferences before navigating. Authorize Google, choose a task list, preview, and\n  activate. The server loads this file automatically; no extra startup flag is\n  needed. Provider tokens are encrypted on the server. Do not commit this file.\n- **Server only:** no setup is required for a new collection. To disconnect an\n  existing backend, select Server only for that collection and click **Use Server only**.\n  This preserves server and remote records; pending delivery may need an explicit\n  stop decision.\n\nExisting server records are exported to a backend only when you select the export\noption during setup. See [server-side configuration and recovery](docs/collections-server-operations.md)\nfor OAuth, private-host configuration, backups, and interrupted deliveries.\n\n## Everyday use\n\nPress **Select** on the dashboard to talk.\nTry “start a five-minute timer,” “remind me in an hour to check the oven,” “to-do buy milk,” or “what's the weather?”\nCommon commands run locally; other requests go to your agent.\n\n- **Up** opens Notifications, where you can check requests and open completed answers.\n- **Down** opens the selected collection. **Hold Down** opens **To Do / Notes**.\n  Tap then hold the collection tile to open the same menu. The top-left date tile opens Calendar.\n- **Hold Select** on the dashboard to choose **New Chat**; on other screens, it starts dictation.\n- **Back** returns from a note or event to its list, then home; pressing it on home exits the app.\n- **Touch controls** default to two taps, with a water ripple on the first tap.\n  Disable **Require double tap** for a single tap or hold. **First-tap ripple\n  animation** can be toggled independently. Drag lists or text directly to scroll.\n\nRequests can keep running while you use another screen.\nOpen Notifications to check again after the completion notification window ends.\nLocal lists work offline; voice and weather need the phone.\n\nSee the [user guide](docs/user-guide.md) for gestures, alarms and snoozing, notes, settings, and troubleshooting.\n\n## Development\n\nThe app uses C on the watch, JavaScript for the phone bridge, and Go for the agent service.\nInstall Node.js, Go 1.24+, and the Repebble SDK with Emery and Gabbro support, then run:\n\n```sh\nnpm test\nnpm run build:watch\nnpm run build:server\n```\n\nOutputs are `build/codey.pbw` and `build/codey-server`.\nNo npm runtime dependencies need installing.\n\nThe [developer guide](DEVS.md) covers the source layout, local demo server, UI changes, protocol, and testing.\nFor backend configuration and deployment, use [server setup](docs/server.md).\n\n## Privacy\n\nAgent requests go through your server to Codex.\nServer logs at `~/.pebble-agent/server.log` include prompts and responses; treat them and their backups as sensitive.\nWeather sends the phone's coordinates to Open-Meteo.\nThe bearer token is stored on the phone, so use an endpoint you trust.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -943,10 +943,122 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-15T19:12:59.246804929Z"
+      "modified_at": "2026-09-15T21:22:26.118438711Z"
     }
   ],
   "commits": [
+    {
+      "id": "01a0a6f3-1f2c-7323-a832-839a2263ea0b",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Align navigation instructions with collection controls",
+      "created_at": "2026-09-15T21:22:26.118438711Z",
+      "changes": [
+        {
+          "document_id": "01a091eb-4925-72e2-a4c7-6c4fc5b284e8",
+          "slug": "reference/readme",
+          "change_type": "modified",
+          "previous_commit_id": "01a0a67c-9e09-7b11-bdbb-d055f9dfb201",
+          "previous_version": 26,
+          "new_version": 27,
+          "hunks": [
+            {
+              "old_start": 128,
+              "old_count": 8,
+              "new_start": 128,
+              "new_count": 8,
+              "context": "## Everyday use",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "Common commands run locally; other requests go to your agent."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "- **Up** opens Notifications, where you can check requests and open completed answers."
+                },
+                {
+                  "op": "delete",
+                  "content": "- **Down** opens the selected collection. **Hold Down** opens **To Do / Notes / Calendar**."
+                },
+                {
+                  "op": "delete",
+                  "content": "  Tap then hold the collection tile to open the same menu. The date tile also opens Calendar."
+                },
+                {
+                  "op": "add",
+                  "content": "- **Down** opens the selected collection. **Hold Down** opens **To Do / Notes**."
+                },
+                {
+                  "op": "add",
+                  "content": "  Tap then hold the collection tile to open the same menu. The top-left date tile opens Calendar."
+                },
+                {
+                  "op": "context",
+                  "content": "- **Hold Select** on the dashboard to choose **New Chat**; on other screens, it starts dictation."
+                },
+                {
+                  "op": "context",
+                  "content": "- **Back** returns home; pressing it again exits the app."
+                },
+                {
+                  "op": "context",
+                  "content": "- **Touch controls** default to two taps, with a water ripple on the first tap."
+                }
+              ]
+            },
+            {
+              "old_start": 131,
+              "old_count": 7,
+              "new_start": 131,
+              "new_count": 7,
+              "context": "## Everyday use",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "- **Down** opens the selected collection. **Hold Down** opens **To Do / Notes / Calendar**."
+                },
+                {
+                  "op": "context",
+                  "content": "  Tap then hold the collection tile to open the same menu. The date tile also opens Calendar."
+                },
+                {
+                  "op": "context",
+                  "content": "- **Hold Select** on the dashboard to choose **New Chat**; on other screens, it starts dictation."
+                },
+                {
+                  "op": "delete",
+                  "content": "- **Back** returns home; pressing it again exits the app."
+                },
+                {
+                  "op": "add",
+                  "content": "- **Back** returns from a note or event to its list, then home; pressing it on home exits the app."
+                },
+                {
+                  "op": "context",
+                  "content": "- **Touch controls** default to two taps, with a water ripple on the first tap."
+                },
+                {
+                  "op": "context",
+                  "content": "  Disable **Require double tap** for a single tap or hold. **First-tap ripple"
+                },
+                {
+                  "op": "context",
+                  "content": "  animation** can be toggled independently. Drag lists or text directly to scroll."
+                }
+              ]
+            }
+          ],
+          "content_hash": "eb9dae772152dd264f5d1a679b048c26fe58e2861e3a559ec413acdd9fdba6c6",
+          "previous_hash": "513684606c77f38d67f84f9e7d228d0f708a5eee55ee331716b083614b1c1810",
+          "doc_type": "reference",
+          "title": "README.md"
+        }
+      ]
+    },
     {
       "id": "01a0a6e5-0703-7501-80ce-f1ec0389194a",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
