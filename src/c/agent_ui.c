@@ -64,6 +64,12 @@ typedef struct {
   uint16_t text_offset;
 } AgentUiElement;
 
+typedef enum {
+  DashboardCalendar, DashboardWeather, DashboardTodos,
+  DashboardSleep, DashboardThink, DashboardTimer, DashboardAlarm,
+  DashboardIconCount
+} DashboardIcon;
+
 struct AgentUi {
   Window *window;
   ScrollLayer *scroll_layer;
@@ -83,7 +89,7 @@ struct AgentUi {
   uint32_t input_until;
   bool dirty, root_dirty, input_active;
   NumberWindow *number_window;
-  GBitmap *dashboard_icons[13];
+  GBitmap *dashboard_icons[DashboardIconCount];
   AgentUiEventHandler event_handler;
   AgentUiDictationHandler dictation_handler;
   void *context;
@@ -818,10 +824,10 @@ static void prv_pixel_text(GContext *ctx, const char *text, int16_t x, int16_t y
   }
 }
 
-static void prv_dashboard_icon(AgentUi *ui, GContext *ctx, int icon, int16_t x, int16_t y) {
+static void prv_dashboard_icon(AgentUi *ui, GContext *ctx, DashboardIcon icon, int16_t x, int16_t y) {
   if (!ui->dashboard_icons[icon]) { return; }
   graphics_context_set_compositing_mode(ctx, GCompOpSet);
-  int size = icon == 2 || icon >= 8 ? 20 : 24;
+  int size = icon >= DashboardSleep ? 20 : 24;
   graphics_draw_bitmap_in_rect(ctx, ui->dashboard_icons[icon], GRect(x, y, size, size));
 }
 
@@ -831,7 +837,7 @@ static void prv_weather_icon(AgentUi *ui, GContext *ctx, const char *icon, int16
   bool cloud = strcmp(icon, "sun") != 0 && strcmp(icon, "moon") != 0;
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_context_set_stroke_color(ctx, GColorBlack);
-  if (strcmp(icon, "unknown") == 0 || !icon[0]) { prv_dashboard_icon(ui, ctx, 1, x, y); return; }
+  if (strcmp(icon, "unknown") == 0 || !icon[0]) { prv_dashboard_icon(ui, ctx, DashboardWeather, x, y); return; }
   if (moon) {
     graphics_fill_circle(ctx, GPoint(x + 10, y + 9), 8);
     graphics_context_set_fill_color(ctx, GColorWhite);
@@ -900,8 +906,8 @@ static void prv_dashboard_quota(AgentUi *ui,GContext *ctx,GRect b) {
 }
 
 // Select the artwork from the active-thread count, including notification marks.
-static int prv_codey_icon(AgentUi *ui) {
-  return ui->codex_active > 0 ? 12 : 2;
+static DashboardIcon prv_codey_icon(AgentUi *ui) {
+  return ui->codex_active > 0 ? DashboardThink : DashboardSleep;
 }
 
 static void prv_dashboard_codey(AgentUi *ui, GContext *ctx, GRect frame) {
@@ -1021,7 +1027,7 @@ static void prv_draw_dashboard(AgentUi *ui, GContext *ctx) {
           graphics_draw_line(ctx, center, GPoint(cx, center.y - 3));
           graphics_draw_line(ctx, GPoint(cx - 2, center.y - 6), GPoint(cx + 2, center.y - 6));
         } else {
-          prv_dashboard_icon(ui, ctx, strcmp(kind, "job") == 0 ? prv_codey_icon(ui) : strcmp(items[item]->id, "dashboard-stopwatch") == 0 ? 8 : 9,
+          prv_dashboard_icon(ui, ctx, strcmp(kind, "job") == 0 ? prv_codey_icon(ui) : strcmp(items[item]->id, "dashboard-stopwatch") == 0 ? DashboardTimer : DashboardAlarm,
                              cx - 10, cy + (diameter - 20) / 2);
         }
         char label[16];
@@ -1060,7 +1066,7 @@ static void prv_draw_dashboard(AgentUi *ui, GContext *ctx) {
         graphics_draw_rect(ctx, GRect(x+9,y+(h-22)/2,17,22));
         for (int line=0;line<3;line++) graphics_draw_line(ctx,GPoint(x+12,y+(h-22)/2+6+line*5),GPoint(x+23,y+(h-22)/2+6+line*5));
         graphics_context_set_stroke_width(ctx, 1);
-      } else prv_dashboard_icon(ui, ctx, !strcmp(e->action,"local.events")?0:4, x + 5, y + (h - 24) / 2);
+      } else prv_dashboard_icon(ui, ctx, !strcmp(e->action,"local.events") ? DashboardCalendar : DashboardTodos, x + 5, y + (h - 24) / 2);
       char label[16];
       snprintf(label, sizeof(label), "%s %s", e->value[0] ? e->value : "0", !strcmp(e->action,"local.events") ? "EVENT" : notes ? "NOTE" : "TODO");
       prv_pixel_text(ctx, label, x + 32, y + (h - 7) / 2, 1, 1, GColorBlack);
@@ -2103,10 +2109,16 @@ AgentUi *agent_ui_create(AgentUiEventHandler event_handler, AgentUiDictationHand
   });
   window_set_click_config_provider_with_context(ui->window, prv_click_config_provider, ui);
   agent_protocol_copy(ui->layout_name, sizeof(ui->layout_name), "text");
-  const uint32_t icons[] = { RESOURCE_ID_DASH_CALENDAR, RESOURCE_ID_DASH_WEATHER, RESOURCE_ID_DASH_CODEY_SLEEP_SMALL,
-    RESOURCE_ID_DASH_CHAT, RESOURCE_ID_DASH_TODOS, RESOURCE_ID_DASH_TIMER, RESOURCE_ID_DASH_ALARM, RESOURCE_ID_DASH_BELL, RESOURCE_ID_DASH_TIMER_SMALL, RESOURCE_ID_DASH_ALARM_SMALL,
-    RESOURCE_ID_DASH_BELL_SMALL, RESOURCE_ID_DASH_TODOS_SMALL, RESOURCE_ID_DASH_CODEY_THINK_SMALL };
-  for (int i = 0; i < 13; ++i) { ui->dashboard_icons[i] = gbitmap_create_with_resource(icons[i]); }
+  const uint32_t icons[DashboardIconCount] = {
+    [DashboardCalendar] = RESOURCE_ID_DASH_CALENDAR,
+    [DashboardWeather] = RESOURCE_ID_DASH_WEATHER,
+    [DashboardTodos] = RESOURCE_ID_DASH_TODOS,
+    [DashboardSleep] = RESOURCE_ID_DASH_CODEY_SLEEP_SMALL,
+    [DashboardThink] = RESOURCE_ID_DASH_CODEY_THINK_SMALL,
+    [DashboardTimer] = RESOURCE_ID_DASH_TIMER_SMALL,
+    [DashboardAlarm] = RESOURCE_ID_DASH_ALARM_SMALL,
+  };
+  for (int i = 0; i < DashboardIconCount; ++i) { ui->dashboard_icons[i] = gbitmap_create_with_resource(icons[i]); }
   return ui;
 }
 
@@ -2119,7 +2131,7 @@ void agent_ui_destroy(AgentUi *ui) {
   if (ui->activity_timer) { app_timer_cancel(ui->activity_timer); }
   if (ui->number_window) { number_window_destroy(ui->number_window); }
   if (ui->window) { window_destroy(ui->window); }
-  for (int i = 0; i < 13; ++i) { if (ui->dashboard_icons[i]) { gbitmap_destroy(ui->dashboard_icons[i]); } }
+  for (int i = 0; i < DashboardIconCount; ++i) { if (ui->dashboard_icons[i]) { gbitmap_destroy(ui->dashboard_icons[i]); } }
   free(ui);
 }
 

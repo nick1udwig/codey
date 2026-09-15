@@ -76,28 +76,8 @@
         },
         {
           "type": "bitmap",
-          "name": "DASH_CHAT",
-          "file": "images/icon_chat.png"
-        },
-        {
-          "type": "bitmap",
           "name": "DASH_TODOS",
           "file": "images/icon_todos.png"
-        },
-        {
-          "type": "bitmap",
-          "name": "DASH_TIMER",
-          "file": "images/icon_timer.png"
-        },
-        {
-          "type": "bitmap",
-          "name": "DASH_ALARM",
-          "file": "images/icon_alarm.png"
-        },
-        {
-          "type": "bitmap",
-          "name": "DASH_BELL",
-          "file": "images/icon_bell.png"
         },
         {
           "type": "bitmap",
@@ -111,16 +91,6 @@
         },
         {
           "type": "bitmap",
-          "name": "DASH_BELL_SMALL",
-          "file": "images/icon_bell_small.png"
-        },
-        {
-          "type": "bitmap",
-          "name": "DASH_TODOS_SMALL",
-          "file": "images/icon_todos_small.png"
-        },
-        {
-          "type": "bitmap",
           "name": "DASH_CODEY_THINK_SMALL",
           "file": "images/codey_think_small.png",
           "storageFormat": "pbi",
@@ -131,28 +101,40 @@
           "name": "DASH_CODEY_SLEEP_EMERY",
           "file": "images/codey_sleep_emery.png",
           "storageFormat": "pbi",
-          "memoryFormat": "4bitpalette"
+          "memoryFormat": "4bitpalette",
+          "targetPlatforms": [
+            "emery"
+          ]
         },
         {
           "type": "bitmap",
           "name": "DASH_CODEY_THINK_EMERY",
           "file": "images/codey_think_emery.png",
           "storageFormat": "pbi",
-          "memoryFormat": "4bitpalette"
+          "memoryFormat": "4bitpalette",
+          "targetPlatforms": [
+            "emery"
+          ]
         },
         {
           "type": "bitmap",
           "name": "DASH_CODEY_SLEEP_GABBRO",
           "file": "images/codey_sleep_gabbro.png",
           "storageFormat": "pbi",
-          "memoryFormat": "4bitpalette"
+          "memoryFormat": "4bitpalette",
+          "targetPlatforms": [
+            "gabbro"
+          ]
         },
         {
           "type": "bitmap",
           "name": "DASH_CODEY_THINK_GABBRO",
           "file": "images/codey_think_gabbro.png",
           "storageFormat": "pbi",
-          "memoryFormat": "4bitpalette"
+          "memoryFormat": "4bitpalette",
+          "targetPlatforms": [
+            "gabbro"
+          ]
         }
       ]
     }
