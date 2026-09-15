@@ -4,7 +4,6 @@ var Endpoints = require("../common/endpoints");
 var Pam = require("../common/pam");
 var Model = require("../common/model");
 var WatchProtocol = require("../common/watch-protocol");
-var AgentClient = require("../common/agent-client").AgentClient;
 var JobModule = require("../common/jobs");
 var Settings = require("../common/settings");
 var Capabilities = require("../common/capabilities");
@@ -16,10 +15,8 @@ var LocalDictation = require("../common/local-dictation");
 
 var Key = WatchProtocol.Key;
 var settings = Settings.load();
-var client = new AgentClient();
 var requestSequence = 0;
 var activeRequestId = 0;
-var activePipeline = null;
 var currentScreen = { id: "", layout: "", selected: "" };
 var watchInfo = {};
 var watchReady = false;
@@ -179,8 +176,6 @@ function startNewSession() {
   localStorage.setItem("pebble-agent.session.v1", next);
   var previous = activeRequestId;
   activeRequestId = 0;
-  activePipeline = null;
-  client.abort();
   if (previous) { watchQueue.clearRequest(previous); }
   sessionId = next;
   currentScreen = { id: "", layout: "", selected: "" };
@@ -217,11 +212,6 @@ function sendPreferences() {
   var m={};m[Key.messageType]="bridge";m[Key.operation]="preferences";
   m[Key.flags]=settings.tapAnimation?1:0;m[Key.index]=settings.doubleTap?1:0;watchQueue.enqueue(m);
 }
-function sendNoteMessage(command,id,value) {
-  var m={};m[Key.messageType]="notes";m[Key.operation]=command;
-  m[Key.elementId]=id||"";m[Key.value]=String(value||"");watchQueue.enqueue(m);
-}
-
 function sendConnection() {
   var message = {};
   message[Key.messageType] = "bridge";
@@ -411,7 +401,6 @@ function platformName(info) {
 
 function requestAgent(input) {
   var requestId = nextRequestId();
-  var pipeline = createPipeline(requestId);
   var previous = activeRequestId;
   var now = new Date();
 
@@ -419,15 +408,11 @@ function requestAgent(input) {
     watchQueue.clearRequest(previous);
   }
   activeRequestId = requestId;
-  activePipeline = pipeline;
   var local = input.kind === "dictation" ? LocalDictation.parse(input.text, now) : null;
   if (local) { sendAnswerNotification(requestId, "begin"); }
   if (local) {
     sendJob({ id:"pending" }, false, "remove");
-    // Invalidate callbacks before aborting: a canceled server response must not
-    // replace a local result or start a second timer. Use the normal capability
-    // queue so delivery retries keep the same invocation ID.
-    client.abort();
+    var pipeline = createPipeline(requestId);
     pipeline.model.accept({ kind: local.node.kind, attrs: local.node.attrs, depth: 0 });
     pipeline.finishAnswer();
     return;
@@ -507,7 +492,6 @@ function openJob(id, cancel) {
       sessionId = job.session;
       localStorage.setItem("pebble-agent.session.v1", sessionId);
       var pipeline = createPipeline(requestId, job);
-      activePipeline = pipeline;
       pipeline.parser.push(job.result); pipeline.parser.finish(); pipeline.finishAnswer();
 
     } else { sendJob(job, false); }

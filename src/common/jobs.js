@@ -1,7 +1,7 @@
 "use strict";
 
 var Endpoints = require("./endpoints");
-var buildRequest = require("./agent-client").buildRequest;
+var buildRequest = require("./request");
 var storageKey = "pebble-agent.jobs.v1";
 function terminal(job) { return /^(done|failed|canceled)$/.test(job.status); }
 function uid() {
