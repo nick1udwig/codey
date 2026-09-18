@@ -5,6 +5,7 @@
 #include "scroll_gesture.h"
 #include "ripple.h"
 #include "refresh_policy.h"
+#include "ui_invalidation.h"
 #include "timeline_ui.h"
 #include "artwork_cache.h"
 
@@ -60,7 +61,8 @@ struct AgentUi {
   RefreshPolicy refresh_policy;
   AppTimer *refresh_timer;
   uint32_t input_until;
-  bool dirty, root_dirty, input_active;
+  uint8_t dirty;
+  bool root_dirty, input_active, visible;
   NumberWindow *number_window;
   GBitmap *dashboard_icons[DashboardIconCount];
   ArtworkCache artwork;
@@ -469,7 +471,7 @@ static bool prv_input_active(AgentUi *ui) {
 }
 static void prv_paint(void *context) {
   AgentUi *ui=context;ui->refresh_timer=NULL;
-  if(!ui->loaded || !ui->complete || !ui->dirty)return;
+  if(!ui->loaded || !ui->complete || !ui->dirty || !ui_invalidation_visible(ui->visible,ui->root_dirty))return;
   uint32_t delay=refresh_policy_screen_delay(&ui->refresh_policy,prv_now_ms(),prv_input_active(ui),ui->root_dirty);
   if(delay){ui->refresh_timer=app_timer_register(delay,prv_paint,ui);return;}
   bool new_screen=ui->root_dirty;
@@ -486,18 +488,19 @@ static void prv_paint(void *context) {
     scroll_layer_set_content_offset(ui->scroll_layer,GPointZero,false);
     prv_relayout_root(ui);
   }
-  prv_calculate_layout(ui);
+  uint8_t work=ui_invalidation_expand(ui->dirty);
+  if(work & UiDirtyGeometry)prv_calculate_layout(ui);
   if(new_screen&&!strcmp(ui->screen_id,"calendar"))prv_ensure_visible(ui,false);
-  layer_mark_dirty(ui->content_layer);
-  layer_mark_dirty(ui->action_bar_layer);
-  layer_mark_dirty(ui->status_bar_layer);
-  ui->dirty=false;
+  if(work & UiDirtyContent)layer_mark_dirty(ui->content_layer);
+  if(work & UiDirtyActions)layer_mark_dirty(ui->action_bar_layer);
+  if(work & UiDirtyClock)layer_mark_dirty(ui->status_bar_layer);
+  ui->dirty=0;
   refresh_policy_painted(&ui->refresh_policy,prv_now_ms());
 }
-static void prv_refresh(AgentUi *ui) {
+static void prv_invalidate(AgentUi *ui, uint8_t flags) {
   if(!ui)return;
-  ui->dirty=true;
-  if(!ui->loaded || !ui->complete)return;
+  ui->dirty |= flags;
+  if(!ui->loaded || !ui->complete || !ui_invalidation_visible(ui->visible,ui->root_dirty))return;
   uint32_t delay=refresh_policy_screen_delay(&ui->refresh_policy,prv_now_ms(),prv_input_active(ui),ui->root_dirty);
   if(ui->refresh_timer) {
     if(delay)return; // Already have one pending flush, not a polling timer.
@@ -505,6 +508,8 @@ static void prv_refresh(AgentUi *ui) {
   }
   ui->refresh_timer=app_timer_register(delay?delay:1,prv_paint,ui);
 }
+static void prv_refresh(AgentUi *ui) { prv_invalidate(ui,UiDirtyAll); }
+
 void agent_ui_note_input(AgentUi *ui) {
   if(!ui)return;
   ui->input_active=true;ui->input_until=prv_now_ms()+1000;
@@ -514,7 +519,9 @@ void agent_ui_note_input(AgentUi *ui) {
     prv_paint(ui); // Fresh geometry before hit-testing the user's contact.
   }
 }
-void agent_ui_refresh_clock(AgentUi *ui) {prv_refresh(ui);}
+void agent_ui_refresh_clock(AgentUi *ui) {
+  if(ui)prv_invalidate(ui,ui_invalidation_clock(!strcmp(ui->screen_id,"dashboard") || !strcmp(ui->screen_id,"calendar")));
+}
 
 
 static void prv_draw_text(GContext *ctx, const char *text, GFont font, GRect frame,
@@ -2062,6 +2069,9 @@ static void prv_window_unload(Window *window) {
 
 static void prv_window_appear(Window *window) {
   AgentUi *ui = window_get_user_data(window);
+  ui->visible=true;
+  ui->refresh_policy.painted=false;
+  agent_ui_refresh_clock(ui);
 #if defined(PBL_TOUCH)
   if (!ui->touch_subscribed && touch_service_is_enabled()) {
     touch_service_subscribe(prv_touch_handler, ui);
@@ -2075,6 +2085,8 @@ static void prv_window_appear(Window *window) {
 static void prv_window_disappear(Window *window) {
   prv_reset_touch_guard(window_get_user_data(window));
   AgentUi *ui = window_get_user_data(window);
+  ui->visible=false;
+  if(ui->refresh_timer){app_timer_cancel(ui->refresh_timer);ui->refresh_timer=NULL;}
   prv_stop_activity(ui);
 #if defined(PBL_TOUCH)
   prv_cancel_hold(ui);
@@ -2294,12 +2306,13 @@ void agent_ui_set_status(AgentUi *ui, const char *status, bool is_error, bool lo
   if (!ui) { return; }
   if (is_error) { ui->error_revision++;prv_show_error(ui, status); return; }
   if(ui->loading==loading && ui->error==is_error && strcmp(ui->status,status?status:"")==0)return;
+  bool geometry_changed=!!ui->status[0] != !!(status && status[0]);
   agent_protocol_copy(ui->status, sizeof(ui->status), status);
   ui->error = is_error;
   ui->loading = loading;
 
   if (is_error) { ui->complete = true; }
-  prv_refresh(ui);
+  prv_invalidate(ui, geometry_changed ? UiDirtyGeometry : UiDirtyContent);
 }
 
 uint32_t agent_ui_error_revision(const AgentUi *ui) { return ui ? ui->error_revision : 0; }
@@ -2326,7 +2339,7 @@ void agent_ui_set_codex_status(AgentUi *ui,int remaining,int active,const char *
   remaining=remaining<0?-1:AGENT_MIN(100,remaining);active=active<0?-1:active;
   if(ui->codex_remaining==remaining && ui->codex_active==active && !strcmp(ui->codex_state,state))return;
   ui->codex_remaining=remaining;ui->codex_active=active;agent_protocol_copy(ui->codex_state,sizeof(ui->codex_state),state);
-  if(!strcmp(ui->screen_id,"dashboard"))prv_refresh(ui);
+  if(!strcmp(ui->screen_id,"dashboard"))prv_invalidate(ui,UiDirtyContent);
 }
 
 void agent_ui_set_double_tap(AgentUi *ui,bool enabled){
