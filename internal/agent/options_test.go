@@ -19,6 +19,7 @@ func TestSettingsApplyToThreadsAndTurnsWithoutPermissionCarryover(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { store.Close() })
 	workspace := t.TempDir()
 	a := New(client, store, Config{Workspace: workspace, Timeout: time.Second})
 	request := testRequest(t, "settings")

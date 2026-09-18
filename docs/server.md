@@ -226,7 +226,16 @@ If they show a completed, valid PAM response but the watchapp exits, collect Peb
 ## Conversations and streaming
 
 The PAM `request.session` value and permission profile map to a persisted Codex thread.
-The default state file is `~/.codey/sessions.json`, written with mode `0600`; use `--state /absolute/path.json` to move it.
+The default state path is `~/.codey/sessions.json`; use `--state /absolute/path.json`
+to move it. Session mappings are now stored incrementally in that path plus `.db`
+(`~/.codey/sessions.json.db`), with mode `0600`, WAL journaling and synchronous
+commits. On first open, the server imports an existing version-1 JSON snapshot in
+one transaction and leaves the original file untouched. After migration, the
+SQLite database is authoritative, including deletions; restarting never imports
+the stale JSON again. Back up the `.db` with a SQLite-consistent backup, or stop
+the server before copying the database and any remaining `-wal`/`-shm` sidecars.
+Do not downgrade expecting the original JSON to contain newer conversations.
+Historical mappings are retained so old job results can reopen their conversation.
 Restarting either service resumes the thread.
 If Codex no longer has a persisted thread, the mapping is discarded and a new one is created.
 

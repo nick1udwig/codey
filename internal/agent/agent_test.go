@@ -154,6 +154,7 @@ func TestAgentStreamsFinalPAMAndKeepsConversationThread(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { store.Close() })
 	agent := New(client, store, Config{Model: "gpt-5.6-luna", Effort: "xhigh", Workspace: t.TempDir(), Timeout: 3 * time.Second})
 	request := testRequest(t, "watch-session")
 	for turn := 0; turn < 2; turn++ {
@@ -199,6 +200,7 @@ func TestAgentResumesPersistedThreadAfterReconnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { store.Close() })
 	defaults, _ := pam.ParseBackendOptions(nil)
 	workspace := t.TempDir()
 	key := New(nil, nil, Config{Workspace: workspace}).sessionKey("watch-session", defaults)
@@ -233,10 +235,14 @@ func TestAgentConvertsMalformedModelOutputToPAMError(t *testing.T) {
 		ConnectTimeout: time.Second,
 	})
 	defer client.Close()
-	store, _ := state.Open(filepath.Join(t.TempDir(), "sessions.json"))
+	store, err := state.Open(filepath.Join(t.TempDir(), "sessions.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
 	agent := New(client, store, Config{Workspace: t.TempDir(), Timeout: 3 * time.Second})
 	var output bytes.Buffer
-	err := agent.Respond(context.Background(), testRequest(t, "watch-session"), func(payload []byte) error {
+	err = agent.Respond(context.Background(), testRequest(t, "watch-session"), func(payload []byte) error {
 		_, writeErr := output.Write(payload)
 		return writeErr
 	})

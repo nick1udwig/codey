@@ -172,6 +172,7 @@ func run(arguments []string) error {
 	if err != nil {
 		return err
 	}
+	defer store.Close()
 	connectors := appserver.DefaultConnectors(appserver.ResolverConfig{
 		CodexCommand:   config.codexCommand,
 		UnixSocket:     config.appServerUnix,

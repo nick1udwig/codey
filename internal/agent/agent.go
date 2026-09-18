@@ -36,8 +36,9 @@ type Agent struct {
 	config Config
 
 	loadedMu         sync.Mutex
-	loaded           map[string]uint64
-	locks            sync.Map
+	loaded           map[string]struct{}
+	loadedGeneration uint64
+	locks            sessionLocks
 	statusMu         sync.Mutex
 	statusFlight     *statusFlight
 	statusCache      DashboardStatus
@@ -53,7 +54,7 @@ func New(client *appserver.Client, store *state.Store, config Config) *Agent {
 		config.Effort = "xhigh"
 	}
 
-	return &Agent{client: client, store: store, config: config, loaded: make(map[string]uint64)}
+	return &Agent{client: client, store: store, config: config, loaded: make(map[string]struct{})}
 }
 
 func (agent *Agent) Respond(ctx context.Context, request pam.Request, emit func([]byte) error) error {
@@ -71,14 +72,11 @@ func (agent *Agent) Respond(ctx context.Context, request pam.Request, emit func(
 }
 
 func (agent *Agent) respond(parent context.Context, request pam.Request, stream *pam.OutputStream) error {
-	lockValue, _ := agent.locks.LoadOrStore(request.Session, make(chan struct{}, 1))
-	lock := lockValue.(chan struct{})
-	select {
-	case lock <- struct{}{}:
-	case <-parent.Done():
-		return parent.Err()
+	release, err := agent.locks.acquire(parent, request.Session)
+	if err != nil {
+		return err
 	}
-	defer func() { <-lock }()
+	defer release()
 	ctx := parent
 	if agent.config.Timeout > 0 {
 		var cancel context.CancelFunc
@@ -89,13 +87,19 @@ func (agent *Agent) respond(parent context.Context, request pam.Request, stream 
 	if err != nil {
 		return err
 	}
+	agent.loadedMu.Lock()
+	agent.observeGenerationLocked(generation)
+	agent.loadedMu.Unlock()
 	model, effort, err := agent.modelOptions(ctx, request.Backend)
 	if err != nil {
 		return err
 	}
 	request.Backend.Model = model
 	sessionKey := agent.sessionKey(request.Session, request.Backend)
-	threadID := agent.store.Thread(sessionKey)
+	threadID, err := agent.store.Thread(sessionKey)
+	if err != nil {
+		return err
+	}
 	if threadID == "" {
 		threadID, err = agent.startThread(ctx, connection, generation, sessionKey, request.Backend)
 	} else if !agent.isLoaded(threadID, generation) {
@@ -225,13 +229,27 @@ func (agent *Agent) interrupt(connection *appserver.Connection, threadID, turnID
 func (agent *Agent) isLoaded(threadID string, generation uint64) bool {
 	agent.loadedMu.Lock()
 	defer agent.loadedMu.Unlock()
-	return agent.loaded[threadID] == generation
+	agent.observeGenerationLocked(generation)
+	_, loaded := agent.loaded[threadID]
+	return generation == agent.loadedGeneration && loaded
 }
 
 func (agent *Agent) markLoaded(threadID string, generation uint64) {
 	agent.loadedMu.Lock()
-	agent.loaded[threadID] = generation
+	agent.observeGenerationLocked(generation)
+	if generation == agent.loadedGeneration {
+		agent.loaded[threadID] = struct{}{}
+	}
 	agent.loadedMu.Unlock()
+}
+
+// Generations increase monotonically. Late replies from a replaced connection
+// must never restore obsolete bookkeeping or evict the current generation.
+func (agent *Agent) observeGenerationLocked(generation uint64) {
+	if generation > agent.loadedGeneration {
+		agent.loadedGeneration = generation
+		agent.loaded = make(map[string]struct{})
+	}
 }
 
 func threadMissing(err error) bool {
