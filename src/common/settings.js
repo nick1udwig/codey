@@ -108,7 +108,31 @@ function parseConfigResponse(response) {
   }
 }
 
+// Explicit settings phrases only; never let free-form model output change
+// credentials or permissions through this path.
+function parseDictation(input) {
+  if (typeof input !== "string" || input.length > 256) { return null; }
+  var text=input.trim().toLowerCase().replace(/[.!?]+$/, "").replace(/^please /, "").replace(/^settings?\s*:\s*/, "");
+  var toggles={"double tap":"doubleTap","double tap requirement":"doubleTap","ripple":"tapAnimation","tap animation":"tapAnimation","answer vibration":"answerVibrate","answer arrived vibration":"answerVibrate","fast mode":"fastMode"};
+  var match=/^(?:turn|switch) (on|off) (.+)$/.exec(text) || /^(enable|disable) (.+)$/.exec(text);
+  var key,value,label;
+  if(match && toggles[match[2]]) { key=toggles[match[2]];value=match[1]==="on"||match[1]==="enable";label=match[2]+": "+(value?"on":"off"); }
+  else {
+    match=/^(?:set|change) (.+?) (?:to )?([^ ]+)$/.exec(text);
+    if(!match) { return null; }
+    var choices={"weather units":["units",["auto","automatic","metric","imperial"]],"units":["units",["auto","automatic","metric","imperial"]],"reasoning effort":["codexEffort",["default","low","medium","high","xhigh","max","ultra"]],"web search":["webSearch",["off","disabled","cached","live"]]};
+    var choice=choices[match[1]];
+    if(choice && choice[1].indexOf(match[2])>=0){key=choice[0];value=match[2];if(value==="automatic")value="auto";if(value==="default")value="";if(value==="off")value="disabled";}
+    else if((match[1]==="model"||match[1]==="codex model") && /^(?:default|[a-z0-9][a-z0-9._:/-]{0,127})$/.test(match[2])) { key="codexModel";value=match[2]==="default"?"":match[2]; }
+    else { return null; }
+    label=match[1]+": "+match[2];
+  }
+  var patch={};patch[key]=value;
+  return {patch:patch,label:label};
+}
+
 module.exports = {
+  parseDictation: parseDictation,
   STORAGE_KEY: STORAGE_KEY,
   CONFIG_URL: CONFIG_URL,
   DEFAULTS: DEFAULTS,

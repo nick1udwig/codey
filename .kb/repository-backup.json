@@ -1,7 +1,21 @@
 {
   "version": 1,
-  "created_at": "2026-09-18T04:01:20.421244597+00:00",
+  "created_at": "2026-09-18T04:02:37.413233982+00:00",
   "documents": [
+    {
+      "id": "01a0b2ae-33f0-7073-9d04-5abf8e11bf03",
+      "slug": "issues/dictated-settings",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Edit settings with local dictation",
+      "content": "Acceptance: explicit voice commands save double-tap, ripple, answer vibration, fast mode, weather units, model, effort, and web search preferences without a Codex job; send watch preferences immediately and show confirmation; invalid/negated/compound requests do not change preferences. Phone regressions pass.",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-18T04:02:36.200961221Z",
+      "modified_at": "2026-09-18T04:02:36.200961221Z"
+    },
     {
       "id": "01a0b2ad-074c-7ec1-a5d8-6911f61f8f36",
       "slug": "issues/app-list-smiley",
@@ -1241,6 +1255,24 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a0b2ae-3431-7cd2-8af6-111f653a2502",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Record dictated settings",
+      "created_at": "2026-09-18T04:02:36.200961221Z",
+      "changes": [
+        {
+          "document_id": "01a0b2ae-33f0-7073-9d04-5abf8e11bf03",
+          "slug": "issues/dictated-settings",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "da6d7c3524c7ae0e902a54cd838779fa7638fb742c370cfeb8741575ddad88fd",
+          "doc_type": "task",
+          "title": "Edit settings with local dictation"
+        }
+      ]
+    },
     {
       "id": "01a0b2ad-078b-7110-b893-a5a53c2b8d55",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

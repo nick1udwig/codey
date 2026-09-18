@@ -1464,6 +1464,17 @@ test("Native dashboard survives bridge startup, configuration, and local notific
 require("./local-dictation")(test);
 require("./jobs")(test);
 
+test("dictated settings persist locally and send updated watch preferences", function() {
+  var h=loadPkjsHarness({storageData:{}});
+  try {
+    ["turn off double tap","Settings: turn off ripple","set weather units to metric","set reasoning effort to high"].forEach(function(text){h.handlers.appmessage({payload:{0:"input",2:"dictation",8:text}});});
+    var saved=Settings.load();
+    assert.equal(saved.doubleTap,false);assert.equal(saved.tapAnimation,false);assert.equal(saved.units,"metric");assert.equal(saved.codexEffort,"high");
+    assert.ok(h.sent.some(function(m){return m[Watch.Key.value]==="Saved · reasoning effort: high";}));
+    ["don't turn off double tap","turn off double tap and start a timer","set weather units to bananas","set token to secret"].forEach(function(text){assert.equal(Settings.parseDictation(text),null);});
+  } finally {h.cleanup();}
+});
+
 test("Local dictation bypasses Codex and gives concurrent timers distinct delivery IDs", function() {
   var requests = 0;
   function FakeXHR() { requests += 1; }

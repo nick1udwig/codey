@@ -411,6 +411,22 @@ function requestAgent(input) {
     watchQueue.clearRequest(previous);
   }
   activeRequestId = requestId;
+  var preference = input.kind === "dictation" ? Settings.parseDictation(input.text) : null;
+  if (preference) {
+    sendAnswerNotification(requestId, "begin");
+    sendJob({id:"pending"}, false, "remove");
+    try {
+      var updated=Settings.normalize(settings);
+      Object.keys(preference.patch).forEach(function(key){updated[key]=preference.patch[key];});
+      settings=Settings.save(updated);
+      sendPreferences();
+      if(preference.patch.units!==undefined){localStorage.setItem(weatherCacheKey,"null");refreshWeather();}
+      var confirmation=createPipeline(requestId);
+      confirmation.parser.push("pam version=1\nscreen id=settings layout=card title=Settings\n  text id=saved "+Pam.formatAttributes({value:"Saved · "+preference.label})+"\ndone\n");
+      confirmation.parser.finish();confirmation.finishAnswer();
+    } catch(error) { sendStatus("Could not save settings: "+error.message,"error",requestId); }
+    return;
+  }
   var local = input.kind === "dictation" ? LocalDictation.parse(input.text, now) : null;
   if (local) { sendAnswerNotification(requestId, "begin"); }
   if (local) {
