@@ -231,7 +231,7 @@ test("watch encoder maps nodes and splits UTF-8 safely", function() {
       attrs: { id: "body", value: longValue, action: "open", checked: "true" }
     }
   }, 7);
-  assert.ok(messages.length > 2);
+  assert.strictEqual(messages.length, 2);
   assert.strictEqual(messages[0][Watch.Key.kind], "text");
   assert.strictEqual(messages[0][Watch.Key.flags] & 2, 2);
   messages.forEach(function(message) {
@@ -240,7 +240,7 @@ test("watch encoder maps nodes and splits UTF-8 safely", function() {
     }
   });
   assert.strictEqual(messages.map(function(message) { return message[Watch.Key.value] || ""; }).join(""),
-                     longValue);
+                     Watch.truncateUtf8(longValue, 319));
 });
 
 test("watch encoder keeps metadata out of core flags", function() {
@@ -269,11 +269,41 @@ test("field type reaches the native metadata parser and patches can clear values
     type: "patch",
     target: "count",
     attrs: { id: "count", title: "Count", value: "", type: "number", min: "1", max: "5" },
-    node: { kind: "patch", attrs: { target: "count" } }
+    node: { kind: "patch", attrs: { target: "count", value: "" } }
   }, 1)[0];
   assert.strictEqual(add[Watch.Key.meta], "max=5 min=1 type=number");
   assert.ok(Object.prototype.hasOwnProperty.call(patch, Watch.Key.value));
   assert.strictEqual(patch[Watch.Key.value], "");
+});
+
+test("render values send only the contiguous prefix that fits native storage", function() {
+  ["x".repeat(1800), "é漢🙂".repeat(150), "a".repeat(317) + "🙂tail", ""].forEach(function(value) {
+    var attrs = { id: "text", value: value };
+    var messages = Watch.encodeOperation({ type: "node", node: { kind: "text", attrs: attrs } }, 42);
+    var text = messages.map(function(m) { return m[Watch.Key.value] || ""; }).join("");
+    assert.strictEqual(text, Watch.truncateUtf8(value, 319));
+    assert.ok(messages.length <= 2);
+    messages.forEach(function(m) {
+      assert.strictEqual(m[Watch.Key.requestId], 42);
+      assert.ok(Buffer.byteLength(m[Watch.Key.value] || "", "utf8") <= 180);
+    });
+    assert.strictEqual(attrs.value, value, "encoding must not truncate the source model");
+  });
+});
+
+test("sparse patches preserve merged flags and metadata without retransmitting text", function() {
+  var messages = [];
+  var model = new Model.ScreenModel({ onOperation: function(op) {
+    if (op.type === "patch") messages.push(Watch.encodeOperation(op, 7));
+  }});
+  parse("pam version=1\nscreen id=s layout=list\n" +
+    "  text id=t title=Old value=" + "x".repeat(1800) + " action=open checked=true disabled=true min=1 max=9\n" +
+    "patch target=t title=New\npatch target=t checked=false\npatch target=t min=2\n" +
+    "patch target=t value=\"\" subtitle=\"\" action=\"\"\ndone\n").forEach(function(n) { model.accept(n); });
+  assert.deepStrictEqual(messages[0], [{0:"render", 1:7, 2:"patch", 4:"t", 6:"New"}]);
+  assert.deepStrictEqual(messages[1], [{0:"render", 1:7, 2:"patch", 4:"t", 11:1}]);
+  assert.deepStrictEqual(messages[2], [{0:"render", 1:7, 2:"patch", 4:"t", 10:"max=9 min=2"}]);
+  assert.deepStrictEqual(messages[3], [{0:"render", 1:7, 2:"patch", 4:"t", 7:"", 8:"", 9:""}]);
 });
 
 test("UTF-8 splitting preserves valid and malformed JavaScript strings", function() {

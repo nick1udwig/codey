@@ -272,7 +272,7 @@ transport failures, and malformed responses do not send this notification.
 ## Limits and failure behavior
 
 - The watch stores up to 48 elements per screen.
-- Text values are capped at 319 bytes on the watch. Larger values are streamed in UTF-8-safe append chunks and truncated at the final watch buffer boundary.
+- Render text values are capped to a contiguous 319-byte UTF-8 prefix on the phone, then sent in at most two append-compatible chunks. Canonical records and stored job results retain their full text. Patches transmit only affected fields; changing one flag or metadata attribute sends its complete merged group so other members are preserved.
 - Titles, subtitles, IDs, actions, and metadata have smaller fixed limits declared in `agent_ui.h`.
 - Unknown kinds/layouts and invalid hierarchy produce a visible protocol error rather than partially executing an unrecognized node.
 - A new response supersedes queued operations from an older request. The watch also rejects stale request IDs.

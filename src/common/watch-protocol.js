@@ -42,6 +42,8 @@ var CORE_ATTRS = {
 };
 
 var MAX_VALUE_BYTES = 180;
+// Native AgentUiElement.value includes one byte for the terminator.
+var MAX_RENDER_VALUE_BYTES = 319;
 var MAX_META_BYTES = 220;
 
 function utf8ChunkEnd(source, start, maxBytes) {
@@ -152,6 +154,10 @@ function elementMessages(operation, requestId, opName, target) {
   var chunks;
   var index;
   var isPatch = opName === "patch";
+  var changed = node.attrs;
+  function includes(keys) {
+    return !isPatch || keys.some(function(key) { return changed[key] != null; });
+  }
   var title = attrs.title == null ? attrs.label : attrs.title;
   var action = attrs.action == null ? attrs.event : attrs.action;
 
@@ -161,18 +167,25 @@ function elementMessages(operation, requestId, opName, target) {
     message[Key.kind] = node.kind;
   }
   addIf(message, Key.elementId, target || attrs.id, 32);
-  addIf(message, Key.parentId, node.parentId, 32);
-  addPresent(message, Key.title, title, 72, isPatch);
-  addPresent(message, Key.subtitle, attrs.subtitle, 100, isPatch);
-  addPresent(message, Key.action, action, 48, isPatch);
-  addPresent(message, Key.meta, attrsMeta(attrs), null, isPatch);
-  message[Key.flags] = flagsFor(attrs);
-  if (attrs.index != null && /^-?\d+$/.test(attrs.index)) {
+  if (!isPatch) { addIf(message, Key.parentId, node.parentId, 32); }
+  if (includes(["title", "label"])) { addPresent(message, Key.title, title, 72, isPatch); }
+  if (includes(["subtitle"])) { addPresent(message, Key.subtitle, attrs.subtitle, 100, isPatch); }
+  if (includes(["action", "event"])) { addPresent(message, Key.action, action, 48, isPatch); }
+  var meta = attrsMeta(attrs); // Validate the complete merged interactive definition.
+  if (!isPatch || Object.keys(changed).some(function(key) { return !CORE_ATTRS[key]; })) {
+    addPresent(message, Key.meta, meta, null, isPatch);
+  }
+  if (includes(["disabled", "checked", "destructive", "primary", "status", "replace", "selected"])) {
+    message[Key.flags] = flagsFor(attrs);
+  }
+  if (includes(["index"]) && attrs.index != null && /^-?\d+$/.test(attrs.index)) {
     message[Key.index] = parseInt(attrs.index, 10);
   }
 
-  chunks = splitUtf8(value == null ? "" : value, MAX_VALUE_BYTES);
-  if (chunks[0] || (isPatch && value != null)) {
+  chunks = includes(["value", "text", "body"])
+    ? splitUtf8(truncateUtf8(value == null ? "" : value, MAX_RENDER_VALUE_BYTES), MAX_VALUE_BYTES)
+    : [""];
+  if (chunks[0] || (isPatch && includes(["value", "text", "body"]) && value != null)) {
     message[Key.value] = chunks[0];
   }
   messages.push(message);
