@@ -1,7 +1,21 @@
 {
   "version": 1,
-  "created_at": "2026-09-18T04:06:07.218395847+00:00",
+  "created_at": "2026-09-18T04:06:21.070106762+00:00",
   "documents": [
+    {
+      "id": "01a0b2b1-9dc1-7e41-a4bc-d67af5c4242e",
+      "slug": "issues/bare-timer-prefix",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Accept timer duration without a verb",
+      "content": "Acceptance: timer 5 minutes, Timer: thirty seconds, and timer for 1h 2m execute locally; bare numbers, zero/negative/oversized durations and compound requests still fall back. Phone regression suite passes.",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-18T04:06:19.867614292Z",
+      "modified_at": "2026-09-18T04:06:19.867614292Z"
+    },
     {
       "id": "01a0b2b1-673f-7c31-8192-43cfe9f152da",
       "slug": "issues/firing-notification-focus",
@@ -1297,6 +1311,24 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a0b2b1-9de3-7c43-bf18-59a32a692db3",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Record bare timer prefix fix",
+      "created_at": "2026-09-18T04:06:19.867614292Z",
+      "changes": [
+        {
+          "document_id": "01a0b2b1-9dc1-7e41-a4bc-d67af5c4242e",
+          "slug": "issues/bare-timer-prefix",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "996c732389cb798c97e664f3938a62150e76d0b5e5a455950468847c4526bad1",
+          "doc_type": "task",
+          "title": "Accept timer duration without a verb"
+        }
+      ]
+    },
     {
       "id": "01a0b2b1-6760-7431-9a8c-59975477b104",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

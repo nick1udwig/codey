@@ -165,7 +165,8 @@ function parse(input, now) {
   var text = normalize(input), match, seconds, at;
   if (/^(?:show|open|list)(?: me)? (?:my |the )?(?:todos|to-dos|to dos|tasks)$/.test(text)) { return operation("todo", "list"); }
   now = now || new Date();
-  match = /^(?:set|start|create) (?:me )?(?:a |another |new )?timer (?:for )?(.+)$/.exec(text) ||
+  match = /^timer\s*:?\s+(?:for )?(.+)$/.exec(text) ||
+    /^(?:set|start|create) (?:me )?(?:a |another |new )?timer (?:for )?(.+)$/.exec(text) ||
     /^(?:(?:set|start|create) (?:me )?(?:a |another |new )?)?(.+?) timer$/.exec(text);
   if (match && (seconds = duration(match[1])) !== null) {
     return operation("timer", "start", { duration: seconds + "s" });

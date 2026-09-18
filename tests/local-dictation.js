@@ -14,6 +14,7 @@ module.exports = function(test) {
   });
   test("local dictation recognizes complete timer phrases and spoken durations", function() {
     [
+      ["timer 5 minutes", 300], ["Timer: thirty seconds.", 30], ["timer for 1h 2m", 3720],
       ["Set a timer for 5 seconds.", 5], ["start another timer for 60 seconds", 60],
       ["Could you please start a five-minute timer?", 300], ["twenty-five minute timer", 1500],
       ["Set me a timer for one hour and thirty minutes, please.", 5400],
@@ -61,7 +62,7 @@ module.exports = function(test) {
     });
   });
   test("ambiguous, partial, unsupported and invalid dictation falls back without side effects", function() {
-    ["", "don't set a timer for 5 minutes", "how do I set a timer for 5 minutes",
+    ["timer", "timer 5", "timer 0 seconds", "timer 5 minutes and show weather", "timer -5 seconds", "timer 8 days", "", "don't set a timer for 5 minutes", "how do I set a timer for 5 minutes",
       "set a timer for 5 minutes and show weather", "set two timers for 5 and 10 minutes",
       "set a timer for -5 minutes", "set a timer for 0 seconds", "set a timer for 8 days",
       "set a timer for 9999999999999999999999 hours", "set a timer for 0.1 seconds",
