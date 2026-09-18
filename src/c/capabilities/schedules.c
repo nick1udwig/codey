@@ -120,6 +120,13 @@ static void prv_dashboard(AgentCapabilities *capabilities, void *context, bool r
     agent_capability_add_element(ui, "text", "wakeup-warning", "", "",
                                  "Wakeup unavailable; keep codey open", "", "", 0);
   }
+  int focus = -1;
+  if (agent_capabilities_is_active(capabilities, "notifications")) {
+    for (int i = 0; i < SLOT_COUNT; ++i) {
+      if (s->records[i].state == Due &&
+          (focus < 0 || s->records[i].at > s->records[focus].at)) { focus = i; }
+    }
+  }
   const char *headings[] = { "Notifications", "Timers", "Alarms & reminders" };
   const char *sections[] = { "notifications", "timers", "alarms" };
   for (int group = 0; group < 3; ++group) {
@@ -150,7 +157,7 @@ static void prv_dashboard(AgentCapabilities *capabilities, void *context, bool r
           .present = AgentUiPresentSubtitle | AgentUiPresentMeta,
         });
       } else {
-        agent_capability_add_element(ui, "item", id, r->title, value, "", action, meta, 0);
+        agent_capability_add_element(ui, "item", id, r->title, value, "", action, meta, i == focus ? 64 : 0);
       }
     }
     if (!count && group == 0 && !refresh) {

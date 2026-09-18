@@ -2315,6 +2315,10 @@ void agent_ui_end(AgentUi *ui) {
   ui->complete = true;
   ui->loading = false;
   prv_refresh(ui);
+  if (ui->selected_element >= 0 &&
+      (ui->elements[ui->selected_element].flags & AGENT_UI_FLAG_SELECTED)) {
+    prv_ensure_visible(ui, false);
+  }
 }
 
 static void prv_show_error(AgentUi *ui, const char *reason) {

@@ -20,7 +20,7 @@ static struct { size_t size; unsigned char data[256]; } storage[4700];
 struct AppTimer { bool used; time_t at; void (*callback)(void *); void *context; };
 static AppTimer timers[16];
 struct AgentUi { char screen[32], status[100]; int count; int32_t flags;
-  struct { char id[32], title[72], subtitle[100], value[320], action[48], meta[224]; } elements[48]; };
+  struct { char id[32], title[72], subtitle[100], value[320], action[48], meta[224]; int32_t flags; } elements[48]; };
 static AgentUi ui;
 
 time_t time(time_t *out) { if (out) { *out = now; } return now; }
@@ -76,6 +76,7 @@ bool agent_ui_add(AgentUi *u, const AgentUiElementSpec *spec) {
   assert(u->count < 48 && element(spec->id) == -1);
   int i = u->count++;
   memset(&u->elements[i], 0, sizeof(u->elements[i]));
+  u->elements[i].flags=spec->flags;
   agent_protocol_copy(u->elements[i].id, 32, spec->id);
   agent_protocol_copy(u->elements[i].title, 72, spec->title);
   agent_protocol_copy(u->elements[i].subtitle, 100, spec->subtitle);
@@ -350,6 +351,22 @@ static void test_explicit_replacement(void) {
   assert(strstr(ui.elements[element("schedule-0")].subtitle, "00:24"));
   agent_capabilities_destroy(caps);
 }
+static void test_firing_notification_focus(void) {
+  reset(); AgentCapabilities *caps=agent_capabilities_create(&ui,NULL,NULL);
+  command(caps,"timer","start","first","duration=5s");
+  command(caps,"timer","start","second","duration=10s");
+  advance(5);
+  assert(ui.elements[element("schedule-0")].flags & 64);
+  advance(5);
+  assert(!(ui.elements[element("schedule-0")].flags & 64));
+  assert(ui.elements[element("schedule-1")].flags & 64);
+  event(caps,"local.home");event(caps,"local.dashboard.notifications");
+  assert(ui.elements[element("schedule-1")].flags & 64);
+  event(caps,"local.schedule.1");event(caps,"local.schedule.toggle");
+  event(caps,"local.dashboard.notifications");
+  assert(ui.elements[element("schedule-0")].flags & 64);
+  agent_capabilities_destroy(caps);
+}
 static void test_stopwatch_dashboard(void) {
   reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
   command(caps, "stopwatch", "start", "run", ""); event(caps, "local.home"); advance(5);
@@ -540,6 +557,7 @@ int main(void) {
   test_status_only_on_dashboard();
   test_welcome_tour();
    test_checkbox_double_tap(); test_notes(); test_idle_cadence();
+  test_firing_notification_focus();
   test_weather_summary(); test_todos(); test_collection_previews(); test_preview_changed_rows_and_interrupted_write(); test_dashboard_progress(); test_dashboard_destinations(); test_multiple_and_ack(); test_pause_cancel_restore(); test_failures_and_capacity(); test_stopwatch_dashboard();  test_explicit_replacement();
   test_reused_ids_and_screen_independent_expiry(); test_delivery_replay_after_relaunch();
    test_jobs();

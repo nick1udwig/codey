@@ -1,7 +1,21 @@
 {
   "version": 1,
-  "created_at": "2026-09-18T04:04:52.176140816+00:00",
+  "created_at": "2026-09-18T04:06:07.218395847+00:00",
   "documents": [
+    {
+      "id": "01a0b2b1-673f-7c31-8192-43cfe9f152da",
+      "slug": "issues/firing-notification-focus",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Highlight the firing notification",
+      "content": "Acceptance: Notifications selects newest due timer/alarm over welcome and ongoing rows; reopening restores due focus; acknowledgment falls back to remaining due item; selected row scrolls into view. Native sanitizer regressions pass.",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-18T04:06:05.913377934Z",
+      "modified_at": "2026-09-18T04:06:05.913377934Z"
+    },
     {
       "id": "01a0b2b0-4271-7a40-9aa4-b5a4d8ee4b75",
       "slug": "issues/stopwatch-timer-navigation",
@@ -1283,6 +1297,24 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a0b2b1-6760-7431-9a8c-59975477b104",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Record firing notification focus fix",
+      "created_at": "2026-09-18T04:06:05.913377934Z",
+      "changes": [
+        {
+          "document_id": "01a0b2b1-673f-7c31-8192-43cfe9f152da",
+          "slug": "issues/firing-notification-focus",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "3a4bf57c00fc7568d3845c85be5efe3df30b184ca075fa97fc8bd1b360570b53",
+          "doc_type": "task",
+          "title": "Highlight the firing notification"
+        }
+      ]
+    },
     {
       "id": "01a0b2b0-4294-71d0-967d-14570528171e",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
