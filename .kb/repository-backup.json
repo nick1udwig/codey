@@ -1,7 +1,21 @@
 {
   "version": 1,
-  "created_at": "2026-09-18T04:00:36.656315461+00:00",
+  "created_at": "2026-09-18T04:01:20.421244597+00:00",
   "documents": [
+    {
+      "id": "01a0b2ad-074c-7ec1-a5d8-6911f61f8f36",
+      "slug": "issues/app-list-smiley",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Show a smiley in the watch app list",
+      "content": "Acceptance: package declares a menuIcon resource with a reproducible 24x24 smiley in the existing pixel icon style; both watch targets compile and include it.",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-18T04:01:19.236359167Z",
+      "modified_at": "2026-09-18T04:01:19.236359167Z"
+    },
     {
       "id": "01a0b2ac-5c26-7a01-995c-6479440d270a",
       "slug": "issues/calendar-voice-shortcuts",
@@ -1227,6 +1241,24 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a0b2ad-078b-7110-b893-a5a53c2b8d55",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Record app list smiley",
+      "created_at": "2026-09-18T04:01:19.236359167Z",
+      "changes": [
+        {
+          "document_id": "01a0b2ad-074c-7ec1-a5d8-6911f61f8f36",
+          "slug": "issues/app-list-smiley",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "4dd80fabb2021aee5d7a7adf3f5d1ee232d0d3dc444a7a4c719dc0176ddc5b10",
+          "doc_type": "task",
+          "title": "Show a smiley in the watch app list"
+        }
+      ]
+    },
     {
       "id": "01a0b2ac-5c69-7741-8932-08b931d81fe4",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

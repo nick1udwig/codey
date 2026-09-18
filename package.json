@@ -59,6 +59,12 @@
       "media": [
         {
           "type": "bitmap",
+          "name": "MENU_SMILEY",
+          "file": "images/menu_smiley.png",
+          "menuIcon": true
+        },
+        {
+          "type": "bitmap",
           "name": "DASH_CALENDAR",
           "file": "images/icon_calendar.png"
         },

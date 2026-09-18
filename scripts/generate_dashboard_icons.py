@@ -366,8 +366,22 @@ def crop_transparent_margin(pixels: list[list[tuple[int, int, int, int]]], margi
     return [row[margin:-margin] for row in pixels[margin:-margin]]
 
 
+def smiley() -> Canvas:
+    c = Canvas()
+    c.ring(2, 2, 20, 20, 2)
+    c.rect(7, 7, 2, 4)
+    c.rect(15, 7, 2, 4)
+    c.rect(6, 13, 2, 3)
+    c.rect(16, 13, 2, 3)
+    c.rect(8, 15, 2, 2)
+    c.rect(14, 15, 2, 2)
+    c.rect(10, 17, 4, 2)
+    return c
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
+    write_png(OUT / "menu_smiley.png", smiley().scaled())
     rendered = []
     for name, draw in ICONS.items():
         pixels = draw().scaled()
