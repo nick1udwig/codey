@@ -76,6 +76,13 @@ work rather than discarding replay evidence. Pending work survives rollover.
 Opening the first list page uses one snapshot POST with `limit: 8`; subsequent
 pages use the same immutable snapshot. Counts use a SQLite expression index,
 and SQLite maintains body-free summaries when canonical records change.
+Schema 3 keeps revision bodies in indexed 4 KiB byte chunks with separate size,
+hash and completeness metadata. Body pages fetch only intersecting chunks; full
+revision reads reconstruct the original body. Upgrade backfills all retained
+revisions in one transaction, so allow extra startup time and WAL/disk space for
+large stores. Backups include the chunks. Older server versions cannot open the
+upgraded schema.
+
 Immutable snapshot rows are indexed by position, so an eight-row page only
 decodes eight summaries. Existing snapshots survive the schema upgrade.
 Canonical bodies and revision-pinned body reads remain intact.

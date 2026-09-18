@@ -56,7 +56,7 @@ func TestImportBatchRollbackAndReplay(t *testing.T) {
 			if err := s.ImportBatch(b, records); err != nil {
 				t.Fatal(err)
 			}
-			for _, table := range []string{"records", "versions", "changes", "mappings"} {
+			for _, table := range []string{"records", "versions", "version_bodies", "body_chunks", "changes", "mappings"} {
 				if err := s.DB.QueryRow("SELECT count(*) FROM " + table).Scan(&count); err != nil {
 					t.Fatal(err)
 				}

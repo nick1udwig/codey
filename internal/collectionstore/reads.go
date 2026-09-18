@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	c "github.com/nick1udwig/pebble-agent/internal/collections"
 	"os"
@@ -268,7 +269,13 @@ func (s *Store) Body(id, revision, token string, n int) (map[string]any, error) 
 	if revision == "" {
 		return nil, c.Fail("invalid_input", "Body reads require a revision")
 	}
-	r, e := s.Record(id, revision)
+	var length int64
+	var hash string
+	var complete bool
+	e := s.DB.QueryRow("SELECT bytes,hash,complete FROM version_bodies WHERE record_id=? AND revision=?", id, revision).Scan(&length, &hash, &complete)
+	if errors.Is(e, sql.ErrNoRows) {
+		return nil, c.Fail("not_found", "Record or revision unavailable")
+	}
 	if e != nil {
 		return nil, e
 	}
@@ -279,7 +286,7 @@ func (s *Store) Body(id, revision, token string, n int) (map[string]any, error) 
 			return nil, e
 		}
 	}
-	if start > int64(len(r.Body)) {
+	if start < 0 || start > length {
 		return nil, c.Fail("cursor_expired", "Invalid body position")
 	}
 	if n <= 0 {
@@ -289,15 +296,19 @@ func (s *Store) Body(id, revision, token string, n int) (map[string]any, error) 
 	if n < 4 {
 		return nil, c.Fail("invalid_input", "Body range must allow at least four bytes")
 	}
-	end := min(int(start)+n, len(r.Body))
-	for end < len(r.Body) && !utf8.RuneStart(r.Body[end]) {
+	body, e := s.bodyRange(id, revision, start, min(start+int64(n)+1, length))
+	if e != nil {
+		return nil, e
+	}
+	end := min(n, len(body))
+	for end < len(body) && !utf8.RuneStart(body[end]) {
 		end--
 	}
 	next := ""
-	if end < len(r.Body) {
-		next = s.cursor("body", id+":"+revision, int64(end))
+	if start+int64(end) < length {
+		next = s.cursor("body", id+":"+revision, start+int64(end))
 	}
-	return map[string]any{"id": id, "revision": revision, "body": r.Body[int(start):end], "body_hash": r.BodyHash, "body_complete": r.BodyComplete, "next_cursor": next, "complete": next == ""}, nil
+	return map[string]any{"id": id, "revision": revision, "body": body[:end], "body_hash": hash, "body_complete": complete, "next_cursor": next, "complete": next == ""}, nil
 }
 func (s *Store) Conflicts() ([]c.Conflict, error) {
 	rows, e := s.DB.Query("SELECT data FROM conflicts ORDER BY id")

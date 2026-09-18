@@ -245,7 +245,7 @@ func (s *Store) Ack(j Job, remote p.Remote) error {
 			next.UpdatedAt = c.Now()
 			next.BodyHash = c.Hash(next.Body)
 			r = next
-			if _, e = tx.Exec("INSERT INTO versions VALUES(?,?,?)", r.ID, r.Revision, encode(r)); e != nil {
+			if e = writeVersion(tx, r); e != nil {
 				return e
 			}
 		}
@@ -319,7 +319,6 @@ func (s *Store) importChunk(binding p.Binding, records []p.Remote) (int, error) 
 		`SELECT count(*) FROM provider_jobs WHERE binding_id=? AND record_id=? AND state NOT IN ('applied','stopped')`,
 		`INSERT OR IGNORE INTO conflicts VALUES(?,?)`,
 		`INSERT INTO records VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`,
-		`INSERT INTO versions VALUES(?,?,?)`,
 		`INSERT INTO changes(collection_id,data) VALUES(?,?)`,
 		`INSERT INTO mappings VALUES(?,?,?,?) ON CONFLICT(binding_id,remote_id) DO UPDATE SET data=excluded.data`,
 	} {
@@ -332,7 +331,7 @@ func (s *Store) importChunk(binding p.Binding, records []p.Remote) (int, error) 
 	started := time.Now()
 	n := 0
 	for n < len(records) && n < 32 {
-		if err = s.importRecord(statements, binding, records[n]); err != nil {
+		if err = s.importRecord(tx, statements, binding, records[n]); err != nil {
 			return 0, err
 		}
 		n++
@@ -352,7 +351,7 @@ func (s *Store) importChunk(binding p.Binding, records []p.Remote) (int, error) 
 	return n, s.hit("import.after_commit")
 }
 
-func (s *Store) importRecord(statements map[string]*sql.Stmt, binding p.Binding, remote p.Remote) error {
+func (s *Store) importRecord(tx *sql.Tx, statements map[string]*sql.Stmt, binding p.Binding, remote p.Remote) error {
 	var raw []byte
 	var id string
 	e := statements["SELECT record_id,data FROM mappings WHERE binding_id=? AND remote_id=?"].QueryRow(binding.ID, remote.ID).Scan(&id, &raw)
@@ -411,7 +410,7 @@ func (s *Store) importRecord(statements map[string]*sql.Stmt, binding p.Binding,
 	if _, e = statements["INSERT INTO records VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data"].Exec(r.ID, r.CollectionID, encode(r)); e != nil {
 		return e
 	}
-	if _, e = statements["INSERT INTO versions VALUES(?,?,?)"].Exec(r.ID, r.Revision, encode(r)); e != nil {
+	if e = writeVersion(tx, r); e != nil {
 		return e
 	}
 	if _, e = statements["INSERT INTO changes(collection_id,data) VALUES(?,?)"].Exec(r.CollectionID, encode(r.Summary())); e != nil {

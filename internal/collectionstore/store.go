@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS collections(id TEXT PRIMARY KEY,principal TEXT NOT NU
 CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY,collection_id TEXT NOT NULL REFERENCES collections(id),data BLOB NOT NULL);
 CREATE INDEX IF NOT EXISTS records_collection_state ON records(collection_id,json_extract(data,'$.deleted'),json_extract(data,'$.completed'),json_extract(data,'$.end'));
 CREATE TABLE IF NOT EXISTS versions(record_id TEXT NOT NULL,revision TEXT NOT NULL,data BLOB NOT NULL,PRIMARY KEY(record_id,revision));
+CREATE TABLE IF NOT EXISTS version_bodies(record_id TEXT NOT NULL,revision TEXT NOT NULL,bytes INTEGER NOT NULL,hash TEXT NOT NULL,complete INTEGER NOT NULL,PRIMARY KEY(record_id,revision),FOREIGN KEY(record_id,revision) REFERENCES versions(record_id,revision) ON DELETE CASCADE);
+CREATE TABLE IF NOT EXISTS body_chunks(record_id TEXT NOT NULL,revision TEXT NOT NULL,position INTEGER NOT NULL,data BLOB NOT NULL,PRIMARY KEY(record_id,revision,position),FOREIGN KEY(record_id,revision) REFERENCES version_bodies(record_id,revision) ON DELETE CASCADE) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS operations(id TEXT PRIMARY KEY,client_id TEXT NOT NULL REFERENCES clients(id),ingress TEXT UNIQUE NOT NULL,data BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS changes(sequence INTEGER PRIMARY KEY AUTOINCREMENT,collection_id TEXT NOT NULL,data BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS conflicts(id TEXT PRIMARY KEY,data BLOB NOT NULL);
@@ -58,7 +60,7 @@ CREATE TABLE IF NOT EXISTS mappings(binding_id TEXT NOT NULL,remote_id TEXT NOT 
 CREATE INDEX IF NOT EXISTS mappings_record ON mappings(binding_id,record_id);
 CREATE TABLE IF NOT EXISTS secrets(id TEXT PRIMARY KEY,data BLOB NOT NULL);
 CREATE INDEX IF NOT EXISTS changes_collection ON changes(collection_id,sequence);
-PRAGMA user_version=2;
+PRAGMA user_version=3;
 `
 
 func Open(dir string) (*Store, error) {
@@ -94,7 +96,7 @@ func Open(dir string) (*Store, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 2 {
+	if version > 3 {
 		return fail(fmt.Errorf("unsupported collection schema %d", version))
 	}
 	if err = s.initializeSchema(version); err != nil {
@@ -147,6 +149,11 @@ func (s *Store) initializeSchema(version int) error {
 		if _, err = tx.Exec(`INSERT INTO snapshots SELECT id,epoch,expires,cursor,json_array_length(data) FROM legacy_snapshots;
    INSERT INTO snapshot_records SELECT s.id,CAST(j.key AS INTEGER),j.value FROM legacy_snapshots s,json_each(s.data) j;
    DROP TABLE legacy_snapshots;`); err != nil {
+			return err
+		}
+	}
+	if version < 3 {
+		if err = migrateVersionBodies(tx); err != nil {
 			return err
 		}
 	}
@@ -251,7 +258,16 @@ func (s *Store) Record(id, revision string) (c.Record, error) {
 	if e != nil {
 		return c.Record{}, e
 	}
-	return Decode[c.Record](b)
+	record, err := Decode[c.Record](b)
+	if err != nil || revision == "" {
+		return record, err
+	}
+	var length int64
+	if err = s.DB.QueryRow("SELECT bytes FROM version_bodies WHERE record_id=? AND revision=?", id, revision).Scan(&length); err != nil {
+		return record, err
+	}
+	record.Body, err = s.bodyRange(id, revision, 0, length)
+	return record, err
 }
 func (s *Store) Receipt(id string, ingress bool) (c.Receipt, error) {
 	column := "id"
@@ -441,7 +457,7 @@ func (s *Store) mutate(client string, op c.Operation) (result c.Result, err erro
 		if _, e = tx.Exec("INSERT INTO records VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data", next.ID, col.ID, encode(next)); e != nil {
 			return result, e
 		}
-		if _, e = tx.Exec("INSERT INTO versions VALUES(?,?,?)", next.ID, next.Revision, encode(next)); e != nil {
+		if e = writeVersion(tx, next); e != nil {
 			return result, e
 		}
 		change, e := tx.Exec("INSERT INTO changes(collection_id,data) VALUES(?,?)", col.ID, encode(next.Summary()))

@@ -88,7 +88,7 @@ func resolveConflict(tx *sql.Tx, id, revision string, proposal bool) error {
 		if _, e = tx.Exec("INSERT INTO records VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data", next.ID, col.ID, encode(next)); e != nil {
 			return e
 		}
-		if _, e = tx.Exec("INSERT INTO versions VALUES(?,?,?)", next.ID, next.Revision, encode(next)); e != nil {
+		if e = writeVersion(tx, next); e != nil {
 			return e
 		}
 		if _, e = tx.Exec("INSERT INTO changes(collection_id,data) VALUES(?,?)", col.ID, encode(next.Summary())); e != nil {
@@ -131,7 +131,7 @@ func resolveProvider(tx *sql.Tx, binding string, current c.Record, remote p.Remo
 		next.UpdatedAt = c.Now()
 		next.BodyHash = c.Hash(next.Body)
 		next.ProviderState = "synced"
-		if _, e := tx.Exec("INSERT INTO versions VALUES(?,?,?)", next.ID, next.Revision, encode(next)); e != nil {
+		if e := writeVersion(tx, next); e != nil {
 			return e
 		}
 	} else {
