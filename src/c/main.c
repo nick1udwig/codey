@@ -55,6 +55,7 @@ static char s_collection_bridge[32], s_collection_view[16];
 static uint32_t s_collection_event;
 static OutgoingMessage s_collection_pending;
 static bool s_collection_waiting;
+static uint8_t s_collection_ack_phase;
 static DeliveryRetry s_collection_retry = { .delay_ms = 3000 };
 static uint32_t s_note_token, s_note_sequence;
 static AnswerNotification s_answer_notification;
@@ -246,7 +247,7 @@ static bool prv_queue_message(const char *type, uint32_t request_id, const char 
     agent_protocol_copy(message->view,sizeof(message->view),s_collection_view);
     message->event=s_collection_event;
     if(!strcmp(action,"edit")||!strcmp(action,"append")||!strcmp(action,"complete")||!strcmp(action,"restore")) {
-      s_collection_pending=*message;s_collection_waiting=true;
+      s_collection_pending=*message;s_collection_waiting=true;s_collection_ack_phase=0;
       delivery_retry_reset(&s_collection_retry, 3000);
       delivery_retry_schedule(&s_collection_retry, connection_service_peek_pebble_app_connection(), prv_collection_retry, NULL);
       agent_ui_set_status(s_ui,"Sending…",false,true);
@@ -536,9 +537,10 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
     return;
   }
   if (!strcmp(type,"collection-ack")) {
-    if(!s_collection_waiting || strcmp(prv_tuple_string(iter,MESSAGE_KEY_BridgeSession),s_collection_pending.bridge) || (uint32_t)prv_tuple_int(iter,MESSAGE_KEY_EventSequence,0)!=s_collection_pending.event)return;
-    s_collection_waiting=false;delivery_retry_cancel(&s_collection_retry);
+    if((!s_collection_waiting && !s_collection_ack_phase) || strcmp(prv_tuple_string(iter,MESSAGE_KEY_BridgeSession),s_collection_pending.bridge) || (uint32_t)prv_tuple_int(iter,MESSAGE_KEY_EventSequence,0)!=s_collection_pending.event)return;
     const char *state=prv_tuple_string(iter,MESSAGE_KEY_DeliveryState);
+    if(!delivery_ack_advance(&s_collection_ack_phase,state))return;
+    s_collection_waiting=false;delivery_retry_cancel(&s_collection_retry);
     agent_ui_set_status(s_ui,prv_tuple_string(iter,MESSAGE_KEY_Value),!strcmp(state,"rejected")||!strcmp(state,"needs_attention"),false);return;
   }
   if (!strcmp(type,"notes")) {

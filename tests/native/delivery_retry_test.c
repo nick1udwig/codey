@@ -50,6 +50,16 @@ static void outage(uint32_t initial) {
   delivery_retry_cancel(&retry);
 }
 int main(void) {
+  uint8_t phase=0;
+  assert(!delivery_ack_advance(&phase,"unknown"));
+  assert(delivery_ack_advance(&phase,"accepted_phone"));
+  assert(!delivery_ack_advance(&phase,"accepted_phone"));
+  assert(delivery_ack_advance(&phase,"accepted_server"));
+  assert(!delivery_ack_advance(&phase,"accepted_server"));
+  assert(!delivery_ack_advance(&phase,"accepted_phone"));
+  phase=0;assert(delivery_ack_advance(&phase,"rejected"));
+  assert(!delivery_ack_advance(&phase,"accepted_phone"));
+  phase=1;assert(delivery_ack_advance(&phase,"needs_attention"));
   outage(3000); // Connected phone with missing collection acknowledgments.
   outage(100); // Sustained APP_MSG_BUSY.
   puts("delivery retry tests passed");

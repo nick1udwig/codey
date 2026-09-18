@@ -13,3 +13,7 @@ void delivery_retry_cancel(DeliveryRetry *retry);
 void delivery_retry_reset(DeliveryRetry *retry, uint32_t initial_ms);
 void delivery_retry_schedule(DeliveryRetry *retry, bool connected,
                              void (*attempt)(void *), void *context);
+
+// Accept one phone handoff and then one terminal delivery result. Duplicates
+// and delayed phone ACKs cannot regress an already terminal confirmation.
+bool delivery_ack_advance(uint8_t *phase, const char *state);

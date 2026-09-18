@@ -1,4 +1,5 @@
 #include "delivery_retry.h"
+#include <string.h>
 
 #define MAX_RETRY_MS 60000
 
@@ -28,4 +29,12 @@ void delivery_retry_schedule(DeliveryRetry *retry, bool connected,
     retry->delay_ms *= 2;
     if (retry->delay_ms > MAX_RETRY_MS) { retry->delay_ms = MAX_RETRY_MS; }
   }
+}
+
+bool delivery_ack_advance(uint8_t *phase, const char *state) {
+  uint8_t next = !strcmp(state,"accepted_phone") ? 1 :
+    (!strcmp(state,"accepted_server") || !strcmp(state,"rejected") || !strcmp(state,"needs_attention")) ? 2 : 0;
+  if (!next || *phase == 2 || *phase == next) { return false; }
+  *phase = next;
+  return true;
 }
