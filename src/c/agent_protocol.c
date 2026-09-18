@@ -19,6 +19,18 @@ void agent_protocol_copy(char *dest, size_t dest_size, const char *source) {
   dest[length] = '\0';
 }
 
+bool agent_protocol_update(char *dest, size_t dest_size, const char *source) {
+  if (!dest || !dest_size) { return false; }
+  if (!source) { source = ""; }
+  size_t length = 0;
+  while (length + 1 < dest_size && source[length]) { length++; }
+  while (length && ((unsigned char)source[length] & 0xc0) == 0x80) { length--; }
+  if (strlen(dest) == length && !memcmp(dest, source, length)) { return false; }
+  memmove(dest, source, length);
+  dest[length] = '\0';
+  return true;
+}
+
 static bool prv_space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'; }
 static bool prv_alnum(char c) {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');

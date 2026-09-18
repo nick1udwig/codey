@@ -6,6 +6,10 @@
 #include <stdio.h>
 #include <time.h>
 
+typedef struct { int16_t x, y; } GPoint;
+typedef struct { int16_t w, h; } GSize;
+typedef struct { GPoint origin; GSize size; } GRect;
+
 typedef int32_t WakeupId;
 typedef struct Window Window;
 typedef struct GBitmap GBitmap;

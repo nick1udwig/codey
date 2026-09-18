@@ -1,4 +1,5 @@
 #include "agent_ui.h"
+#include "agent_ui_element.h"
 #include "range_control.h"
 #include "touch_guard.h"
 #include "scroll_gesture.h"
@@ -34,36 +35,6 @@
 #define AGENT_UI_SELECT_HOLD_MS 700
 #define AGENT_UI_TOUCH_TAP_MAX 15
 #define AGENT_UI_TOUCH_SWIPE_MIN 38
-
-typedef enum {
-  AgentUiElementUnknown = 0,
-  AgentUiElementSection,
-  AgentUiElementItem,
-  AgentUiElementText,
-  AgentUiElementMetric,
-  AgentUiElementProgress,
-  AgentUiElementField,
-  AgentUiElementChoice,
-  AgentUiElementAction,
-  AgentUiElementBind,
-  AgentUiElementImage,
-  AgentUiElementSpacer,
-  AgentUiElementHotspot,
-} AgentUiElementKind;
-
-typedef struct {
-  bool used;
-  AgentUiElementKind kind;
-  char id[AGENT_UI_ID_LENGTH];
-  char title[AGENT_UI_TITLE_LENGTH];
-  char subtitle[AGENT_UI_SUBTITLE_LENGTH];
-  char value[AGENT_UI_VALUE_LENGTH];
-  char action[AGENT_UI_ACTION_LENGTH];
-  char meta[AGENT_UI_META_LENGTH];
-  int32_t flags;
-  GRect frame;
-  uint16_t text_offset;
-} AgentUiElement;
 
 typedef enum {
   DashboardCalendar, DashboardWeather, DashboardTodos,
@@ -175,23 +146,6 @@ static void prv_reset_touch_guard(AgentUi *ui) {
 
 static void prv_number_click_config_provider(void *context);
 static void prv_dismiss_menu(AgentUi *ui);
-
-static AgentUiElementKind prv_element_kind(const char *kind) {
-  if (!kind) { return AgentUiElementUnknown; }
-  if (strcmp(kind, "section") == 0) { return AgentUiElementSection; }
-  if (strcmp(kind, "item") == 0) { return AgentUiElementItem; }
-  if (strcmp(kind, "text") == 0) { return AgentUiElementText; }
-  if (strcmp(kind, "metric") == 0) { return AgentUiElementMetric; }
-  if (strcmp(kind, "progress") == 0) { return AgentUiElementProgress; }
-  if (strcmp(kind, "field") == 0) { return AgentUiElementField; }
-  if (strcmp(kind, "choice") == 0) { return AgentUiElementChoice; }
-  if (strcmp(kind, "action") == 0) { return AgentUiElementAction; }
-  if (strcmp(kind, "bind") == 0) { return AgentUiElementBind; }
-  if (strcmp(kind, "image") == 0) { return AgentUiElementImage; }
-  if (strcmp(kind, "spacer") == 0) { return AgentUiElementSpacer; }
-  if (strcmp(kind, "hotspot") == 0) { return AgentUiElementHotspot; }
-  return AgentUiElementUnknown;
-}
 
 static AgentUiLayout prv_layout(const char *layout) {
   if (!layout) { return AgentUiLayoutText; }
@@ -1748,6 +1702,7 @@ static void prv_touch_hold(void *context) {
 }
 
 static void prv_control_touch(AgentUi *ui, int x, int y, bool first) {
+  if (ui->touch_control < 0 || ui->touch_control >= ui->element_count) { return; }
   AgentUiElement *e = &ui->elements[ui->touch_control];
   int32_t min = agent_protocol_meta_get_int(e->meta, "min", 0), max = agent_protocol_meta_get_int(e->meta, "max", 100);
   int32_t step = agent_protocol_meta_get_int(e->meta, "step", 1), value = min;
@@ -2201,9 +2156,10 @@ void agent_ui_begin(AgentUi *ui, const char *screen_id, const char *layout, cons
 #if defined(PBL_TOUCH)
   prv_cancel_hold(ui);
   ui->touch_down = false;
+  ui->touch_control = -1;
 #endif
   ui->editing_element = -1;
-  memset(ui->elements, 0, sizeof(ui->elements));
+  // Slots are initialized when added; all readers use the live count.
   ui->element_count = 0;
   ui->selected_element = -1;
   ui->complete = false;
@@ -2222,24 +2178,6 @@ void agent_ui_begin(AgentUi *ui, const char *screen_id, const char *layout, cons
   }
 }
 
-static void prv_apply_spec(AgentUiElement *element, const AgentUiElementSpec *spec, bool patch) {
-  uint32_t present = patch ? spec->present : AgentUiPresentAll;
-  if (present & AgentUiPresentKind) {
-    element->kind = prv_element_kind(spec->kind);
-  }
-  if (present & AgentUiPresentId) { agent_protocol_copy(element->id, sizeof(element->id), spec->id); }
-  if (present & AgentUiPresentTitle) { agent_protocol_copy(element->title, sizeof(element->title), spec->title); }
-  if (present & AgentUiPresentSubtitle) {
-    agent_protocol_copy(element->subtitle, sizeof(element->subtitle), spec->subtitle);
-  }
-  if (present & AgentUiPresentValue) { agent_protocol_copy(element->value, sizeof(element->value), spec->value); }
-  if (present & AgentUiPresentAction) {
-    agent_protocol_copy(element->action, sizeof(element->action), spec->action);
-  }
-  if (present & AgentUiPresentMeta) { agent_protocol_copy(element->meta, sizeof(element->meta), spec->meta); }
-  if (present & AgentUiPresentFlags) { element->flags = spec->flags; }
-}
-
 bool agent_ui_add(AgentUi *ui, const AgentUiElementSpec *spec) {
   AgentUiElement *element;
   if (!ui || !spec || !spec->id || !spec->id[0] || ui->element_count >= AGENT_UI_MAX_ELEMENTS ||
@@ -2249,7 +2187,7 @@ bool agent_ui_add(AgentUi *ui, const AgentUiElementSpec *spec) {
   element = &ui->elements[ui->element_count];
   memset(element, 0, sizeof(*element));
   element->used = true;
-  prv_apply_spec(element, spec, false);
+  agent_ui_element_apply(element, spec, false);
   if (prv_is_selectable(element) && (ui->selected_element < 0 || (element->flags & AGENT_UI_FLAG_SELECTED) ||
       (strcmp(ui->screen_id, "dashboard") == 0 && strcmp(element->action, "local.dictate") == 0))) {
     ui->selected_element = ui->element_count;
@@ -2264,9 +2202,7 @@ bool agent_ui_patch(AgentUi *ui, const AgentUiElementSpec *spec) {
   if (!ui || !spec) { return false; }
   element = prv_find_element(ui, spec->id);
   if (!element) { return false; }
-  AgentUiElement before = *element;
-  prv_apply_spec(element, spec, true);
-  if(memcmp(&before,element,sizeof(before))==0)return true;
+  if (!agent_ui_element_apply(element, spec, true)) { return true; }
   prv_refresh(ui);
   return true;
 }
