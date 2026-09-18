@@ -906,7 +906,7 @@ function loadPkjsHarness(options) {
   var opened = [];
   var statusRequests = [];
   var storageData = options.storageData || {};
-  var modulePath = require.resolve("../src/pkjs/index");
+  var modulePath = require.resolve(process.env.CODEY_TEST_BUNDLE || "../src/pkjs/index");
   global.localStorage = {
     getItem: function(key) { return storageData[key] == null ? null : storageData[key]; },
     setItem: function(key, value) { storageData[key] = String(value); }
@@ -978,6 +978,26 @@ function jobReply(h, xhr, source, status, open) {
   if (open !== false) { h.handlers.appmessage({payload:{0:"capability_event",2:"job",4:job.id,9:"check"}}); }
   return job.id;
 }
+
+test("PebbleKit startup preserves pending Unicode collection operations", function() {
+  var Journal = require("../src/common/collections/journal").Journal;
+  var values = {}, storage = {
+    getItem: function(k) { return values[k] || null; },
+    setItem: function(k, v) { values[k] = v; }
+  };
+  var journal = new Journal(storage);
+  journal.enroll({client_id:"client_a",server_instance_id:"server_a",store_epoch:"epoch_a"});
+  journal.bridge("old_bridge");
+  var operation = journal.accept({ingress:"watch:old_bridge:1",collection_id:"notes",generation:"1",
+    type:"note.create",payload:{title:"José 🌙",body:"Pending 漢字"}});
+  var harness = loadPkjsHarness({storageData:values});
+  try {
+    var recovered = new Journal(storage);
+    assert.strictEqual(recovered.data.entries.length, 1);
+    assert.deepStrictEqual(recovered.data.entries[0].operation, operation);
+    assert.notStrictEqual(recovered.data.bridge, "old_bridge");
+  } finally { harness.cleanup(); }
+});
 
 test("PebbleKit bridge keeps native dashboard and round-trips configuration", function() {
   var harness=loadPkjsHarness();

@@ -17,7 +17,8 @@
     "build:settings": "node scripts/build-settings-site.mjs",
     "build:server": "go build -o build/codey-server ./cmd/codey-server",
     "server": "go run ./cmd/codey-server",
-    "demo:server": "node examples/server.mjs"
+    "demo:server": "node examples/server.mjs",
+    "build:watch:release": "pebble build && python3 scripts/package-watch-release.py && CODEY_TEST_BUNDLE=../build/release/debug/pebble-js-app.js node tests/run.js"
   },
   "pebble": {
     "displayName": "codey",
