@@ -280,7 +280,7 @@ static bool prv_command(AgentCapabilities *capabilities, const AgentCapabilityCo
       for (int i = timer ? 0 : TIMER_COUNT; i < (timer ? TIMER_COUNT : SLOT_COUNT); ++i) {
         if (s->records[i].invocation_id == cmd->invocation_id) {
           // Even an acknowledged/canceled command must not be resurrected.
-          if (s->records[i].state != Empty) { prv_render(s, i); }
+          if (s->records[i].state != Empty && agent_protocol_meta_get_bool(cmd->meta,"show",true)) { prv_render(s, i); }
           return true;
         }
       }

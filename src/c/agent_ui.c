@@ -72,6 +72,7 @@ typedef enum {
 } DashboardIcon;
 
 struct AgentUi {
+  uint32_t error_revision;
   Window *window;
   ScrollLayer *scroll_layer;
   Layer *content_layer;
@@ -2355,7 +2356,7 @@ void agent_ui_animate_request(AgentUi *ui) {
 
 void agent_ui_set_status(AgentUi *ui, const char *status, bool is_error, bool loading) {
   if (!ui) { return; }
-  if (is_error) { prv_show_error(ui, status); return; }
+  if (is_error) { ui->error_revision++;prv_show_error(ui, status); return; }
   if(ui->loading==loading && ui->error==is_error && strcmp(ui->status,status?status:"")==0)return;
   agent_protocol_copy(ui->status, sizeof(ui->status), status);
   ui->error = is_error;
@@ -2364,6 +2365,8 @@ void agent_ui_set_status(AgentUi *ui, const char *status, bool is_error, bool lo
   if (is_error) { ui->complete = true; }
   prv_refresh(ui);
 }
+
+uint32_t agent_ui_error_revision(const AgentUi *ui) { return ui ? ui->error_revision : 0; }
 
 const char *agent_ui_screen_id(const AgentUi *ui) {
   return ui ? ui->screen_id : "";

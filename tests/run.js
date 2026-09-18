@@ -990,7 +990,7 @@ test("new-session settings preserve old jobs and persist a fresh conversation", 
     assert.strictEqual(JSON.parse(storage[Settings.STORAGE_KEY]).answerVibrate, false);
     var sent = h.sent.length;
     jobReply(h, requests[0], "pam version=1\nscreen id=old layout=card\ndone\n", "done", false);
-    assert.ok(h.sent.slice(sent).every(function(m) { return m[0] === "job"; }));
+    assert.ok(h.sent.slice(sent).every(function(m) { return m[0] === "job" || m[0] === "job-action"; }));
     query();
     var nodes = parse(requests[1].body);
     assert.strictEqual(nodes[1].attrs.session, fresh);
@@ -1258,38 +1258,30 @@ test("answer arrival waits for phone weather and suppresses failed weather", fun
   });
 });
 
-test("Capability delivery IDs distinguish identical model commands and survive bridge reload", function() {
-  var xhr;
-  function FakeXHR() { this.responseText = ""; xhr = this; }
-  FakeXHR.prototype.open = function() {};
-  FakeXHR.prototype.setRequestHeader = function() {};
-  FakeXHR.prototype.send = function() {};
-  FakeXHR.prototype.abort = function() {};
-  var storage = {};
-  storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test" });
-  var lastId = 0;
-  for (var round = 0; round < 2; ++round) {
-    var harness = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
-    try {
-      harness.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "start two timers" } });
-      xhr.responseText = "pam version=1\n" +
-        "capability type=timer command=start id=timer duration=10s\n" +
-        "capability type=timer command=start id=timer duration=60s\n";
-      jobReply(harness, xhr, xhr.responseText);
-      var messages = harness.sent.filter(function(m) { return m[Watch.Key.messageType] === "capability"; });
-      assert.strictEqual(messages.length, 2);
-      assert.ok(messages[0][Watch.Key.index] > lastId);
-      assert.ok(messages[1][Watch.Key.index] > messages[0][Watch.Key.index]);
-      assert.strictEqual(messages[0][Watch.Key.elementId], "timer");
-      assert.strictEqual(messages[1][Watch.Key.elementId], "timer");
-      var savedJob = JSON.parse(storage["pebble-agent.jobs.v1"]).slice(-1)[0];
-      harness.handlers.appmessage({payload:{0:"capability_event",2:"job",4:savedJob.id,9:"check"}});
-      var replay = harness.sent.filter(function(m){return m[Watch.Key.messageType] === "capability";}).slice(-2);
-      assert.strictEqual(replay[0][Watch.Key.index], messages[0][Watch.Key.index]);
-      assert.strictEqual(replay[1][Watch.Key.index], messages[1][Watch.Key.index]);
-      lastId = messages[1][Watch.Key.index];
-    } finally { harness.cleanup(); }
-  }
+test("completed actions execute automatically with durable IDs and watch receipts", function() {
+  var requests=[], storage={};
+  storage[Settings.STORAGE_KEY]=JSON.stringify({endpoint:"https://agent.test"});
+  function XHR(){requests.push(this);}XHR.prototype.open=function(m,u){this.url=u;};XHR.prototype.setRequestHeader=XHR.prototype.send=function(){};
+  var h=loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
+  try {
+    h.handlers.appmessage({payload:{0:"input",2:"dictation",8:"start two timers"}});
+    var id=jobReply(h,requests[0],"pam version=1\ncapability type=timer command=start id=timer duration=10s\ncapability type=timer command=start id=timer duration=60s\n","done",false);
+    var first=h.sent.filter(function(m){return m[0]==="job-action";})[0];
+    assert.ok(first);assert.equal(first[5],id);assert.match(first[10],/show=false/);
+    assert.ok(!h.sent.some(function(m){return m[0]==="render" || m[0]==="job-result";}));
+    assert.equal(requests.length,1,"must not ack before watch execution");
+    h.handlers.appmessage({payload:{0:"capability_event",2:"job",4:id,9:"executed",8:"0"}});
+    var second=h.sent.filter(function(m){return m[0]==="job-action";})[1];
+    assert.ok(second[12]>first[12]);assert.equal(second[15],1);
+    // Failure leaves the job available and retries the same invocation ID.
+    h.handlers.appmessage({payload:{0:"capability_event",2:"job",4:id,9:"execution-failed",8:"1"}});
+    h.handlers.appmessage({payload:{0:"capability_event",2:"job",4:id,9:"check"}});
+    assert.equal(h.sent.filter(function(m){return m[0]==="job-action";}).pop()[12],second[12]);
+    h.handlers.appmessage({payload:{0:"capability_event",2:"job",4:id,9:"executed",8:"1"}});
+    assert.ok(requests[1].url.endsWith("/ack"));
+    assert.ok(h.sent.some(function(m){return m[0]==="job"&&m[2]==="remove"&&m[4]===id;}));
+    assert.ok(JSON.parse(storage["pebble-agent.jobs.v1"])[0].opened);
+  }finally{h.cleanup();}
 });
 
 test("background weather updates only the tile and caches the forecast", function() {
@@ -1410,7 +1402,7 @@ test("unchanged counts skip Bluetooth but changed lists and reconnects refresh t
  }finally{h.cleanup();}
 });
 
-test("agent calendar command durably creates an event and returns the agenda", function(){
+test("agent calendar command automatically creates an event without opening its job", function(){
  var requests=[],storage={};storage[Settings.STORAGE_KEY]=JSON.stringify({endpoint:"https://agent.test",token:"t"});
  function XHR(){}XHR.prototype.open=function(method,url){this.url=url;};XHR.prototype.setRequestHeader=function(){};XHR.prototype.send=function(body){this.body=body;requests.push(this);};
  var h=loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
@@ -1424,8 +1416,9 @@ test("agent calendar command durably creates an event and returns the agenda", f
   assert.match(requests[0].url,/sync\/mutations$/);var op=JSON.parse(requests[0].body).operations[0];assert.strictEqual(op.type,"event.create");assert.strictEqual(op.collection_id,"col_event");assert.strictEqual(op.payload.start,"2099-09-16T12:00:00-07:00");assert.strictEqual(op.payload.location,"Cafe");
   var record={id:op.record_id,collection_id:"col_event",kind:"event",revision:"1",title:"Lunch",start:op.payload.start,end:op.payload.end,location:"Cafe",capabilities:[]};
   reply({results:[{operation_id:op.id,outcome:"applied",durably_recorded:true,record:record,revision:"1"}]});
-  reply({snapshot_id:"calendar",total:1,complete:true,records:[record]});
-  var list=h.sent.filter(function(m){return m[0]==="collection-list";}).pop();assert.ok(list);assert.strictEqual(list[2],"event");assert.strictEqual(list[12],1);assert.match(list[8],/Lunch/);assert.ok(h.sent.some(function(m){return m[0]==="job-result";}));
+  assert.ok(requests.some(function(r){return /\/ack$/.test(r.url);}));
+  assert.ok(!h.sent.some(function(m){return m[0]==="collection-list"||m[0]==="job-result";}));
+  assert.ok(h.sent.some(function(m){return m[0]==="job"&&m[2]==="remove";}));
  }finally{h.cleanup();}
 });
 
@@ -1463,6 +1456,7 @@ test("Native dashboard survives bridge startup, configuration, and local notific
 
 require("./local-dictation")(test);
 require("./jobs")(test);
+require("./job-actions")(test);
 
 test("dictated settings persist locally and send updated watch preferences", function() {
   var h=loadPkjsHarness({storageData:{}});
@@ -1519,7 +1513,7 @@ test("Local commands leave earlier agent jobs running and unmatched dictation fa
     var count = harness.sent.length;
     requests[0].responseText = "pam version=1\ncapability type=timer command=start duration=5m\ndone\n";
     jobReply(harness, requests[0], requests[0].responseText, "done", false);
-    assert.ok(harness.sent.slice(count).every(function(m) { return m[0] === "job"; }));
+    assert.ok(harness.sent.slice(count).every(function(m) { return m[0] === "job" || m[0] === "job-action"; }));
     dictate("set an alarm for seven");
     assert.strictEqual(requests.length, 2);
     requests[1].status = 200; requests[1].readyState = 4;

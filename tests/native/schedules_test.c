@@ -351,6 +351,28 @@ static void test_explicit_replacement(void) {
   assert(strstr(ui.elements[element("schedule-0")].subtitle, "00:24"));
   agent_capabilities_destroy(caps);
 }
+static void test_background_actions_keep_screen(void) {
+  reset();AgentCapabilities *caps=agent_capabilities_create(&ui,NULL,NULL);
+  agent_capabilities_set_active(caps,"remote",true);
+  agent_ui_begin(&ui,"reading","card","Reading","","",0);
+  AgentCapabilityCommand c={.type="timer",.command="start",.id="background",.meta="duration=60s show=false",.invocation_id=501};
+  assert(agent_capabilities_handle_command(caps,&c));
+  assert(!strcmp(ui.screen,"reading"));
+  advance(5);assert(agent_capabilities_handle_command(caps,&c));
+  assert(!strcmp(ui.screen,"reading"));
+  event(caps,"local.dashboard.notifications");
+  assert(element("schedule-0")>=0 && element("schedule-1")<0);
+  assert(strstr(ui.elements[element("schedule-0")].subtitle,"00:55"));
+  agent_capabilities_set_active(caps,"remote",true);
+  agent_ui_begin(&ui,"reading","card","Reading","","",0);
+  c=(AgentCapabilityCommand){.type="stopwatch",.command="start",.id="background-watch",.meta="show=false",.invocation_id=502};
+  assert(agent_capabilities_handle_command(caps,&c));
+  assert(!strcmp(ui.screen,"reading"));
+  command(caps,"stopwatch","cancel","background-watch","");
+  assert(agent_capabilities_handle_command(caps,&c));
+  event(caps,"local.home");assert(element("dashboard-stopwatch")<0);
+  agent_capabilities_destroy(caps);
+}
 static void test_firing_notification_focus(void) {
   reset(); AgentCapabilities *caps=agent_capabilities_create(&ui,NULL,NULL);
   command(caps,"timer","start","first","duration=5s");
@@ -557,6 +579,7 @@ int main(void) {
   test_status_only_on_dashboard();
   test_welcome_tour();
    test_checkbox_double_tap(); test_notes(); test_idle_cadence();
+  test_background_actions_keep_screen();
   test_firing_notification_focus();
   test_weather_summary(); test_todos(); test_collection_previews(); test_preview_changed_rows_and_interrupted_write(); test_dashboard_progress(); test_dashboard_destinations(); test_multiple_and_ack(); test_pause_cancel_restore(); test_failures_and_capacity(); test_stopwatch_dashboard();  test_explicit_replacement();
   test_reused_ids_and_screen_independent_expiry(); test_delivery_replay_after_relaunch();

@@ -340,3 +340,21 @@ All emulator, simulator, and debugger processes used for these checks exited.
 
 Final measurements and implementation tradeoffs are in `efficiency-audit.md`.
 API-call counts and synthetic host timings do not measure physical battery use.
+
+## Interaction fixes (2026-09-17)
+
+Regressions cover read-only CalDAV URL rejection and DAV privilege filtering;
+setup credential retry, authoritative active-service hydration, automatic
+single-destination preview, and unfinished-setup protection; calendar and bare
+timer shortcuts; and persisted voice preferences. Native tests cover stopwatch
+background/cancel/restart, latest-due notification selection, and silent action
+delivery without stealing the active screen.
+
+Completed job actions are validated before dispatch, run independently from
+render request/navigation state, and use persisted invocation IDs. Tests check
+sequential watch execution receipts, failure/retry identity, durable collection
+acceptance without opening jobs, mixed answer/action responses, untouched form
+choices, restart receipts, and failed receipt writes. Plain answer retrieval
+retains its existing manual flow. Both watch targets compile the job-action
+protocol and smiley resource. Physical Bluetooth and microphone acceptance
+remain device checks; the SDK supplies no palm/cover signal.

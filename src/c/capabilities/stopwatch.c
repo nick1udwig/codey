@@ -15,6 +15,7 @@ typedef struct {
   uint8_t running;
   int32_t elapsed;
   time_t started_at;
+  uint32_t invocation_id;
   char id[AGENT_UI_ID_LENGTH];
   char title[AGENT_UI_TITLE_LENGTH];
 } StopwatchPersisted;
@@ -32,8 +33,10 @@ static int32_t prv_elapsed(StopwatchModule *stopwatch) {
   return (int32_t)AGENT_CAP_MIN(INT32_MAX, elapsed);
 }
 
-static void prv_save(StopwatchModule *stopwatch) {
-  persist_write_data(STOPWATCH_PERSIST_KEY, &stopwatch->state, sizeof(stopwatch->state));
+static bool prv_save(StopwatchModule *stopwatch) {
+  if (persist_write_data(STOPWATCH_PERSIST_KEY, &stopwatch->state, sizeof(stopwatch->state)) == sizeof(stopwatch->state)) { return true; }
+  agent_ui_set_status(agent_capabilities_ui(stopwatch->capabilities), "Could not save stopwatch", true, false);
+  return false;
 }
 
 static void prv_render(StopwatchModule *stopwatch) {
@@ -61,6 +64,14 @@ static void prv_render(StopwatchModule *stopwatch) {
   agent_capabilities_set_active(stopwatch->capabilities, "stopwatch", true);
 }
 
+static void prv_present(StopwatchModule *stopwatch, const AgentCapabilityCommand *command) {
+  if (agent_protocol_meta_get_bool(command->meta, "show", true)) { prv_render(stopwatch); }
+  else if (agent_capabilities_is_active(stopwatch->capabilities, "dashboard") ||
+           agent_capabilities_is_active(stopwatch->capabilities, "notifications")) {
+    agent_capabilities_rebuild_dashboard(stopwatch->capabilities);
+  }
+}
+
 static void prv_tick(void *context);
 
 static void prv_tick(void *context) {
@@ -79,6 +90,10 @@ static void prv_tick(void *context) {
 }
 
 static void prv_start(StopwatchModule *stopwatch, const AgentCapabilityCommand *command, bool reset) {
+  if (command->invocation_id && command->invocation_id == stopwatch->state.invocation_id) {
+    if (stopwatch->state.active) { prv_present(stopwatch, command); }
+    return;
+  }
   if (reset || !stopwatch->state.active) {
     memset(&stopwatch->state, 0, sizeof(stopwatch->state));
     stopwatch->state.magic = STOPWATCH_MAGIC;
@@ -92,8 +107,9 @@ static void prv_start(StopwatchModule *stopwatch, const AgentCapabilityCommand *
     stopwatch->state.running = true;
     stopwatch->state.started_at = time(NULL);
   }
-  prv_save(stopwatch);
-  prv_render(stopwatch);
+  stopwatch->state.invocation_id = command->invocation_id;
+  if (!prv_save(stopwatch)) { stopwatch->state.invocation_id = 0; return; }
+  prv_present(stopwatch, command);
 }
 
 static bool prv_command(AgentCapabilities *capabilities, const AgentCapabilityCommand *command,
@@ -104,6 +120,7 @@ static bool prv_command(AgentCapabilities *capabilities, const AgentCapabilityCo
     StopwatchPersisted previous = stopwatch->state;
     memset(&stopwatch->state, 0, sizeof(stopwatch->state));
     stopwatch->state.magic = STOPWATCH_MAGIC;
+    stopwatch->state.invocation_id = previous.invocation_id;
     if (persist_write_data(STOPWATCH_PERSIST_KEY, &stopwatch->state, sizeof(stopwatch->state)) != sizeof(stopwatch->state)) {
       stopwatch->state = previous;
       agent_ui_set_status(agent_capabilities_ui(capabilities), "Could not cancel stopwatch", true, false);
@@ -116,8 +133,8 @@ static bool prv_command(AgentCapabilities *capabilities, const AgentCapabilityCo
              stopwatch->state.active) {
     stopwatch->state.elapsed = prv_elapsed(stopwatch);
     stopwatch->state.running = false;
-    prv_save(stopwatch);
-    prv_render(stopwatch);
+    if (!prv_save(stopwatch)) { return true; }
+    prv_present(stopwatch, command);
   } else if (strcmp(command->command, "resume") == 0 && stopwatch->state.active) {
     prv_start(stopwatch, command, false);
   } else if (strcmp(command->command, "reset") == 0) {
@@ -130,15 +147,15 @@ static bool prv_command(AgentCapabilities *capabilities, const AgentCapabilityCo
       agent_protocol_copy(stopwatch->state.id, sizeof(stopwatch->state.id), "stopwatch");
       agent_protocol_copy(stopwatch->state.title, sizeof(stopwatch->state.title), "Stopwatch");
     }
-    prv_save(stopwatch);
-    prv_render(stopwatch);
+    if (!prv_save(stopwatch)) { return true; }
+    prv_present(stopwatch, command);
   } else if (strcmp(command->command, "lap") == 0 && stopwatch->state.active) {
     char value[24];
     agent_capability_format_duration(value, sizeof(value), prv_elapsed(stopwatch), false);
     agent_capabilities_emit(stopwatch->capabilities, "stopwatch", stopwatch->state.id,
                             "stopwatch.lap", value);
   } else if (strcmp(command->command, "show") == 0 && stopwatch->state.active) {
-    prv_render(stopwatch);
+    prv_present(stopwatch, command);
   } else {
     return false;
   }

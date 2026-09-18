@@ -80,8 +80,9 @@ static void dashboard(AgentCapabilities *host, void *context, bool refresh) {
 static bool command(AgentCapabilities *host, const AgentCapabilityCommand *c, void *context) {
   Jobs *s = context;
   if (!strcmp(c->command, "refresh")) {
-    bool any = false;
+    bool any = false, has_jobs = false;
     for (int i = 0; i < MAX_JOBS; ++i) {
+      if (s->jobs[i].id[0]) has_jobs = true;
       if (s->jobs[i].id[0] && strcmp(s->jobs[i].id, "pending") && running(&s->jobs[i])) {
         s->refreshing[i] = time(NULL) + 22;
         any = true;
@@ -90,8 +91,8 @@ static bool command(AgentCapabilities *host, const AgentCapabilityCommand *c, vo
     schedule_timeout(s);
     if (any) {
       agent_capabilities_rebuild_dashboard(host);
-      agent_capabilities_emit(host, "job", "", "refresh", "");
     }
+    if (has_jobs) agent_capabilities_emit(host, "job", "", "refresh", "");
     return true;
   }
   if (!strcmp(c->command, "checking")) {
@@ -117,8 +118,13 @@ static bool command(AgentCapabilities *host, const AgentCapabilityCommand *c, vo
     if (!strcmp(c->command, "remove")) {
       if (j) {
         int i = j - s->jobs;
+        bool selected = agent_capabilities_is_active(host,"jobs") && !strcmp(s->selected,j->id);
         memset(j, 0, sizeof(*j));
         persist_delete(JOB_KEY + i);
+        if (selected) {
+          s->checking=0;s->selected[0]=0;
+          agent_capabilities_show_notifications(host);
+        }
       }
     } else {
       if (!j) {

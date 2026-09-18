@@ -5,6 +5,7 @@ var Pam = require("../common/pam");
 var Model = require("../common/model");
 var WatchProtocol = require("../common/watch-protocol");
 var JobModule = require("../common/jobs");
+var JobActions = require("../common/job-actions");
 var Settings = require("../common/settings");
 var Capabilities = require("../common/capabilities");
 var Weather = require("../common/weather");
@@ -100,16 +101,16 @@ function handleCollectionRequest(kind,action,id,value,token,payload){
   collectionViews.list(kind,target.state||"active",target.snapshot||"",target.cursor||"",function(e,v){if(e){sendStatus("Saved on phone · Pending server. List unavailable.","show",requestId);sendAnswerNotification(requestId,"complete",true);}else done(null,v);},true);
  }catch(e){collectionAck(payload,"rejected",e.message);sendStatus(e.message,"error",requestId);}
 }
-function phoneCollection(attrs,requestId,complete,job,commandIndex){
+function phoneCollection(attrs,requestId,complete,job,commandIndex,background){
  if(!collections){sendStatus(collectionError||"Collections unavailable","error",requestId);if(complete)complete(false);return;}
  collections.ensure(function(e){
   if(e){sendStatus(e.message,"error",requestId);if(complete)complete(false);return;}
-  phoneCollectionReady(attrs,requestId,complete,job,commandIndex);
+  phoneCollectionReady(attrs,requestId,complete,job,commandIndex,background);
  });
 }
-function phoneCollectionReady(attrs,requestId,complete,job,commandIndex){
+function phoneCollectionReady(attrs,requestId,complete,job,commandIndex,background){
  var kind=attrs.type==="calendar"?"event":attrs.type==="todo"?"task":"note";
- function finish(e,op){if(e){sendStatus(e.message,"error",requestId);if(complete)complete(false);return;}var delivery="Saved on phone · Pending server";collections.drain(function(error,data){if(error||!op||!data)return;data.results.forEach(function(r){if(r.operation_id===op.id&&r.durably_recorded){delivery=r.outcome==="applied"?"Saved on server":"Needs attention in server settings";if(requestId===activeRequestId)sendStatus(delivery,"show",requestId);}});});collectionViews.list(kind,"active","","",function(e,v){if(e&&op){sendStatus(delivery+" · List unavailable","show",requestId);sendAnswerNotification(requestId,"complete",true);if(complete)complete(true);return;}renderCollection(requestId,e,v);if(op)sendStatus(delivery,"show",requestId);if(complete)complete(!e);});}
+ function finish(e,op){if(background){if(e){if(complete)complete(false);return;}collections.drain(function(){});if(complete)complete(true);return;}if(e){sendStatus(e.message,"error",requestId);if(complete)complete(false);return;}var delivery="Saved on phone · Pending server";collections.drain(function(error,data){if(error||!op||!data)return;data.results.forEach(function(r){if(r.operation_id===op.id&&r.durably_recorded){delivery=r.outcome==="applied"?"Saved on server":"Needs attention in server settings";if(requestId===activeRequestId)sendStatus(delivery,"show",requestId);}});});collectionViews.list(kind,"active","","",function(e,v){if(e&&op){sendStatus(delivery+" · List unavailable","show",requestId);sendAnswerNotification(requestId,"complete",true);if(complete)complete(true);return;}renderCollection(requestId,e,v);if(op)sendStatus(delivery,"show",requestId);if(complete)complete(!e);});}
  try{if(!collections)throw new Error(collectionError);if(attrs.command==="list"||attrs.command==="archive"){collectionViews.list(kind,attrs.command==="archive"?"completed":"active","","",function(e,v){renderCollection(requestId,e,v);if(complete)complete(!e);});return;}if(attrs.command!=="add")throw new Error("Open the collection and choose a record to edit.");var col=collections.collection(kind),scope=collections.journal.data.scope;
  var input={ingress:job?"agent:"+scope.server_instance_id+":"+job.id+":"+commandIndex:"direct:"+scope.client_id+":"+nextCommandId(),collection_id:col.id,generation:col.binding_generation,type:kind+".create",payload:kind==="event"?{title:String(attrs.title||attrs.value||""),start:String(attrs.start||""),end:String(attrs.end||""),location:String(attrs.location||""),description:String(attrs.description||"")}:kind==="note"?{title:WatchProtocol.truncateUtf8(String(attrs.title||attrs.value).replace(/\s+/g," "),71),body:String(attrs.value||""),body_format:"plain"}:{title:String(attrs.value||attrs.title||"")}};
  if(job)collections.agent(input,finish);else finish(null,collections.accept(input));
@@ -167,6 +168,10 @@ var watchQueue = new WatchProtocol.MessageQueue(function(message, success, failu
   maxRetries: 3,
   retryDelay: 120,
   onError: function(error, message) {
+    if(message&&message[Key.messageType]==="job-action"){
+      var key=message[Key.parentId]+":"+message[Key.eventSequence], receipt=actionReceipts&&actionReceipts[key];
+      if(receipt){delete actionReceipts[key];receipt(new Error("Watch disconnected. Open Notifications to retry."));}
+    }
     collectionCounts={}; // Retry counts after a failed or dropped Bluetooth delivery.
     if (message && message[Key.requestId]) { failedDeliveries[message[Key.requestId]] = true; watchQueue.clearRequest(message[Key.requestId]); }
     log("watch message failed", error);
@@ -351,6 +356,7 @@ function createPipeline(requestId, job) {
       }
       if (operation.type === "capability") {
         sawRenderable = true;
+        if (job && job.executed && job.executed[capabilityIndex]) { capabilityIndex++; return; }
         pendingCapabilities += 1;
         var completed = false;
         if (!capabilityRegistry.handle(operation, capabilityContext(requestId, function(success) {
@@ -482,8 +488,33 @@ var jobManager = new JobModule.Jobs({
   token: function() { return settings.token; },
   endpoint: function() { return JobModule.endpoint(settings.endpoint); },
   dispatched: function(){var m={};m[Key.messageType]="bridge";m[Key.operation]="agent-dispatched";watchQueue.enqueue(m);},
-  update: function(job, buzz) { if (!job.opened) { sendJob(job, buzz); } }
+  update: function(job, buzz) { if (!job.opened && !(actionRunner && actionRunner.process(job))) { sendJob(job, buzz); } }
 });
+var actionReceipts={};
+var actionRunner = new JobActions.Runner({
+  save:function(){jobManager.save();},
+  update:function(job){sendJob(job,false);},
+  complete:function(job){jobManager.acknowledge(job);sendJob(job,false,"remove");},
+  run:function(job,action,done){
+    if(job.endpoint!==JobModule.endpoint(settings.endpoint)){done(new Error("Reconnect the original server to apply this action."));return;}
+    var attrs=Object.assign({},action.attrs,{show:"false"});
+    if(/^(todo|note|calendar)$/.test(attrs.type)){
+      phoneCollection(attrs,0,function(ok){done(ok?null:new Error("Collection action needs attention. Open the job to retry."));},job,action.index,true);return;
+    }
+    try {
+      if(!job.commands[action.index]){job.commands[action.index]=nextCommandId();try{jobManager.save();}catch(e){delete job.commands[action.index];throw e;}}
+      var key=job.id+":"+action.index;
+      actionReceipts[key]=done;
+      var messages=WatchProtocol.encodeOperation({type:"capability",node:{kind:"capability",attrs:attrs},invocationId:job.commands[action.index]},0);
+      messages.forEach(function(m){m[Key.messageType]="job-action";m[Key.parentId]=job.id;m[Key.eventSequence]=action.index;watchQueue.enqueue(m);});
+    }catch(e){done(e);}
+  }
+});
+function retryJobActions(){
+  Object.keys(actionReceipts).forEach(function(key){delete actionRunner.busy[key.split(":")[0]];});
+  actionReceipts={};
+  jobManager.entries.slice().forEach(function(job){actionRunner.process(job);});
+}
 function sendJobPresented(job, requestId) {
   if (failedDeliveries[requestId]) { return; }
   var presented = {};
@@ -493,6 +524,8 @@ function sendJobPresented(job, requestId) {
   watchQueue.enqueue(presented);
 }
 function openJob(id, cancel) {
+  var cachedAction=jobManager.find(id), plan=cachedAction&&JobActions.inspect(cachedAction.result||"");
+  if(!cancel&&cachedAction&&plan&&plan.onlyActions){actionRunner.process(cachedAction);return;}
   selectedJob = id;
   var requestId = nextRequestId();
   activeRequestId = requestId;
@@ -534,6 +567,7 @@ function handleWatchMessage(event) {
     jobManager.retryAcknowledgements();
     sendJob({}, false, "reset");
     jobManager.entries.forEach(function(job) { if (!job.opened) { sendJob(job, false); } });
+    retryJobActions();
     sendConnection();
     refreshWeather();
     sendPreferences();
@@ -544,7 +578,12 @@ function handleWatchMessage(event) {
   if (type === "capability_event" && operation === "status") {dashboardStatus.refresh();return;}
   if (type === "capability_event" && (operation === "note" || operation === "todo" || operation === "calendar")) { handleCollectionRequest(operation==="calendar"?"event":operation==="note"?"note":"task",action,element,value,Number(read(payload,Key.meta,"Meta"))||0,payload);return; }
   if (type === "capability_event" && operation === "job") {
-    if (action === "refresh") { jobManager.refreshAll(); return; }
+    if (action === "executed" || action === "execution-failed") {
+      var receiptKey=element+":"+value, receipt=actionReceipts[receiptKey];
+      if(receipt){delete actionReceipts[receiptKey];receipt(action==="executed"?null:new Error("Watch could not apply action. Open the job to retry."));}
+      return;
+    }
+    if (action === "refresh") { retryJobActions();jobManager.refreshAll(); return; }
     if (action === "retrieved" || action === "dismiss") {
       var job = jobManager.find(element);
       if (job) { jobManager.acknowledge(job); sendJob(job, false, "remove"); }

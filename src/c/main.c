@@ -550,6 +550,25 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
     agent_ui_set_tap_animation(s_ui,prv_tuple_int(iter,MESSAGE_KEY_Flags,1)!=0);
     agent_ui_set_double_tap(s_ui,prv_tuple_int(iter,MESSAGE_KEY_Index,1)!=0);return;
   }
+  if (strcmp(type, "job-action") == 0) {
+    // Completed actions are independent of whichever screen/request is active.
+    AgentCapabilityCommand command = {
+      .type=prv_tuple_string(iter,MESSAGE_KEY_Kind), .command=operation,
+      .id=prv_tuple_string(iter,MESSAGE_KEY_ElementId),
+      .title=prv_tuple_string(iter,MESSAGE_KEY_Title),
+      .subtitle=prv_tuple_string(iter,MESSAGE_KEY_Subtitle),
+      .value=prv_tuple_string(iter,MESSAGE_KEY_Value),
+      .meta=prv_tuple_string(iter,MESSAGE_KEY_Meta),
+      .flags=prv_tuple_int(iter,MESSAGE_KEY_Flags,0),
+      .invocation_id=(uint32_t)prv_tuple_int(iter,MESSAGE_KEY_Index,0)
+    };
+    uint32_t errors=agent_ui_error_revision(s_ui);
+    bool applied=agent_capabilities_handle_command(s_capabilities,&command);
+    char index[16];snprintf(index,sizeof(index),"%ld",(long)prv_tuple_int(iter,MESSAGE_KEY_EventSequence,0));
+    prv_queue_message("capability_event",0,"job",prv_tuple_string(iter,MESSAGE_KEY_ParentId),
+                      applied && errors==agent_ui_error_revision(s_ui)?"executed":"execution-failed",index,"");
+    return;
+  }
   if (strcmp(type, "job") == 0) {
     const char *id = prv_tuple_string(iter, MESSAGE_KEY_ElementId);
     if (strcmp(operation, "upsert") == 0 && strcmp(id, "pending") != 0) {
@@ -559,7 +578,9 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
     AgentCapabilityCommand command = { .type="job", .command=operation, .id=id,
       .title=prv_tuple_string(iter, MESSAGE_KEY_Title), .subtitle=prv_tuple_string(iter, MESSAGE_KEY_Subtitle),
       .value=prv_tuple_string(iter, MESSAGE_KEY_Value), .meta="", .flags=prv_tuple_int(iter, MESSAGE_KEY_Flags, 0) };
+    bool showing_job = !strcmp(agent_ui_screen_id(s_ui),"job-status");
     agent_capabilities_handle_command(s_capabilities, &command);
+    if(showing_job && !strcmp(operation,"remove") && strcmp(agent_ui_screen_id(s_ui),"job-status")) prv_stop_response_timer();
     if (strcmp(command.subtitle, "sending") == 0) { prv_stop_response_timer(); }
     return;
   }

@@ -9,7 +9,7 @@ The phone first matches common commands locally.
 Only unmatched dictation is sent to the configured Codex agent.
 **Thinking** can appear briefly while the phone processes the transcription.
 
-Local examples: “start a five-minute timer,” “set a timer for one hour and thirty minutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up tomorrow at seven am,” “remind me in an hour to check the oven,” “pause the stopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”
+Local examples: “timer 5 minutes,” “start a five-minute timer,” “set a timer for one hour and thirty minutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up tomorrow at seven am,” “remind me in an hour to check the oven,” “pause the stopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”
 These commands need no agent endpoint; weather still uses the phone's location and weather service.
 
 Clock alarms use the phone's local timezone.
@@ -62,7 +62,8 @@ On other screens, hold Select to dictate into the current conversation.
 Notes and to-dos are saved on the server. The phone queues accepted changes during server outages; the watch needs its phone connection to save. Cached pages are marked stale when the server is unavailable. See [collection setup and recovery](collections.md).
 Agent requests animate into **Notifications** when the phone submits them. Local
 dictation shortcuts do not show this animation.
-A completed response buzzes during the configured notification window (45 seconds by default), without replacing the current screen.
+Completed action commands run as soon as their result reaches the phone. Timers, alarms, reminders, and stopwatches appear in Notifications without opening the job; notes, to-dos, and calendar events enter the durable collection queue. The job disappears after watch execution or durable phone acceptance. Delivery failures remain available to retry, using the same command identity. Plain answers and forms stay in the job list for you to open.
+A completed plain answer buzzes during the configured notification window (45 seconds by default), without replacing the current screen.
 After that window there is no automatic polling.
 Opening Notifications immediately marks ongoing requests as **Checking** and refreshes them once.
 Tap a request to refresh its status; finished requests open their answer, and ongoing requests offer **Cancel request**.
@@ -90,7 +91,7 @@ with a single tap or hold. Both settings default to enabled.
 
 Back from a note or calendar event returns to its list. Back from a list returns
 to the dashboard without stopping anything; Back from the dashboard exits the app.
-On a timer, the X (Down) cancels only that timer, Select pauses/resumes it, and the arrow (Up) returns home.
+Timers and stopwatches share controls: X (Down) cancels, Select pauses/resumes, and the arrow (Up) or Back returns home while timekeeping continues. Say “reset the stopwatch” to reset it. Notifications highlights the most recently fired timer or alarm.
 
 You can have four timers and four alarms/reminders at once.
 Finished alerts return you to Notifications and buzz every three seconds until acknowledged or snoozed.
@@ -166,11 +167,28 @@ are all day; their end date is exclusive.
 Say “Add a calendar event: lunch tomorrow from noon to one at Café Central.”
 Codey asks for missing dates or times, then saves the event through the phone.
 Calendar defaults to Server only. For syncing, choose CalDAV in phone settings,
-follow the four steps, and use the same calendar account in your usual calendar
-app. See [backend setup](../README.md#backend-sync-setup). The agenda imports the
+use your private CalDAV calendar or calendar-home URL, username, and app password. Public sharing links cannot accept events. The setup flow automatically previews a sole destination; choose Activate to finish. Failed connections retain entered credentials for retry. See [backend setup](../README.md#backend-sync-setup). The agenda imports the
 next 90 days and recurring occurrences. Manage edits, invitations, and recurring
 series in your calendar app. This agenda lives in codey, separate from OS Timeline.
 
 The lower-right dashboard tile counts all active tasks or notes, including
 items beyond the cached first page. Completing a task updates the list from the
 phone cache immediately while delivery continues in the background.
+
+## Voice settings and calendar shortcuts
+
+Say “turn off double tap,” “turn on ripple,” “turn off answer vibration,” or
+“turn on fast mode” to change a preference immediately. You can also say
+“set weather units to metric,” “set reasoning effort to high,” “set web search
+to cached,” and “set model to default.” Codey shows the saved value. Credentials
+and backend account setup remain in phone settings.
+
+“Calendar: Lunch tomorrow at noon for an hour” and “make an event: Lunch
+tomorrow at noon for an hour” save locally parsed events. Use today, tomorrow,
+or an explicit YYYY-MM-DD date, an explicit clock time, and a duration.
+“Calendar: Holiday on 2026-09-20 all day” creates an all-day event. Missing or
+ambiguous times go to Codex for clarification. “Open my calendar” opens the agenda.
+
+The watch app list shows a smiley. Firmware-marked non-navigational touch
+contacts are ignored; true palm/cover detection requires a firmware signal
+that the installed SDK does not expose.

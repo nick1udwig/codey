@@ -1,7 +1,21 @@
 {
   "version": 1,
-  "created_at": "2026-09-18T04:06:21.070106762+00:00",
+  "created_at": "2026-09-18T04:15:07.490745285+00:00",
   "documents": [
+    {
+      "id": "01a0b2b8-232b-7351-b9f4-d6a5150ee95b",
+      "slug": "issues/execute-completed-job-actions",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Execute completed Codex actions without opening jobs",
+      "content": "Context: capability PAM executed only inside openJob, so completed timer and collection jobs waited for a tap. Acceptance: validate complete PAM, auto-dispatch mutations separately from render/navigation state, preserve forms and ordinary answers, keep stable native invocation IDs and collection ingress IDs, persist execution receipts, remove action-only jobs after native execution or durable phone acceptance, retain failures for retry, and resume pending deliveries on watch reconnect/Notifications refresh. JS and native regression tests cover sequential receipts, retries, restart, save failures, mixed results, silent screens, and calendar acceptance. All requested interaction changes are documented. Physical watch/phone verification remains.",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-18T04:13:27.358976182Z",
+      "modified_at": "2026-09-18T04:13:27.358976182Z"
+    },
     {
       "id": "01a0b2b1-9dc1-7e41-a4bc-d67af5c4242e",
       "slug": "issues/bare-timer-prefix",
@@ -652,10 +666,10 @@
     {
       "id": "01a09bc6-8200-7a03-932c-76782a4a3e2c",
       "slug": "reference/docs/user-guide",
-      "version": 11,
+      "version": 12,
       "doc_type": "reference",
       "title": "docs/user-guide.md",
-      "content": "Source: `docs/user-guide.md`\n\n# Using codey\n\nFor installation and first setup, see the [README](../README.md).\n\n## Controls and everyday use\n\nTap Talk to codey, then speak normally.\nThe phone first matches common commands locally.\nOnly unmatched dictation is sent to the configured Codex agent.\n**Thinking** can appear briefly while the phone processes the transcription.\n\nLocal examples: “start a five-minute timer,” “set a timer for one hour and thirty minutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up tomorrow at seven am,” “remind me in an hour to check the oven,” “pause the stopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”\nThese commands need no agent endpoint; weather still uses the phone's location and weather service.\n\nClock alarms use the phone's local timezone.\nAM/PM, noon/midnight, or 24-hour HH:MM notation is required; without a date they mean the next occurrence.\nAmbiguous times (“set an alarm for seven”), recurring alarms, commands targeting an individual timer, and requests with additional instructions fall back to Codex unchanged.\nMatching is for complete phrases, never just a command buried inside a longer sentence.\nRelative durations support 1 second through 7 days.\n\n## Dashboard\n\nOn the dashboard, Up opens Notifications, Down opens the selected collection, and Select starts dictation.\nTouch taps open each section:\n\n- **Clock / Calendar:** opens your upcoming calendar agenda.\n  The top row shows battery and remaining agent quota as numbers around a shared `%`, with the brain at the far right.\n  The public SDK cannot directly open the system Timeline; it is accessible from the watchface.\n- **Weather:** shows current temperature, daily low/high, and a condition icon (including sun/moon and cloudy day/night variants).\n  It refreshes through the phone on startup and every 15 minutes; cached readings older than an hour are discarded on refresh.\n  Tapping opens the full forecast without an agent request.\n  Location permission and connectivity are required; missing readings show dashes.\n- **Notifications:** initially includes a **Welcome to codey** tour, which stays until you select **Got it**.\n  After dismissal it stays empty until items exist, then shows their labels.\n  Timer rings fill clockwise from 12 o’clock as elapsed time increases, freezing when paused and filling completely at completion.\n  Up to four entries fit; additional entries are indicated by a “MORE” count.\n  Select opens the complete live list of timers, alarms, reminders, and stopwatch controls.\n- **Talk to codey:** the full-button Codey artwork sleeps with zero active threads and thinks with one or more active threads. Tap it to dictate into the current conversation. Agent notification icons use the same sleeping/thinking state.\n- **Todos:** shows the undone count and opens the active task list.\n  Tap a checkbox or press Select to archive an item; archived items can be restored.\n  Swipe vertically or use Up/Down to navigate.\n  Drag item text horizontally, or hold Up to pan the selected item. Hold Down opens the collection menu.\n  Add items by talking to codey: “make a to-do to buy milk,” “set a task to call José,” or “create a todo to book tickets.”\n  The bare prefix also works: “to-do send a birthday card to John.” Speech variants `2D`, `2 d`, `two`, `two two`, `two do`, `to`, and `to o` also create a to-do when followed by item text at the start of dictation. These short prefixes are ambiguous: “to note the address” creates a task called “note the address.” Use “note: …” or “make a note …” to save a note. Embedded phrases and negated commands do not trigger this shortcut; “set two timers …” is not a to-do.\n\n## Gestures and new chats\n\nDrag scrollable text or lists directly to scroll; no arming tap is needed.\nUp/Down scroll when they have no assigned action or next control to select.\nBy default, other touchscreen controls require an arming tap: tap twice to activate a control, or tap then hold/drag/swipe on the same target.\nThe arming tap expires after 1.5 seconds and is consumed by one gesture.\nAn unarmed hold or control-adjusting drag does nothing.\nMenus and screen changes clear the arm; physical buttons keep their existing behavior.\n\nTap then hold Talk to codey (or hold Select on the dashboard) to open an animated menu with **Talk to codey** and **New Chat**.\nThe dashboard stays visible behind it; tap twice outside or press Back to dismiss.\nNew Chat resets the conversation before starting dictation and reports an unavailable phone after eight seconds.\nOn other screens, hold Select to dictate into the current conversation.\n\n## Requests and stored items\n\nNotes and to-dos are saved on the server. The phone queues accepted changes during server outages; the watch needs its phone connection to save. Cached pages are marked stale when the server is unavailable. See [collection setup and recovery](collections.md).\nAgent requests animate into **Notifications** when the phone submits them. Local\ndictation shortcuts do not show this animation.\nA completed response buzzes during the configured notification window (45 seconds by default), without replacing the current screen.\nAfter that window there is no automatic polling.\nOpening Notifications immediately marks ongoing requests as **Checking** and refreshes them once.\nTap a request to refresh its status; finished requests open their answer, and ongoing requests offer **Cancel request**.\nConnection failures keep the job available for another check.\nCanceling does not undo work already performed.\n\nTo Do and Notes share the collection tile. Tap, then hold it, or hold\nDown, to choose **To Do** or **Notes**. Down opens your selected\ncollection; the top-left date tile opens Calendar.\nThe last collection opened stays on the dashboard.\nSay “make a note Call Jane” or “note: Call Jane.”\nOpen a note and select **Append to note** or **Replace entire note**.\nNotes live on the server; the phone loads bounded summaries and revision-pinned content pages.\nThe watch persists the first page of truncated titles and loads it immediately\nwhile refreshing from the phone. Full content is fetched in pages.\nSee [collection setup and backend sync](collections.md).\n\nThe arming tap shows a brief expanding ripple with edge reflection.\nThe next touch stops it immediately.\nDisable the effect with **First-tap ripple animation** in phone settings.\n**Require double tap** is a separate setting: turn it off to activate controls\nwith a single tap or hold. Both settings default to enabled.\n\n## Timers, alerts, and Quick Launch\n\nBack from a note or calendar event returns to its list. Back from a list returns\nto the dashboard without stopping anything; Back from the dashboard exits the app.\nOn a timer, the X (Down) cancels only that timer, Select pauses/resumes it, and the arrow (Up) returns home.\n\nYou can have four timers and four alarms/reminders at once.\nFinished alerts return you to Notifications and buzz every three seconds until acknowledged or snoozed.\nOpen a finished entry and press Select to acknowledge, or Down to snooze ten minutes.\nAcknowledging one leaves other notifications active.\nIf you close codey with an unacknowledged alert, it requests a wakeup to remind you again in a minute.\nPebble only lets the app vibrate while running; if the system refuses a wakeup, codey displays “keep codey open” instead of silently promising a background alert.\n\nAssign codey to a button in the watch's Quick Launch settings.\nLaunching with that shortcut opens dictation automatically; opening codey from the app menu shows the dashboard, and a scheduled wakeup shows notifications.\n\n## Phone settings and conversations\n\nSettings default to GPT-5.6 Luna, extra-high reasoning effort, fast mode, and live web search.\nThe Fast mode toggle requests priority processing and can be turned off for standard speed.\nExplicitly saved preferences are preserved.\nUse **Load available models** to fetch the server's supported choices.\nPermissions control web search, user-file access, command execution, command networking, and auto-review.\nFilesystem, command, network, and auto-review permissions start off.\nAuto-review can approve exceptions to the selected baseline; when off, additional-permission requests are denied.\nChanging permissions uses a separate conversation.\nSee [backend settings](server.md#codex-configuration).\n\nThe gear icon is supplied by the Pebble mobile app.\nThe settings page requires internet access when it opens.\n\nTo start fresh, check **Start new conversation when I save** in phone settings and save.\nThe next query opens a new agent thread with no previous conversation context.\nExisting conversations are retained.\nThis is a one-time action; ordinary settings saves continue the current conversation.\n\n## Troubleshooting\n\n**A request is still working.**\nOpen Notifications and tap it to fetch current status.\nThe 45-second completion notification window does not stop the agent.\nCheck the server log for job acceptance/completion and agent activity.\nUnconfirmed delivery means the phone has not received an acknowledgement; checking can safely retry the same job ID.\nUpgrade both the server and watch app for the job API.\n\n**Where are the server logs?**\nStart debugging with `~/.codey/server.log`.\nThe server also writes the same records to stderr.\nIt rotates the file at 10 MiB and retains five backups, from `server.log.1` (newest) through `server.log.5` (oldest).\nSet `CODEY_LOG_FILE` or pass `--log-file /absolute/path` to move it; pass `--log-file -` for stderr only.\n\n**The home screen says Configure endpoint.**\nOpen codey's gear icon in the paired phone app, save a valid endpoint, then reopen the watchapp if needed.\n\n**Dictation reports Voice unavailable, Voice disabled, or Voice connection failed.**\nCheck microphone/voice permissions and the phone/watch connection, then retry.\nVoice recognition depends on the system dictation service.\n\n**Weather cannot get a location.**\nAllow location access for the Pebble mobile app and make sure the phone has network access.\n\n**The settings page will not open.**\nConfirm the phone is online.\nThe hosted page is [nick1udwig.github.io/codey/config/](https://nick1udwig.github.io/codey/config/).\n\n\n## Calendar\n\nTap the top-left date tile to see calendar events in time order. The watch\ncaches the first eight dated titles; opening the list refreshes them through the\nphone. The Timeline-style view expands the selected event, previews the next,\nand separates dates with day headings. Up/Down move between events and load\nadjacent pages at the boundaries. Select opens the event; Back returns to the\nsame page and selection. Dragging the list snaps to an event when released.\nOpen an event for its end time, location, and description. Date-only events\nare all day; their end date is exclusive.\n\nSay “Add a calendar event: lunch tomorrow from noon to one at Café Central.”\nCodey asks for missing dates or times, then saves the event through the phone.\nCalendar defaults to Server only. For syncing, choose CalDAV in phone settings,\nfollow the four steps, and use the same calendar account in your usual calendar\napp. See [backend setup](../README.md#backend-sync-setup). The agenda imports the\nnext 90 days and recurring occurrences. Manage edits, invitations, and recurring\nseries in your calendar app. This agenda lives in codey, separate from OS Timeline.\n\nThe lower-right dashboard tile counts all active tasks or notes, including\nitems beyond the cached first page. Completing a task updates the list from the\nphone cache immediately while delivery continues in the background.\n",
+      "content": "Source: `docs/user-guide.md`\n\n# Using codey\n\nFor installation and first setup, see the [README](../README.md).\n\n## Controls and everyday use\n\nTap Talk to codey, then speak normally.\nThe phone first matches common commands locally.\nOnly unmatched dictation is sent to the configured Codex agent.\n**Thinking** can appear briefly while the phone processes the transcription.\n\nLocal examples: “timer 5 minutes,” “start a five-minute timer,” “set a timer for one hour and thirty minutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up tomorrow at seven am,” “remind me in an hour to check the oven,” “pause the stopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”\nThese commands need no agent endpoint; weather still uses the phone's location and weather service.\n\nClock alarms use the phone's local timezone.\nAM/PM, noon/midnight, or 24-hour HH:MM notation is required; without a date they mean the next occurrence.\nAmbiguous times (“set an alarm for seven”), recurring alarms, commands targeting an individual timer, and requests with additional instructions fall back to Codex unchanged.\nMatching is for complete phrases, never just a command buried inside a longer sentence.\nRelative durations support 1 second through 7 days.\n\n## Dashboard\n\nOn the dashboard, Up opens Notifications, Down opens the selected collection, and Select starts dictation.\nTouch taps open each section:\n\n- **Clock / Calendar:** opens your upcoming calendar agenda.\n  The top row shows battery and remaining agent quota as numbers around a shared `%`, with the brain at the far right.\n  The public SDK cannot directly open the system Timeline; it is accessible from the watchface.\n- **Weather:** shows current temperature, daily low/high, and a condition icon (including sun/moon and cloudy day/night variants).\n  It refreshes through the phone on startup and every 15 minutes; cached readings older than an hour are discarded on refresh.\n  Tapping opens the full forecast without an agent request.\n  Location permission and connectivity are required; missing readings show dashes.\n- **Notifications:** initially includes a **Welcome to codey** tour, which stays until you select **Got it**.\n  After dismissal it stays empty until items exist, then shows their labels.\n  Timer rings fill clockwise from 12 o’clock as elapsed time increases, freezing when paused and filling completely at completion.\n  Up to four entries fit; additional entries are indicated by a “MORE” count.\n  Select opens the complete live list of timers, alarms, reminders, and stopwatch controls.\n- **Talk to codey:** the full-button Codey artwork sleeps with zero active threads and thinks with one or more active threads. Tap it to dictate into the current conversation. Agent notification icons use the same sleeping/thinking state.\n- **Todos:** shows the undone count and opens the active task list.\n  Tap a checkbox or press Select to archive an item; archived items can be restored.\n  Swipe vertically or use Up/Down to navigate.\n  Drag item text horizontally, or hold Up to pan the selected item. Hold Down opens the collection menu.\n  Add items by talking to codey: “make a to-do to buy milk,” “set a task to call José,” or “create a todo to book tickets.”\n  The bare prefix also works: “to-do send a birthday card to John.” Speech variants `2D`, `2 d`, `two`, `two two`, `two do`, `to`, and `to o` also create a to-do when followed by item text at the start of dictation. These short prefixes are ambiguous: “to note the address” creates a task called “note the address.” Use “note: …” or “make a note …” to save a note. Embedded phrases and negated commands do not trigger this shortcut; “set two timers …” is not a to-do.\n\n## Gestures and new chats\n\nDrag scrollable text or lists directly to scroll; no arming tap is needed.\nUp/Down scroll when they have no assigned action or next control to select.\nBy default, other touchscreen controls require an arming tap: tap twice to activate a control, or tap then hold/drag/swipe on the same target.\nThe arming tap expires after 1.5 seconds and is consumed by one gesture.\nAn unarmed hold or control-adjusting drag does nothing.\nMenus and screen changes clear the arm; physical buttons keep their existing behavior.\n\nTap then hold Talk to codey (or hold Select on the dashboard) to open an animated menu with **Talk to codey** and **New Chat**.\nThe dashboard stays visible behind it; tap twice outside or press Back to dismiss.\nNew Chat resets the conversation before starting dictation and reports an unavailable phone after eight seconds.\nOn other screens, hold Select to dictate into the current conversation.\n\n## Requests and stored items\n\nNotes and to-dos are saved on the server. The phone queues accepted changes during server outages; the watch needs its phone connection to save. Cached pages are marked stale when the server is unavailable. See [collection setup and recovery](collections.md).\nAgent requests animate into **Notifications** when the phone submits them. Local\ndictation shortcuts do not show this animation.\nCompleted action commands run as soon as their result reaches the phone. Timers, alarms, reminders, and stopwatches appear in Notifications without opening the job; notes, to-dos, and calendar events enter the durable collection queue. The job disappears after watch execution or durable phone acceptance. Delivery failures remain available to retry, using the same command identity. Plain answers and forms stay in the job list for you to open.\nA completed plain answer buzzes during the configured notification window (45 seconds by default), without replacing the current screen.\nAfter that window there is no automatic polling.\nOpening Notifications immediately marks ongoing requests as **Checking** and refreshes them once.\nTap a request to refresh its status; finished requests open their answer, and ongoing requests offer **Cancel request**.\nConnection failures keep the job available for another check.\nCanceling does not undo work already performed.\n\nTo Do and Notes share the collection tile. Tap, then hold it, or hold\nDown, to choose **To Do** or **Notes**. Down opens your selected\ncollection; the top-left date tile opens Calendar.\nThe last collection opened stays on the dashboard.\nSay “make a note Call Jane” or “note: Call Jane.”\nOpen a note and select **Append to note** or **Replace entire note**.\nNotes live on the server; the phone loads bounded summaries and revision-pinned content pages.\nThe watch persists the first page of truncated titles and loads it immediately\nwhile refreshing from the phone. Full content is fetched in pages.\nSee [collection setup and backend sync](collections.md).\n\nThe arming tap shows a brief expanding ripple with edge reflection.\nThe next touch stops it immediately.\nDisable the effect with **First-tap ripple animation** in phone settings.\n**Require double tap** is a separate setting: turn it off to activate controls\nwith a single tap or hold. Both settings default to enabled.\n\n## Timers, alerts, and Quick Launch\n\nBack from a note or calendar event returns to its list. Back from a list returns\nto the dashboard without stopping anything; Back from the dashboard exits the app.\nTimers and stopwatches share controls: X (Down) cancels, Select pauses/resumes, and the arrow (Up) or Back returns home while timekeeping continues. Say “reset the stopwatch” to reset it. Notifications highlights the most recently fired timer or alarm.\n\nYou can have four timers and four alarms/reminders at once.\nFinished alerts return you to Notifications and buzz every three seconds until acknowledged or snoozed.\nOpen a finished entry and press Select to acknowledge, or Down to snooze ten minutes.\nAcknowledging one leaves other notifications active.\nIf you close codey with an unacknowledged alert, it requests a wakeup to remind you again in a minute.\nPebble only lets the app vibrate while running; if the system refuses a wakeup, codey displays “keep codey open” instead of silently promising a background alert.\n\nAssign codey to a button in the watch's Quick Launch settings.\nLaunching with that shortcut opens dictation automatically; opening codey from the app menu shows the dashboard, and a scheduled wakeup shows notifications.\n\n## Phone settings and conversations\n\nSettings default to GPT-5.6 Luna, extra-high reasoning effort, fast mode, and live web search.\nThe Fast mode toggle requests priority processing and can be turned off for standard speed.\nExplicitly saved preferences are preserved.\nUse **Load available models** to fetch the server's supported choices.\nPermissions control web search, user-file access, command execution, command networking, and auto-review.\nFilesystem, command, network, and auto-review permissions start off.\nAuto-review can approve exceptions to the selected baseline; when off, additional-permission requests are denied.\nChanging permissions uses a separate conversation.\nSee [backend settings](server.md#codex-configuration).\n\nThe gear icon is supplied by the Pebble mobile app.\nThe settings page requires internet access when it opens.\n\nTo start fresh, check **Start new conversation when I save** in phone settings and save.\nThe next query opens a new agent thread with no previous conversation context.\nExisting conversations are retained.\nThis is a one-time action; ordinary settings saves continue the current conversation.\n\n## Troubleshooting\n\n**A request is still working.**\nOpen Notifications and tap it to fetch current status.\nThe 45-second completion notification window does not stop the agent.\nCheck the server log for job acceptance/completion and agent activity.\nUnconfirmed delivery means the phone has not received an acknowledgement; checking can safely retry the same job ID.\nUpgrade both the server and watch app for the job API.\n\n**Where are the server logs?**\nStart debugging with `~/.codey/server.log`.\nThe server also writes the same records to stderr.\nIt rotates the file at 10 MiB and retains five backups, from `server.log.1` (newest) through `server.log.5` (oldest).\nSet `CODEY_LOG_FILE` or pass `--log-file /absolute/path` to move it; pass `--log-file -` for stderr only.\n\n**The home screen says Configure endpoint.**\nOpen codey's gear icon in the paired phone app, save a valid endpoint, then reopen the watchapp if needed.\n\n**Dictation reports Voice unavailable, Voice disabled, or Voice connection failed.**\nCheck microphone/voice permissions and the phone/watch connection, then retry.\nVoice recognition depends on the system dictation service.\n\n**Weather cannot get a location.**\nAllow location access for the Pebble mobile app and make sure the phone has network access.\n\n**The settings page will not open.**\nConfirm the phone is online.\nThe hosted page is [nick1udwig.github.io/codey/config/](https://nick1udwig.github.io/codey/config/).\n\n\n## Calendar\n\nTap the top-left date tile to see calendar events in time order. The watch\ncaches the first eight dated titles; opening the list refreshes them through the\nphone. The Timeline-style view expands the selected event, previews the next,\nand separates dates with day headings. Up/Down move between events and load\nadjacent pages at the boundaries. Select opens the event; Back returns to the\nsame page and selection. Dragging the list snaps to an event when released.\nOpen an event for its end time, location, and description. Date-only events\nare all day; their end date is exclusive.\n\nSay “Add a calendar event: lunch tomorrow from noon to one at Café Central.”\nCodey asks for missing dates or times, then saves the event through the phone.\nCalendar defaults to Server only. For syncing, choose CalDAV in phone settings,\nuse your private CalDAV calendar or calendar-home URL, username, and app password. Public sharing links cannot accept events. The setup flow automatically previews a sole destination; choose Activate to finish. Failed connections retain entered credentials for retry. See [backend setup](../README.md#backend-sync-setup). The agenda imports the\nnext 90 days and recurring occurrences. Manage edits, invitations, and recurring\nseries in your calendar app. This agenda lives in codey, separate from OS Timeline.\n\nThe lower-right dashboard tile counts all active tasks or notes, including\nitems beyond the cached first page. Completing a task updates the list from the\nphone cache immediately while delivery continues in the background.\n\n## Voice settings and calendar shortcuts\n\nSay “turn off double tap,” “turn on ripple,” “turn off answer vibration,” or\n“turn on fast mode” to change a preference immediately. You can also say\n“set weather units to metric,” “set reasoning effort to high,” “set web search\nto cached,” and “set model to default.” Codey shows the saved value. Credentials\nand backend account setup remain in phone settings.\n\n“Calendar: Lunch tomorrow at noon for an hour” and “make an event: Lunch\ntomorrow at noon for an hour” save locally parsed events. Use today, tomorrow,\nor an explicit YYYY-MM-DD date, an explicit clock time, and a duration.\n“Calendar: Holiday on 2026-09-20 all day” creates an all-day event. Missing or\nambiguous times go to Codex for clarification. “Open my calendar” opens the agenda.\n\nThe watch app list shows a smiley. Firmware-marked non-navigational touch\ncontacts are ignored; true palm/cover detection requires a firmware signal\nthat the installed SDK does not expose.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -665,7 +679,7 @@
         ]
       },
       "created_at": "2026-09-13T17:17:58.043845561Z",
-      "modified_at": "2026-09-15T22:04:29.207951533Z"
+      "modified_at": "2026-09-18T04:13:27.358976182Z"
     },
     {
       "id": "01a09900-a432-7840-9f5e-663d0da68b7b",
@@ -1258,10 +1272,10 @@
     {
       "id": "01a091eb-4965-7451-8490-4bb90faa9ae5",
       "slug": "reference/docs/testing",
-      "version": 22,
+      "version": 23,
       "doc_type": "reference",
       "title": "docs/testing.md",
-      "content": "Source: `docs/testing.md`\n\n# Testing before hardware\n\nThe project has a useful pre-hardware test boundary. Parser, model, transport, phone bridge, backend fixture, configuration, watch compilation, most interaction logic, persistence, and wakeup behavior can be checked locally. Microphone quality, physical touch behavior, Bluetooth/phone integration, and real power timing still need devices.\n\n## Repeatable automated checks\n\nRun:\n\n```sh\nnpm test\nnpm run build:watch\n```\n\n`npm test` currently includes:\n\n- 92 JavaScript tests covering PAM at every chunk boundary, byte and hierarchy limits, all layouts/elements, patches/removals, UTF-8 AppMessage splitting, queue retry/staleness, HTTP and WebSocket cancellation/timeouts, settings, weather, the capability registry, writer output, onboarding, native dashboard preservation, and dictation input through the full PebbleKit-to-agent-to-render bridge.\n- Native C tests built with `-Wall -Wextra -Werror`, AddressSanitizer, and UndefinedBehaviorSanitizer. These cover metadata parsing and escaping, strict signed 32-bit bounds, bounded copies, and duration parsing/formatting.\n- 12 integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.\n- Go tests covering strict request/output PAM handling, output at arbitrary model-delta boundaries, invalid-model containment, persisted conversation threads, Codex RPC initialization and fallback order, real loopback HTTP and downstream WebSocket requests, and app-server stdio, WebSocket, and WebSocket-over-Unix-socket transports.\n\nThe watch build compiles and links the same sources for both target platforms. The current static footprint is 62,110 bytes on Emery and 62,622 bytes on Gabbro, leaving about 66 KiB of the 128 KiB RAM budget for heap.\n\n### Streaming efficiency regressions\n\nPhone tests verify that UTF-8 truncation stops after the requested prefix while\npreserving splitting behavior for Unicode, malformed surrogates, and small byte\nbudgets. Go tests cover bounded PAM line storage, maximum-length CRLF at every\nsplit, emitted-byte ownership across buffer reuse, emission failures, and strict\nvalidation around display-text repairs.\n\nRun the repeatable server benchmark with:\n\n```sh\ngo test ./internal/pam -run '^$' -bench BenchmarkOutputStream -benchmem -count=3\n```\n\nIt streams 48 text elements using one-byte, 32-byte, and whole-response chunks.\nOn the development host, buffering and normalization improvements reduced the\n32-byte case from about 47 to 33 microseconds and from 78,218 to 38,488 allocated\nbytes per response. These are host measurements, not device battery results.\n\n### Collection efficiency regressions\n\n```sh\ngo test ./internal/collectionstore -run '^$' -bench 'Benchmark(CollectionCounts|NoteSnapshot)$' -benchmem -benchtime=10x\n```\n\nThe fixture contains 100 notes with approximately 67 KiB bodies. A development-host\nrun before/after the read optimizations measured:\n\n| Operation | Before | After | Allocated bytes before → after |\n| --- | ---: | ---: | ---: |\n| Collection counts | 35.95 ms | 0.105 ms | 29,570,308 → 4,588 |\n| Note snapshot | 37.73 ms | 22.76 ms | 29,829,582 → 268,967 |\n\nThese are ten-iteration host measurements, not physical battery or Bluetooth\nlatency measurements. The index adds a small persistent database cost and is\nmaintained during record writes. Snapshot creation still scans the collection;\nit now avoids allocating full note bodies in Go.\n\nPhone tests cover one-request first pages, unchanged metadata/count suppression,\nwatch reconnects, count reconciliation, durable journal compaction and storage\nfailures. Store tests cover summary fields, intact canonical bodies, immutable\npagination after records change, and counts matching active snapshots. Native\nsanitizer tests verify zero writes for unchanged previews, three instead of ten\nwrites for a single changed title in eight rows, and invalidation/recovery after\nan interrupted write. Combining watch collection handlers reduced each watch's\ncode/data footprint by 905 bytes without adding BSS.\n\n## Emulator checks completed\n\n### Emery (rectangular)\n\n- Streamed dynamic screens containing every visible element type, then patched, appended, selected, scrolled, and removed content.\n- Exercised list, grid, card, progress, form, choice, modal, action-bar, status-bar, and symbolic-image rendering.\n- Opened a native number field, changed it using the declared step, confirmed it, and observed the semantic input sent to PebbleKit JS.\n- Started, paused, resumed, reset, replaced, and persisted timers/stopwatches. A timer exited in the background and relaunched the app at expiry. Replacing a timer no longer lets the old wakeup finish the new timer.\n- Scheduled a reminder, relaunched through its wakeup, acknowledged it, and verified its completion state.\n- Held Select through the app-wide long-click recognizer and entered the system dictation UI. The SDK simulator exercised the failure callback; successful transcription-to-agent delivery is covered by the phone-bridge test but remains a device check.\n- Repeated malformed and boundary-value render traffic without an app fault. App shutdown reported no retained heap allocation.\n\n### Gabbro (round/touch target)\n\n- Streamed a two-column grid and custom action rail on the round display.\n- Verified round-safe title/content insets and fully visible Up, Select, and Down symbols.\n- Replayed the dynamic render stress sequence without a native fault.\n- Compiled the touch-service code under `PBL_TOUCH`. The installed SDK's emulator had touch disabled at runtime, so taps, drags, hotspots, and swipes are not claimed as emulator passes.\n\n## Still requires hardware (and a paired phone)\n\n### Timer crash regression\n\nA physical Emery crash after dictation returned `duration=5s` was captured with\n`pebble logs --phone` (the default phone connection needs no IP). In the affected\nbuild, PC `0x5778` is inside newlib `strtol`, loading `_impure_ptr` through an\nabsolute address. That implementation is not safe in the relocated watchapp.\nDuration and reminder timestamp parsing now use the bounded native integer\nparser. Native sanitizer tests cover suffixes, signed limits, and overflow;\ncheck both watch ELF symbol tables for absence of `strtol` and `_impure_ptr`.\nHardware verification: dictate “Set a timer for 5 seconds”, then verify the\ncountdown and completion without an app fault while watch logging is attached.\n\n### Remaining device checks\n\nThe native scheduler suite now runs the real capability host and scheduler with\nmocked clock, persistence, wakeup and UI APIs under ASan/UBSan. It covers\nconcurrent timer/alarm expiry, repeated alerts, individual acknowledgment,\nsnooze, pause/resume, close/reopen recovery, capacity, failed storage/wakeups,\ncorrupt records, and stopwatch dashboard updates. Watch builds reject newlib\nstate symbols (`_impure_ptr`, `_ctype_`, etc.) that are unsafe in relocated\nwatchapps. Host sanitizer success alone cannot detect that class of bug.\n\nEmulator checks on Emery and Gabbro show simultaneous timer/alarm notifications,\nindependent acknowledgment, and an ongoing timer in the dashboard. The fixture\nuses the production scheduler and UI with seeded local commands.\n\nHardware acceptance for the dashboard update: create two timers and an alarm;\nBack to the dashboard and verify the running rows; cancel one timer with X;\nverify completion navigates to Notifications, repeated buzzing, independent\nacknowledgment and snooze. Close/reopen with active work and compare remaining\ntime. Assign a Quick Launch button and verify automatic dictation, while menu\nand wakeup launches show the dashboard. These hardware checks remain pending\nuntil exercised on the updated app.\n\n- A successful real microphone/dictation session, including cancellation, noisy speech, Unicode transcription, and permission/connectivity failures.\n- Physical tap targeting, drag scrolling, every swipe direction, action-rail taps, touch-disabled fallback, and edge behavior on both touch displays.\n- Bluetooth disconnect/reconnect, Android and iOS background behavior, configuration through the real phone app, HTTP buffering differences, WebSocket reconnects, authorization, and geolocation permission flows.\n- Haptic feel, reminder audibility/visibility, real wakeup accuracy across sleep/reboot/time-zone changes, and timer/reminder coexistence with other apps.\n- Battery use, long-running stopwatch drift, memory behavior over many conversations, and sunlight/low-light readability.\n\nDo not treat emulator wakeup timing, simulated dictation, or mouse-based touch as a substitute for the corresponding hardware checks.\n\nConcurrent-alert regressions cover reused model IDs, delivery retries before and\nafter relaunch, a 10-second timer\nexpiring while a 60-second timer is open, and alarm expiry over dashboard,\nremote response, stopwatch, and timer screens. Notification focus changes\npreserve outstanding capability commands while suppressing late render traffic.\n\n\n### Pixel dashboard regression\n\nThe generated resource bundle builds on Emery and Gabbro. The JS bridge suite\ncovers New Chat resetting/persisting a session before its dictation acknowledgment,\ncanceling old responses, keeping subsequent normal dictation in that session,\nand routing Weather locally without a model request. Native scheduler tests cover\nall five dashboard action bindings, the Calendar agenda request, phone-routed explicit task actions without collection persistence,\narchive/restore, counts, storage failure, capacity and text limits, opening and\nrefreshing the separate Notifications list, returning home, and concurrent expiry.\n\nBoth Emery and Gabbro dashboards were visually checked with the generated assets\nand fully visible cards. On Emery, Calendar,\nNotifications (with existing due timers/reminders), and Todos open via buttons.\nReal microphone transcription, physical touch, phone geolocation, and New Chat's\nend-to-end device handshake remain hardware checks.\n\nIf the phone simulator reports a successful installation but leaves the app menu\nempty, the SDK's packet installer works through `pebble repl --emulator emery`:\n\n```python\nfrom libpebble2.services.install import AppInstaller\nAppInstaller(pebble, 'build/codey.pbw').install()\n```\n\nNotification progress regression checks 0%, 25%, paused stability, resumed 50%,\n100% completion, removal after acknowledgment/cancellation, and seven-day duration\nbounds. The native scheduler sends explicit timer/alarm kind and elapsed percentage\nmetadata. The SDK radial primitive defines zero at 12 o’clock and clockwise growth;\nempty models draw no notification icons or labels.\n\n### Failure delivery regression\n\nRegression coverage replays the unquoted multiword screen title at every chunk\nsplit, verifies strict request parsing and rejection of ambiguous repairs, and\nchecks terminal error lines after a header or partial screen. Bridge tests ensure\nthat the original failure reason reaches the watch with the response-begin ID,\nis not replaced by “no screen,” does not emit success/idle notifications, and\nallows a subsequent request to succeed. Native response-state tests cover errors\nbefore any screen, stale IDs, terminal failure, pre-handshake timeout, and retry.\n\nTodo and failure regressions also cover local voice parsing with preserved case/Unicode and HTTP 0/401/503 explanations without HTML parser errors. Hardware checks: drag long todo text both ways, scroll a long checklist, hold Talk to open the menu, tap outside to dismiss, and dictate through both conversation options.\n\nThe revised dashboard and conversation overlay were visually checked on Emery and Gabbro. Emery button checks confirmed Back dismisses the overlay, Down opens Todos, and Up opens Notifications. Screenshots are in `docs/screenshots/`.\n\nTime-bar tests verify Todos and Calendar flags and absence of an Add item row. Weather tests cover summary values, day/night/precipitation icons, background refresh isolation, cache writes, timeouts, and retaining a new summary across dashboard navigation. `dashboard-weather-emery.png` uses an injected synthetic 58F moon forecast for layout verification, not live weather.\n\n### Interactive PAM controls\n\nRegression coverage includes local action construction and bounds, range snapping,\nclockwise/counterclockwise dial seam handling, generated dictation fallback,\ncustom answers bypassing regexes with screen context, server validation of skill\nexamples, and skill installation into a temporary state directory. Slider/dial\nscreens were rendered using an isolated emulator fixture; the slider confirmation\nopened a native five-minute timer without an agent request, then the synthetic\ntimer was canceled. See `pam-slider-emery.png` and `pam-dial-emery.png`. Physical\nslider/dial gestures and microphone answers still need hardware checks.\n\n## Background requests\n\n`internal/jobs` tests connection cancellation without worker cancellation,\nexplicit cancellation, duplicate submission, durable retrieval acknowledgements,\nrestart recovery, and retention. HTTP tests check authentication and job routes.\n`tests/jobs.js` covers the single bounded wait, no continued polling, manual\nrefresh/cancel, durable IDs, ambiguous-submission retries, and stale responses.\nThe bridge tests verify completion buzz messages without unsolicited rendering,\nmanual PAM retrieval, conversation context, stable capability invocation IDs,\nand acknowledgement only after watch presentation. Native tests cover job rows,\nstatus checks, cancel/dismiss actions, and watch persistence.\n\nOpening Notifications is covered by native tests for immediate Checking labels,\nfailed-check fallback, and no refresh loop during list rebuilds. JS tests cover\nall ongoing jobs, exclusion of terminal/retrieved jobs, overlapping pane opens,\ntransient checking state, and row-only bridge updates without unsolicited\nrendering or vibration.\n\n## Touchscreen arming\n\nThe native `touch_guard_test` exercises same-target double taps, one-use arming,\nexpiry, target changes, tap-then-hold and tap-then-drag, unarmed hold/drag rejection,\nmenu targets, screen/input resets, edge retargeting, and clock wrap. The watch\nhandler gates touchdown, movement and liftoff before any mutation or hold timer;\nphysical click handlers do not use the gate. Both Emery and Gabbro SDK builds\ncompile the touch integration. Physical touchscreen behavior still requires a\nhardware smoke test.\n\n## Minute refresh efficiency regression\n\nThe native suite checks the passive paint deadline (including clock wrap),\nimmediate user refresh, one idle host callback per minute, no separate stopwatch\ncallback, accurate elapsed values on interaction, unchanged-job write suppression,\nand one-shot job-check timeout behavior. Existing schedule tests retain exact\nshort deadlines, repeated alerts, wakeup failure fallback, and persistence.\nPhone tests cover fresh weather reuse, duplicate packet suppression, stale-cache\nfetching, and invalidation after unit changes. The full npm suite and both watch\nbuilds pass. Emery screenshots confirm dashboard and Todos clock rendering and\nphysical-button navigation; the emulator was shut down with `pebble kill`.\nPhysical display timing and battery savings still require hardware.\n\n## Notes, collection preference, and unlock ripple\n\nThe native sanitizer suite covers two-tap checkbox completion, note add/edit,\nexact-match ambiguity, stable IDs across edits/relaunches, capacity, write failure,\noperation replay, persisted tile preference, and archived todo identities.\nRipple tests cover half-width travel and reflected points at rectangular edges\nand the circular bezel, including grazing contacts. Phone tests cover note voice\nregexes, preserved text, and bypassing both agent and timer interpretation. Go PAM\ntests accept the note add/edit/list commands. The full suite passes (80 phone\ntests, seven integration tests, native cases, and all Go packages), and both watch\nbuilds pass. The PAM skill validator also passes.\n\nAn Emery fixture rendered the full note, Edit note action, and remembered Notes\ndashboard tile; screenshots were inspected and the emulator shut down. The SDK\nemulator does not provide validated touchscreen/dictation coverage: confirm on\nhardware that the first checkbox tap only ripples, the second archives, the next\ncontact stops the ripple immediately, guarded holds open the collection menu,\nand Edit note dictation replaces only the selected note.\n\n## Phone-owned Notes and ripple preference\n\nNotes storage tests now exercise the phone repository: complete Unicode bodies,\nsummary-only list pages, content pagination with lossless reconstruction, stable\nIDs and operation replay, and failed writes preserving prior data. Bridge tests\ncover on-demand list/read, quiet completion, echoed request tokens, and the\ndisabled ripple preference. Native tests verify list/read/page/edit requests write\nno note bodies. Settings-page tests cover default-on hydration and saving the\nripple toggle as false.\n\n## Dashboard telemetry and compatibility removal\n\nThe pre-alpha app reads only current storage/protocol formats. Watch-to-phone\nNotes migration, earlier schedule conversions, missing to-do ID backfilling, the\none-time wakeup upgrade, and old-watch onboarding have been removed.\n\nStatus tests cover the current multi-bucket quota API, paginated active-thread\ncounting without loading conversation turns, unavailable data, bearer auth,\nmethod checks, once-per-minute requests, and stale endpoint response rejection.\nThe full suite includes 83 phone tests, native sanitizer cases, seven integration\ntests, and all Go packages. Emulator screenshots verify dashboard layout; real\ntouch and dictation remain hardware checks.\n\n## Backend collection synchronization\n\n`npm test` includes the two-slot journal/replay/alias tests, native collection\npersistence checks, and Go transactional/provider fixtures. The shared engine\ntests include unknown delivery, interrupted enumeration, and late acknowledgments\nof older revisions. `pebble build` verifies Emery/Gabbro; server release targets\nremain linux/{amd64,386,arm,arm64} and darwin/arm64 with CGO disabled.\nAuthenticated provider accounts, real PebbleKit termination, OAuth browser return,\nand hardware remain separate qualification gates; see the operations runbook.\n\nCollection latency: phone logs report `collection read <kind> <action> ms=…`\n(HTTP/setup work before queuing the list) and `collection Bluetooth ack ms=…`\n(the compact list send until transport acknowledgment). These logs exclude titles\nand credentials. Watch cached previews require no network; verify initial loads,\nreopening after restart, empty collections, pagination, and offline refresh errors\non hardware. Local server timings do not measure phone networking or Bluetooth.\n\n### Collection and calendar regressions\n\nCalDAV fixtures cover discovery, Basic auth, calendar-query expansion, distinct\nrecurrence identities, all-day/timed creates, lost PUT responses and conditional\nretries, external-edit conflicts, cross-origin href rejection, and incomplete\nrecurrence data. Store tests check chronological paging, exact counts, event\nvalidation and reconciliation restricted to the observed window. Phone tests\ncheck immediate task completion from cached pages, event summaries/details, and\nagent animation only after remote dispatch. Setup tests exercise four-step\nprogress, service-specific fields, changing the destination, and independent\ndouble-tap/ripple preferences. Native tests cover single tap/hold and structural\nrefresh bypass after notifications.\n\nReal provider accounts, physical touch/holds, Bluetooth timing, and OS overlay\nreturn still require device verification. No claim of a sub-second phone or\nprovider response follows from the host fixtures.\n\nThe sync-engine regression also verifies that a remote resource observed after a\nlost create response is not imported as a duplicate before the conditional retry\nacknowledges its original canonical record. A headless Chromium check with mocked\nservices verified actual hidden-field CSS and all three inline setup paths.\n\n## Completed efficiency changes (2026-09-15)\n\nThe full `npm test` suite passes: 96 phone cases, collection regressions, ten\nnative ASan/UBSan executables, 12 integration cases, and all Go packages.\n`go test -race ./internal/agent ./internal/collectionsync ./internal/httpapi`\nalso passes. Both SDK targets and the CGO-disabled server release build pass.\n\nNew regressions cover durable job acknowledgment compaction and retry, batched\njournal writes, coalesced/backed-off polling, stale credentials, shared status\nscans with canceled callers, immediate mutation wakeups, snapshot schema upgrades\nand pinned pages, bounded page decoding, and bitmap cache allocation failures.\n\nEmery and Gabbro emulators rendered the retained dashboard icons and Codey poses.\nGDB counted one artwork bitmap load per request animation, with 76 / 62 calls\nto the app resource-range wrapper respectively; the audit predicted about\n1,520 / 1,220 row reads without caching. Both caches were null after the animation.\nThe temporary cache is also released on navigation, window disappearance,\nshutdown, or timer failure; failed bitmap allocation retains row rendering.\nThe native cache fixture verifies one load across 20 frames, pose invalidation,\nallocation failure without repeated retries, later retry, and complete cleanup.\nAll emulator, simulator, and debugger processes used for these checks exited.\n\nFinal measurements and implementation tradeoffs are in `efficiency-audit.md`.\nAPI-call counts and synthetic host timings do not measure physical battery use.\n",
+      "content": "Source: `docs/testing.md`\n\n# Testing before hardware\n\nThe project has a useful pre-hardware test boundary. Parser, model, transport, phone bridge, backend fixture, configuration, watch compilation, most interaction logic, persistence, and wakeup behavior can be checked locally. Microphone quality, physical touch behavior, Bluetooth/phone integration, and real power timing still need devices.\n\n## Repeatable automated checks\n\nRun:\n\n```sh\nnpm test\nnpm run build:watch\n```\n\n`npm test` currently includes:\n\n- 92 JavaScript tests covering PAM at every chunk boundary, byte and hierarchy limits, all layouts/elements, patches/removals, UTF-8 AppMessage splitting, queue retry/staleness, HTTP and WebSocket cancellation/timeouts, settings, weather, the capability registry, writer output, onboarding, native dashboard preservation, and dictation input through the full PebbleKit-to-agent-to-render bridge.\n- Native C tests built with `-Wall -Wextra -Werror`, AddressSanitizer, and UndefinedBehaviorSanitizer. These cover metadata parsing and escaping, strict signed 32-bit bounds, bounded copies, and duration parsing/formatting.\n- 12 integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.\n- Go tests covering strict request/output PAM handling, output at arbitrary model-delta boundaries, invalid-model containment, persisted conversation threads, Codex RPC initialization and fallback order, real loopback HTTP and downstream WebSocket requests, and app-server stdio, WebSocket, and WebSocket-over-Unix-socket transports.\n\nThe watch build compiles and links the same sources for both target platforms. The current static footprint is 62,110 bytes on Emery and 62,622 bytes on Gabbro, leaving about 66 KiB of the 128 KiB RAM budget for heap.\n\n### Streaming efficiency regressions\n\nPhone tests verify that UTF-8 truncation stops after the requested prefix while\npreserving splitting behavior for Unicode, malformed surrogates, and small byte\nbudgets. Go tests cover bounded PAM line storage, maximum-length CRLF at every\nsplit, emitted-byte ownership across buffer reuse, emission failures, and strict\nvalidation around display-text repairs.\n\nRun the repeatable server benchmark with:\n\n```sh\ngo test ./internal/pam -run '^$' -bench BenchmarkOutputStream -benchmem -count=3\n```\n\nIt streams 48 text elements using one-byte, 32-byte, and whole-response chunks.\nOn the development host, buffering and normalization improvements reduced the\n32-byte case from about 47 to 33 microseconds and from 78,218 to 38,488 allocated\nbytes per response. These are host measurements, not device battery results.\n\n### Collection efficiency regressions\n\n```sh\ngo test ./internal/collectionstore -run '^$' -bench 'Benchmark(CollectionCounts|NoteSnapshot)$' -benchmem -benchtime=10x\n```\n\nThe fixture contains 100 notes with approximately 67 KiB bodies. A development-host\nrun before/after the read optimizations measured:\n\n| Operation | Before | After | Allocated bytes before → after |\n| --- | ---: | ---: | ---: |\n| Collection counts | 35.95 ms | 0.105 ms | 29,570,308 → 4,588 |\n| Note snapshot | 37.73 ms | 22.76 ms | 29,829,582 → 268,967 |\n\nThese are ten-iteration host measurements, not physical battery or Bluetooth\nlatency measurements. The index adds a small persistent database cost and is\nmaintained during record writes. Snapshot creation still scans the collection;\nit now avoids allocating full note bodies in Go.\n\nPhone tests cover one-request first pages, unchanged metadata/count suppression,\nwatch reconnects, count reconciliation, durable journal compaction and storage\nfailures. Store tests cover summary fields, intact canonical bodies, immutable\npagination after records change, and counts matching active snapshots. Native\nsanitizer tests verify zero writes for unchanged previews, three instead of ten\nwrites for a single changed title in eight rows, and invalidation/recovery after\nan interrupted write. Combining watch collection handlers reduced each watch's\ncode/data footprint by 905 bytes without adding BSS.\n\n## Emulator checks completed\n\n### Emery (rectangular)\n\n- Streamed dynamic screens containing every visible element type, then patched, appended, selected, scrolled, and removed content.\n- Exercised list, grid, card, progress, form, choice, modal, action-bar, status-bar, and symbolic-image rendering.\n- Opened a native number field, changed it using the declared step, confirmed it, and observed the semantic input sent to PebbleKit JS.\n- Started, paused, resumed, reset, replaced, and persisted timers/stopwatches. A timer exited in the background and relaunched the app at expiry. Replacing a timer no longer lets the old wakeup finish the new timer.\n- Scheduled a reminder, relaunched through its wakeup, acknowledged it, and verified its completion state.\n- Held Select through the app-wide long-click recognizer and entered the system dictation UI. The SDK simulator exercised the failure callback; successful transcription-to-agent delivery is covered by the phone-bridge test but remains a device check.\n- Repeated malformed and boundary-value render traffic without an app fault. App shutdown reported no retained heap allocation.\n\n### Gabbro (round/touch target)\n\n- Streamed a two-column grid and custom action rail on the round display.\n- Verified round-safe title/content insets and fully visible Up, Select, and Down symbols.\n- Replayed the dynamic render stress sequence without a native fault.\n- Compiled the touch-service code under `PBL_TOUCH`. The installed SDK's emulator had touch disabled at runtime, so taps, drags, hotspots, and swipes are not claimed as emulator passes.\n\n## Still requires hardware (and a paired phone)\n\n### Timer crash regression\n\nA physical Emery crash after dictation returned `duration=5s` was captured with\n`pebble logs --phone` (the default phone connection needs no IP). In the affected\nbuild, PC `0x5778` is inside newlib `strtol`, loading `_impure_ptr` through an\nabsolute address. That implementation is not safe in the relocated watchapp.\nDuration and reminder timestamp parsing now use the bounded native integer\nparser. Native sanitizer tests cover suffixes, signed limits, and overflow;\ncheck both watch ELF symbol tables for absence of `strtol` and `_impure_ptr`.\nHardware verification: dictate “Set a timer for 5 seconds”, then verify the\ncountdown and completion without an app fault while watch logging is attached.\n\n### Remaining device checks\n\nThe native scheduler suite now runs the real capability host and scheduler with\nmocked clock, persistence, wakeup and UI APIs under ASan/UBSan. It covers\nconcurrent timer/alarm expiry, repeated alerts, individual acknowledgment,\nsnooze, pause/resume, close/reopen recovery, capacity, failed storage/wakeups,\ncorrupt records, and stopwatch dashboard updates. Watch builds reject newlib\nstate symbols (`_impure_ptr`, `_ctype_`, etc.) that are unsafe in relocated\nwatchapps. Host sanitizer success alone cannot detect that class of bug.\n\nEmulator checks on Emery and Gabbro show simultaneous timer/alarm notifications,\nindependent acknowledgment, and an ongoing timer in the dashboard. The fixture\nuses the production scheduler and UI with seeded local commands.\n\nHardware acceptance for the dashboard update: create two timers and an alarm;\nBack to the dashboard and verify the running rows; cancel one timer with X;\nverify completion navigates to Notifications, repeated buzzing, independent\nacknowledgment and snooze. Close/reopen with active work and compare remaining\ntime. Assign a Quick Launch button and verify automatic dictation, while menu\nand wakeup launches show the dashboard. These hardware checks remain pending\nuntil exercised on the updated app.\n\n- A successful real microphone/dictation session, including cancellation, noisy speech, Unicode transcription, and permission/connectivity failures.\n- Physical tap targeting, drag scrolling, every swipe direction, action-rail taps, touch-disabled fallback, and edge behavior on both touch displays.\n- Bluetooth disconnect/reconnect, Android and iOS background behavior, configuration through the real phone app, HTTP buffering differences, WebSocket reconnects, authorization, and geolocation permission flows.\n- Haptic feel, reminder audibility/visibility, real wakeup accuracy across sleep/reboot/time-zone changes, and timer/reminder coexistence with other apps.\n- Battery use, long-running stopwatch drift, memory behavior over many conversations, and sunlight/low-light readability.\n\nDo not treat emulator wakeup timing, simulated dictation, or mouse-based touch as a substitute for the corresponding hardware checks.\n\nConcurrent-alert regressions cover reused model IDs, delivery retries before and\nafter relaunch, a 10-second timer\nexpiring while a 60-second timer is open, and alarm expiry over dashboard,\nremote response, stopwatch, and timer screens. Notification focus changes\npreserve outstanding capability commands while suppressing late render traffic.\n\n\n### Pixel dashboard regression\n\nThe generated resource bundle builds on Emery and Gabbro. The JS bridge suite\ncovers New Chat resetting/persisting a session before its dictation acknowledgment,\ncanceling old responses, keeping subsequent normal dictation in that session,\nand routing Weather locally without a model request. Native scheduler tests cover\nall five dashboard action bindings, the Calendar agenda request, phone-routed explicit task actions without collection persistence,\narchive/restore, counts, storage failure, capacity and text limits, opening and\nrefreshing the separate Notifications list, returning home, and concurrent expiry.\n\nBoth Emery and Gabbro dashboards were visually checked with the generated assets\nand fully visible cards. On Emery, Calendar,\nNotifications (with existing due timers/reminders), and Todos open via buttons.\nReal microphone transcription, physical touch, phone geolocation, and New Chat's\nend-to-end device handshake remain hardware checks.\n\nIf the phone simulator reports a successful installation but leaves the app menu\nempty, the SDK's packet installer works through `pebble repl --emulator emery`:\n\n```python\nfrom libpebble2.services.install import AppInstaller\nAppInstaller(pebble, 'build/codey.pbw').install()\n```\n\nNotification progress regression checks 0%, 25%, paused stability, resumed 50%,\n100% completion, removal after acknowledgment/cancellation, and seven-day duration\nbounds. The native scheduler sends explicit timer/alarm kind and elapsed percentage\nmetadata. The SDK radial primitive defines zero at 12 o’clock and clockwise growth;\nempty models draw no notification icons or labels.\n\n### Failure delivery regression\n\nRegression coverage replays the unquoted multiword screen title at every chunk\nsplit, verifies strict request parsing and rejection of ambiguous repairs, and\nchecks terminal error lines after a header or partial screen. Bridge tests ensure\nthat the original failure reason reaches the watch with the response-begin ID,\nis not replaced by “no screen,” does not emit success/idle notifications, and\nallows a subsequent request to succeed. Native response-state tests cover errors\nbefore any screen, stale IDs, terminal failure, pre-handshake timeout, and retry.\n\nTodo and failure regressions also cover local voice parsing with preserved case/Unicode and HTTP 0/401/503 explanations without HTML parser errors. Hardware checks: drag long todo text both ways, scroll a long checklist, hold Talk to open the menu, tap outside to dismiss, and dictate through both conversation options.\n\nThe revised dashboard and conversation overlay were visually checked on Emery and Gabbro. Emery button checks confirmed Back dismisses the overlay, Down opens Todos, and Up opens Notifications. Screenshots are in `docs/screenshots/`.\n\nTime-bar tests verify Todos and Calendar flags and absence of an Add item row. Weather tests cover summary values, day/night/precipitation icons, background refresh isolation, cache writes, timeouts, and retaining a new summary across dashboard navigation. `dashboard-weather-emery.png` uses an injected synthetic 58F moon forecast for layout verification, not live weather.\n\n### Interactive PAM controls\n\nRegression coverage includes local action construction and bounds, range snapping,\nclockwise/counterclockwise dial seam handling, generated dictation fallback,\ncustom answers bypassing regexes with screen context, server validation of skill\nexamples, and skill installation into a temporary state directory. Slider/dial\nscreens were rendered using an isolated emulator fixture; the slider confirmation\nopened a native five-minute timer without an agent request, then the synthetic\ntimer was canceled. See `pam-slider-emery.png` and `pam-dial-emery.png`. Physical\nslider/dial gestures and microphone answers still need hardware checks.\n\n## Background requests\n\n`internal/jobs` tests connection cancellation without worker cancellation,\nexplicit cancellation, duplicate submission, durable retrieval acknowledgements,\nrestart recovery, and retention. HTTP tests check authentication and job routes.\n`tests/jobs.js` covers the single bounded wait, no continued polling, manual\nrefresh/cancel, durable IDs, ambiguous-submission retries, and stale responses.\nThe bridge tests verify completion buzz messages without unsolicited rendering,\nmanual PAM retrieval, conversation context, stable capability invocation IDs,\nand acknowledgement only after watch presentation. Native tests cover job rows,\nstatus checks, cancel/dismiss actions, and watch persistence.\n\nOpening Notifications is covered by native tests for immediate Checking labels,\nfailed-check fallback, and no refresh loop during list rebuilds. JS tests cover\nall ongoing jobs, exclusion of terminal/retrieved jobs, overlapping pane opens,\ntransient checking state, and row-only bridge updates without unsolicited\nrendering or vibration.\n\n## Touchscreen arming\n\nThe native `touch_guard_test` exercises same-target double taps, one-use arming,\nexpiry, target changes, tap-then-hold and tap-then-drag, unarmed hold/drag rejection,\nmenu targets, screen/input resets, edge retargeting, and clock wrap. The watch\nhandler gates touchdown, movement and liftoff before any mutation or hold timer;\nphysical click handlers do not use the gate. Both Emery and Gabbro SDK builds\ncompile the touch integration. Physical touchscreen behavior still requires a\nhardware smoke test.\n\n## Minute refresh efficiency regression\n\nThe native suite checks the passive paint deadline (including clock wrap),\nimmediate user refresh, one idle host callback per minute, no separate stopwatch\ncallback, accurate elapsed values on interaction, unchanged-job write suppression,\nand one-shot job-check timeout behavior. Existing schedule tests retain exact\nshort deadlines, repeated alerts, wakeup failure fallback, and persistence.\nPhone tests cover fresh weather reuse, duplicate packet suppression, stale-cache\nfetching, and invalidation after unit changes. The full npm suite and both watch\nbuilds pass. Emery screenshots confirm dashboard and Todos clock rendering and\nphysical-button navigation; the emulator was shut down with `pebble kill`.\nPhysical display timing and battery savings still require hardware.\n\n## Notes, collection preference, and unlock ripple\n\nThe native sanitizer suite covers two-tap checkbox completion, note add/edit,\nexact-match ambiguity, stable IDs across edits/relaunches, capacity, write failure,\noperation replay, persisted tile preference, and archived todo identities.\nRipple tests cover half-width travel and reflected points at rectangular edges\nand the circular bezel, including grazing contacts. Phone tests cover note voice\nregexes, preserved text, and bypassing both agent and timer interpretation. Go PAM\ntests accept the note add/edit/list commands. The full suite passes (80 phone\ntests, seven integration tests, native cases, and all Go packages), and both watch\nbuilds pass. The PAM skill validator also passes.\n\nAn Emery fixture rendered the full note, Edit note action, and remembered Notes\ndashboard tile; screenshots were inspected and the emulator shut down. The SDK\nemulator does not provide validated touchscreen/dictation coverage: confirm on\nhardware that the first checkbox tap only ripples, the second archives, the next\ncontact stops the ripple immediately, guarded holds open the collection menu,\nand Edit note dictation replaces only the selected note.\n\n## Phone-owned Notes and ripple preference\n\nNotes storage tests now exercise the phone repository: complete Unicode bodies,\nsummary-only list pages, content pagination with lossless reconstruction, stable\nIDs and operation replay, and failed writes preserving prior data. Bridge tests\ncover on-demand list/read, quiet completion, echoed request tokens, and the\ndisabled ripple preference. Native tests verify list/read/page/edit requests write\nno note bodies. Settings-page tests cover default-on hydration and saving the\nripple toggle as false.\n\n## Dashboard telemetry and compatibility removal\n\nThe pre-alpha app reads only current storage/protocol formats. Watch-to-phone\nNotes migration, earlier schedule conversions, missing to-do ID backfilling, the\none-time wakeup upgrade, and old-watch onboarding have been removed.\n\nStatus tests cover the current multi-bucket quota API, paginated active-thread\ncounting without loading conversation turns, unavailable data, bearer auth,\nmethod checks, once-per-minute requests, and stale endpoint response rejection.\nThe full suite includes 83 phone tests, native sanitizer cases, seven integration\ntests, and all Go packages. Emulator screenshots verify dashboard layout; real\ntouch and dictation remain hardware checks.\n\n## Backend collection synchronization\n\n`npm test` includes the two-slot journal/replay/alias tests, native collection\npersistence checks, and Go transactional/provider fixtures. The shared engine\ntests include unknown delivery, interrupted enumeration, and late acknowledgments\nof older revisions. `pebble build` verifies Emery/Gabbro; server release targets\nremain linux/{amd64,386,arm,arm64} and darwin/arm64 with CGO disabled.\nAuthenticated provider accounts, real PebbleKit termination, OAuth browser return,\nand hardware remain separate qualification gates; see the operations runbook.\n\nCollection latency: phone logs report `collection read <kind> <action> ms=…`\n(HTTP/setup work before queuing the list) and `collection Bluetooth ack ms=…`\n(the compact list send until transport acknowledgment). These logs exclude titles\nand credentials. Watch cached previews require no network; verify initial loads,\nreopening after restart, empty collections, pagination, and offline refresh errors\non hardware. Local server timings do not measure phone networking or Bluetooth.\n\n### Collection and calendar regressions\n\nCalDAV fixtures cover discovery, Basic auth, calendar-query expansion, distinct\nrecurrence identities, all-day/timed creates, lost PUT responses and conditional\nretries, external-edit conflicts, cross-origin href rejection, and incomplete\nrecurrence data. Store tests check chronological paging, exact counts, event\nvalidation and reconciliation restricted to the observed window. Phone tests\ncheck immediate task completion from cached pages, event summaries/details, and\nagent animation only after remote dispatch. Setup tests exercise four-step\nprogress, service-specific fields, changing the destination, and independent\ndouble-tap/ripple preferences. Native tests cover single tap/hold and structural\nrefresh bypass after notifications.\n\nReal provider accounts, physical touch/holds, Bluetooth timing, and OS overlay\nreturn still require device verification. No claim of a sub-second phone or\nprovider response follows from the host fixtures.\n\nThe sync-engine regression also verifies that a remote resource observed after a\nlost create response is not imported as a duplicate before the conditional retry\nacknowledges its original canonical record. A headless Chromium check with mocked\nservices verified actual hidden-field CSS and all three inline setup paths.\n\n## Completed efficiency changes (2026-09-15)\n\nThe full `npm test` suite passes: 96 phone cases, collection regressions, ten\nnative ASan/UBSan executables, 12 integration cases, and all Go packages.\n`go test -race ./internal/agent ./internal/collectionsync ./internal/httpapi`\nalso passes. Both SDK targets and the CGO-disabled server release build pass.\n\nNew regressions cover durable job acknowledgment compaction and retry, batched\njournal writes, coalesced/backed-off polling, stale credentials, shared status\nscans with canceled callers, immediate mutation wakeups, snapshot schema upgrades\nand pinned pages, bounded page decoding, and bitmap cache allocation failures.\n\nEmery and Gabbro emulators rendered the retained dashboard icons and Codey poses.\nGDB counted one artwork bitmap load per request animation, with 76 / 62 calls\nto the app resource-range wrapper respectively; the audit predicted about\n1,520 / 1,220 row reads without caching. Both caches were null after the animation.\nThe temporary cache is also released on navigation, window disappearance,\nshutdown, or timer failure; failed bitmap allocation retains row rendering.\nThe native cache fixture verifies one load across 20 frames, pose invalidation,\nallocation failure without repeated retries, later retry, and complete cleanup.\nAll emulator, simulator, and debugger processes used for these checks exited.\n\nFinal measurements and implementation tradeoffs are in `efficiency-audit.md`.\nAPI-call counts and synthetic host timings do not measure physical battery use.\n\n## Interaction fixes (2026-09-17)\n\nRegressions cover read-only CalDAV URL rejection and DAV privilege filtering;\nsetup credential retry, authoritative active-service hydration, automatic\nsingle-destination preview, and unfinished-setup protection; calendar and bare\ntimer shortcuts; and persisted voice preferences. Native tests cover stopwatch\nbackground/cancel/restart, latest-due notification selection, and silent action\ndelivery without stealing the active screen.\n\nCompleted job actions are validated before dispatch, run independently from\nrender request/navigation state, and use persisted invocation IDs. Tests check\nsequential watch execution receipts, failure/retry identity, durable collection\nacceptance without opening jobs, mixed answer/action responses, untouched form\nchoices, restart receipts, and failed receipt writes. Plain answer retrieval\nretains its existing manual flow. Both watch targets compile the job-action\nprotocol and smiley resource. Physical Bluetooth and microphone acceptance\nremain device checks; the SDK supplies no palm/cover signal.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -1271,7 +1285,7 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-15T22:44:43.224905645Z"
+      "modified_at": "2026-09-18T04:13:27.358976182Z"
     },
     {
       "id": "01a091eb-4971-78b2-b568-152e2036ab39",
@@ -1311,6 +1325,410 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a0b2b8-24bb-76e2-89ff-6a6eb9335ceb",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Record automatic job action execution and refresh user/testing docs",
+      "created_at": "2026-09-18T04:13:27.358976182Z",
+      "changes": [
+        {
+          "document_id": "01a0b2b8-232b-7351-b9f4-d6a5150ee95b",
+          "slug": "issues/execute-completed-job-actions",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "3066991bc6899efe32bb4de379c23ed6b7281857fd3d27351a61c2bec7f44f74",
+          "doc_type": "task",
+          "title": "Execute completed Codex actions without opening jobs"
+        },
+        {
+          "document_id": "01a091eb-4965-7451-8490-4bb90faa9ae5",
+          "slug": "reference/docs/testing",
+          "change_type": "modified",
+          "previous_commit_id": "01a0a73e-75af-73c2-af5f-ff9151c63420",
+          "previous_version": 22,
+          "new_version": 23,
+          "hunks": [
+            {
+              "old_start": 342,
+              "old_count": 3,
+              "new_start": 342,
+              "new_count": 21,
+              "context": "## Completed efficiency changes (2026-09-15)",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Final measurements and implementation tradeoffs are in `efficiency-audit.md`."
+                },
+                {
+                  "op": "context",
+                  "content": "API-call counts and synthetic host timings do not measure physical battery use."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "## Interaction fixes (2026-09-17)"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Regressions cover read-only CalDAV URL rejection and DAV privilege filtering;"
+                },
+                {
+                  "op": "add",
+                  "content": "setup credential retry, authoritative active-service hydration, automatic"
+                },
+                {
+                  "op": "add",
+                  "content": "single-destination preview, and unfinished-setup protection; calendar and bare"
+                },
+                {
+                  "op": "add",
+                  "content": "timer shortcuts; and persisted voice preferences. Native tests cover stopwatch"
+                },
+                {
+                  "op": "add",
+                  "content": "background/cancel/restart, latest-due notification selection, and silent action"
+                },
+                {
+                  "op": "add",
+                  "content": "delivery without stealing the active screen."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Completed job actions are validated before dispatch, run independently from"
+                },
+                {
+                  "op": "add",
+                  "content": "render request/navigation state, and use persisted invocation IDs. Tests check"
+                },
+                {
+                  "op": "add",
+                  "content": "sequential watch execution receipts, failure/retry identity, durable collection"
+                },
+                {
+                  "op": "add",
+                  "content": "acceptance without opening jobs, mixed answer/action responses, untouched form"
+                },
+                {
+                  "op": "add",
+                  "content": "choices, restart receipts, and failed receipt writes. Plain answer retrieval"
+                },
+                {
+                  "op": "add",
+                  "content": "retains its existing manual flow. Both watch targets compile the job-action"
+                },
+                {
+                  "op": "add",
+                  "content": "protocol and smiley resource. Physical Bluetooth and microphone acceptance"
+                },
+                {
+                  "op": "add",
+                  "content": "remain device checks; the SDK supplies no palm/cover signal."
+                }
+              ]
+            }
+          ],
+          "content_hash": "29f58b2469c027a9e3371996c2db35cca4202368d50a4e1580cfa1afdd4bf531",
+          "previous_hash": "e5a51ac563c37d796b944291dbe9e9761f15afacac9bb3db28f93749cd3442c4",
+          "doc_type": "reference",
+          "title": "docs/testing.md"
+        },
+        {
+          "document_id": "01a09bc6-8200-7a03-932c-76782a4a3e2c",
+          "slug": "reference/docs/user-guide",
+          "change_type": "modified",
+          "previous_commit_id": "01a0a719-9f21-7733-b084-a138bad808bc",
+          "previous_version": 11,
+          "new_version": 12,
+          "hunks": [
+            {
+              "old_start": 11,
+              "old_count": 7,
+              "new_start": 11,
+              "new_count": 7,
+              "context": "## Controls and everyday use",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "Only unmatched dictation is sent to the configured Codex agent."
+                },
+                {
+                  "op": "context",
+                  "content": "**Thinking** can appear briefly while the phone processes the transcription."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "delete",
+                  "content": "Local examples: “start a five-minute timer,” “set a timer for one hour and thirty minutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up tomorrow at seven am,” “remind me in an hour to check the oven,” “pause the stopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”"
+                },
+                {
+                  "op": "add",
+                  "content": "Local examples: “timer 5 minutes,” “start a five-minute timer,” “set a timer for one hour and thirty minutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up tomorrow at seven am,” “remind me in an hour to check the oven,” “pause the stopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”"
+                },
+                {
+                  "op": "context",
+                  "content": "These commands need no agent endpoint; weather still uses the phone's location and weather service."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Clock alarms use the phone's local timezone."
+                }
+              ]
+            },
+            {
+              "old_start": 64,
+              "old_count": 7,
+              "new_start": 64,
+              "new_count": 8,
+              "context": "## Requests and stored items",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "Notes and to-dos are saved on the server. The phone queues accepted changes during server outages; the watch needs its phone connection to save. Cached pages are marked stale when the server is unavailable. See [collection setup and recovery](collections.md)."
+                },
+                {
+                  "op": "context",
+                  "content": "Agent requests animate into **Notifications** when the phone submits them. Local"
+                },
+                {
+                  "op": "context",
+                  "content": "dictation shortcuts do not show this animation."
+                },
+                {
+                  "op": "delete",
+                  "content": "A completed response buzzes during the configured notification window (45 seconds by default), without replacing the current screen."
+                },
+                {
+                  "op": "add",
+                  "content": "Completed action commands run as soon as their result reaches the phone. Timers, alarms, reminders, and stopwatches appear in Notifications without opening the job; notes, to-dos, and calendar events enter the durable collection queue. The job disappears after watch execution or durable phone acceptance. Delivery failures remain available to retry, using the same command identity. Plain answers and forms stay in the job list for you to open."
+                },
+                {
+                  "op": "add",
+                  "content": "A completed plain answer buzzes during the configured notification window (45 seconds by default), without replacing the current screen."
+                },
+                {
+                  "op": "context",
+                  "content": "After that window there is no automatic polling."
+                },
+                {
+                  "op": "context",
+                  "content": "Opening Notifications immediately marks ongoing requests as **Checking** and refreshes them once."
+                },
+                {
+                  "op": "context",
+                  "content": "Tap a request to refresh its status; finished requests open their answer, and ongoing requests offer **Cancel request**."
+                }
+              ]
+            },
+            {
+              "old_start": 92,
+              "old_count": 7,
+              "new_start": 93,
+              "new_count": 7,
+              "context": "## Timers, alerts, and Quick Launch",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Back from a note or calendar event returns to its list. Back from a list returns"
+                },
+                {
+                  "op": "context",
+                  "content": "to the dashboard without stopping anything; Back from the dashboard exits the app."
+                },
+                {
+                  "op": "delete",
+                  "content": "On a timer, the X (Down) cancels only that timer, Select pauses/resumes it, and the arrow (Up) returns home."
+                },
+                {
+                  "op": "add",
+                  "content": "Timers and stopwatches share controls: X (Down) cancels, Select pauses/resumes, and the arrow (Up) or Back returns home while timekeeping continues. Say “reset the stopwatch” to reset it. Notifications highlights the most recently fired timer or alarm."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "You can have four timers and four alarms/reminders at once."
+                },
+                {
+                  "op": "context",
+                  "content": "Finished alerts return you to Notifications and buzz every three seconds until acknowledged or snoozed."
+                }
+              ]
+            },
+            {
+              "old_start": 168,
+              "old_count": 8,
+              "new_start": 169,
+              "new_count": 7,
+              "context": "## Calendar",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "Say “Add a calendar event: lunch tomorrow from noon to one at Café Central.”"
+                },
+                {
+                  "op": "context",
+                  "content": "Codey asks for missing dates or times, then saves the event through the phone."
+                },
+                {
+                  "op": "context",
+                  "content": "Calendar defaults to Server only. For syncing, choose CalDAV in phone settings,"
+                },
+                {
+                  "op": "delete",
+                  "content": "follow the four steps, and use the same calendar account in your usual calendar"
+                },
+                {
+                  "op": "delete",
+                  "content": "app. See [backend setup](../README.md#backend-sync-setup). The agenda imports the"
+                },
+                {
+                  "op": "add",
+                  "content": "use your private CalDAV calendar or calendar-home URL, username, and app password. Public sharing links cannot accept events. The setup flow automatically previews a sole destination; choose Activate to finish. Failed connections retain entered credentials for retry. See [backend setup](../README.md#backend-sync-setup). The agenda imports the"
+                },
+                {
+                  "op": "context",
+                  "content": "next 90 days and recurring occurrences. Manage edits, invitations, and recurring"
+                },
+                {
+                  "op": "context",
+                  "content": "series in your calendar app. This agenda lives in codey, separate from OS Timeline."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                }
+              ]
+            },
+            {
+              "old_start": 176,
+              "old_count": 3,
+              "new_start": 176,
+              "new_count": 21,
+              "context": "## Calendar",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "The lower-right dashboard tile counts all active tasks or notes, including"
+                },
+                {
+                  "op": "context",
+                  "content": "items beyond the cached first page. Completing a task updates the list from the"
+                },
+                {
+                  "op": "context",
+                  "content": "phone cache immediately while delivery continues in the background."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "## Voice settings and calendar shortcuts"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Say “turn off double tap,” “turn on ripple,” “turn off answer vibration,” or"
+                },
+                {
+                  "op": "add",
+                  "content": "“turn on fast mode” to change a preference immediately. You can also say"
+                },
+                {
+                  "op": "add",
+                  "content": "“set weather units to metric,” “set reasoning effort to high,” “set web search"
+                },
+                {
+                  "op": "add",
+                  "content": "to cached,” and “set model to default.” Codey shows the saved value. Credentials"
+                },
+                {
+                  "op": "add",
+                  "content": "and backend account setup remain in phone settings."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "“Calendar: Lunch tomorrow at noon for an hour” and “make an event: Lunch"
+                },
+                {
+                  "op": "add",
+                  "content": "tomorrow at noon for an hour” save locally parsed events. Use today, tomorrow,"
+                },
+                {
+                  "op": "add",
+                  "content": "or an explicit YYYY-MM-DD date, an explicit clock time, and a duration."
+                },
+                {
+                  "op": "add",
+                  "content": "“Calendar: Holiday on 2026-09-20 all day” creates an all-day event. Missing or"
+                },
+                {
+                  "op": "add",
+                  "content": "ambiguous times go to Codex for clarification. “Open my calendar” opens the agenda."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "The watch app list shows a smiley. Firmware-marked non-navigational touch"
+                },
+                {
+                  "op": "add",
+                  "content": "contacts are ignored; true palm/cover detection requires a firmware signal"
+                },
+                {
+                  "op": "add",
+                  "content": "that the installed SDK does not expose."
+                }
+              ]
+            }
+          ],
+          "content_hash": "5fd8a5bac864eff8ccc548662a47d4cbfbf5ba4fe6e0a162013a94ef478cca32",
+          "previous_hash": "efe8512b75d8ab6a0212069ca023e01d8869935895f4fe40b6f0fc2969fef0d2",
+          "doc_type": "reference",
+          "title": "docs/user-guide.md"
+        }
+      ]
+    },
     {
       "id": "01a0b2b1-9de3-7c43-bf18-59a32a692db3",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

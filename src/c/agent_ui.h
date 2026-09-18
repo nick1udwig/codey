@@ -78,6 +78,8 @@ bool agent_ui_remove(AgentUi *ui, const char *element_id);
 void agent_ui_end(AgentUi *ui);
 void agent_ui_set_status(AgentUi *ui, const char *status, bool is_error, bool loading);
 
+uint32_t agent_ui_error_revision(const AgentUi *ui);
+
 const char *agent_ui_screen_id(const AgentUi *ui);
 const char *agent_ui_layout_name(const AgentUi *ui);
 
