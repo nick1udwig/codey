@@ -358,6 +358,20 @@ static void test_stopwatch_dashboard(void) {
   assert(strstr(ui.elements[element("dashboard-stopwatch")].subtitle, "00:05"));
   assert(strcmp(ui.screen, "dashboard") == 0);
   event(caps, "local.stopwatch"); assert(strcmp(ui.screen, "run") == 0);
+  assert(!strcmp(ui.elements[element("stopwatch-home")].action,"local.home"));
+  assert(!strcmp(ui.elements[element("stopwatch-down")].action,"cap.stopwatch.cancel"));
+  agent_capabilities_destroy(caps);
+  now += 10;
+  caps = agent_capabilities_create(&ui, NULL, NULL);
+  event(caps, "local.stopwatch");
+  assert(strstr(ui.elements[element("stopwatch-display")].value,"00:15"));
+  writes_fail=1;event(caps,"cap.stopwatch.cancel");writes_fail=0;
+  assert(strstr(ui.status,"Could not cancel"));
+  event(caps,"cap.stopwatch.cancel");
+  assert(!strcmp(ui.screen,"dashboard") && element("dashboard-stopwatch")<0);
+  agent_capabilities_destroy(caps);
+  caps=agent_capabilities_create(&ui,NULL,NULL);event(caps,"local.home");
+  assert(element("dashboard-stopwatch")<0);
   agent_capabilities_destroy(caps);
 }
 static void test_reused_ids_and_screen_independent_expiry(void) {

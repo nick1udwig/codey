@@ -1,7 +1,21 @@
 {
   "version": 1,
-  "created_at": "2026-09-18T04:03:38.125288097+00:00",
+  "created_at": "2026-09-18T04:04:52.176140816+00:00",
   "documents": [
+    {
+      "id": "01a0b2b0-4271-7a40-9aa4-b5a4d8ee4b75",
+      "slug": "issues/stopwatch-timer-navigation",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Match stopwatch minimize and cancel controls to timers",
+      "content": "Acceptance: Up and Back return home without stopping elapsed time; Down X cancels/removes stopwatch; elapsed time survives process restart; canceled state stays absent after restart; failed cancel persistence retains state and reports error. Native ASan/UBSan regression passes. Reset remains available through voice command.",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-18T04:04:50.956871127Z",
+      "modified_at": "2026-09-18T04:04:50.956871127Z"
+    },
     {
       "id": "01a0b2af-2102-7273-af01-6639956c9caf",
       "slug": "issues/palm-detection-platform",
@@ -1269,6 +1283,24 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a0b2b0-4294-71d0-967d-14570528171e",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Record stopwatch navigation fix",
+      "created_at": "2026-09-18T04:04:50.956871127Z",
+      "changes": [
+        {
+          "document_id": "01a0b2b0-4271-7a40-9aa4-b5a4d8ee4b75",
+          "slug": "issues/stopwatch-timer-navigation",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "d0a60e89078943f9661d44046bbd38fca625f25d4430f06c63a886228e6b58cb",
+          "doc_type": "task",
+          "title": "Match stopwatch minimize and cancel controls to timers"
+        }
+      ]
+    },
     {
       "id": "01a0b2af-2127-7252-a439-6e20fc2173d9",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

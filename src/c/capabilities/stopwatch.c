@@ -48,14 +48,15 @@ static void prv_render(StopwatchModule *stopwatch) {
   agent_capability_add_element(ui, "progress", "stopwatch-progress", "Minute", "", seconds, "",
                                "min=0 max=60", 0);
   agent_capability_add_element(ui, "text", "stopwatch-help", "", "",
-                               stopwatch->state.running ? "Select pauses · Down resets" :
-                                                          "Select starts · Down resets",
+                               "Back keeps running · X cancels",
                                "", "", 0);
   agent_capability_add_element(ui, "bind", "stopwatch-select",
                                stopwatch->state.running ? "Pause" : "Start", "", "",
                                "cap.stopwatch.toggle", "input=select icon=check", 0);
-  agent_capability_add_element(ui, "bind", "stopwatch-down", "Reset", "", "",
-                               "cap.stopwatch.reset", "input=down icon=warning", 0);
+  agent_capability_add_element(ui, "bind", "stopwatch-down", "Cancel", "", "",
+                               "cap.stopwatch.cancel", "input=down icon=close", 0);
+  agent_capability_add_element(ui, "bind", "stopwatch-home", "Back", "", "",
+                               "local.home", "input=up icon=left", 0);
   agent_ui_end(ui);
   agent_capabilities_set_active(stopwatch->capabilities, "stopwatch", true);
 }
@@ -99,7 +100,17 @@ static bool prv_command(AgentCapabilities *capabilities, const AgentCapabilityCo
                         void *module_context) {
   StopwatchModule *stopwatch = module_context;
   (void)capabilities;
-  if (strcmp(command->command, "start") == 0) {
+  if (strcmp(command->command, "cancel") == 0) {
+    StopwatchPersisted previous = stopwatch->state;
+    memset(&stopwatch->state, 0, sizeof(stopwatch->state));
+    stopwatch->state.magic = STOPWATCH_MAGIC;
+    if (persist_write_data(STOPWATCH_PERSIST_KEY, &stopwatch->state, sizeof(stopwatch->state)) != sizeof(stopwatch->state)) {
+      stopwatch->state = previous;
+      agent_ui_set_status(agent_capabilities_ui(capabilities), "Could not cancel stopwatch", true, false);
+      return true;
+    }
+    agent_capabilities_show_dashboard(capabilities);
+  } else if (strcmp(command->command, "start") == 0) {
     prv_start(stopwatch, command, false);
   } else if ((strcmp(command->command, "pause") == 0 || strcmp(command->command, "stop") == 0) &&
              stopwatch->state.active) {
@@ -137,6 +148,10 @@ static bool prv_command(AgentCapabilities *capabilities, const AgentCapabilityCo
 static bool prv_event(AgentCapabilities *capabilities, const AgentUiEvent *event, void *module_context) {
   StopwatchModule *stopwatch = module_context;
   if (strcmp(event->action, "local.stopwatch") == 0) { prv_render(stopwatch); return true; }
+  if (strcmp(event->action, "cap.stopwatch.cancel") == 0) {
+    AgentCapabilityCommand command = { .type = "stopwatch", .command = "cancel" };
+    return prv_command(capabilities, &command, stopwatch);
+  }
   if (strcmp(event->action, "cap.stopwatch.toggle") == 0) {
     AgentCapabilityCommand command = {
       .type = "stopwatch",
