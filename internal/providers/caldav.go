@@ -89,6 +89,13 @@ type davProp struct {
 			Name string `xml:"name,attr"`
 		} `xml:"urn:ietf:params:xml:ns:caldav comp"`
 	} `xml:"urn:ietf:params:xml:ns:caldav supported-calendar-component-set"`
+	Privileges *struct {
+		Values []struct {
+			Write *struct{} `xml:"DAV: write"`
+			Bind  *struct{} `xml:"DAV: bind"`
+			All   *struct{} `xml:"DAV: all"`
+		} `xml:"DAV: privilege"`
+	} `xml:"DAV: current-user-privilege-set"`
 	ETag string `xml:"DAV: getetag"`
 	Data string `xml:"urn:ietf:params:xml:ns:caldav calendar-data"`
 }
@@ -109,12 +116,26 @@ func davResponses(raw []byte) ([]davResponse, error) {
 	e := xml.Unmarshal(raw, &v)
 	return v.Responses, e
 }
+func writableCalendarURL(endpoint string) error {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return err
+	}
+	if strings.Contains(u.Path, "/public-calendars/") {
+		return fmt.Errorf("This is a read-only public calendar link. Use your account's private CalDAV calendar URL (in Nextcloud: Calendar settings → Copy primary CalDAV address), username, and app password to send events")
+	}
+	return nil
+}
+
 func (d CalDAV) Containers(ctx context.Context, b Binding, creds Credentials) ([]Container, error) {
 	if creds.Username == "" || creds.Token == "" {
 		return nil, fmt.Errorf("CalDAV username and app password are required")
 	}
+	if e := writableCalendarURL(b.Endpoint); e != nil {
+		return nil, e
+	}
 	endpoint := strings.TrimRight(b.Endpoint, "/") + "/"
-	raw, _, e := d.dav(ctx, "PROPFIND", endpoint, creds, `<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:resourcetype/><d:displayname/><c:supported-calendar-component-set/></d:prop></d:propfind>`, map[string]string{"Depth": "1"})
+	raw, _, e := d.dav(ctx, "PROPFIND", endpoint, creds, `<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:resourcetype/><d:displayname/><d:current-user-privilege-set/><c:supported-calendar-component-set/></d:prop></d:propfind>`, map[string]string{"Depth": "1"})
 	if e != nil {
 		return nil, e
 	}
@@ -128,6 +149,15 @@ func (d CalDAV) Containers(ctx context.Context, b Binding, creds Credentials) ([
 		for _, ps := range r.Props {
 			if !strings.Contains(ps.Status, " 200 ") || ps.Prop.Types.Calendar == nil {
 				continue
+			}
+			if privileges := ps.Prop.Privileges; privileges != nil {
+				writable := false
+				for _, privilege := range privileges.Values {
+					writable = writable || privilege.Write != nil || privilege.Bind != nil || privilege.All != nil
+				}
+				if !writable {
+					continue
+				}
 			}
 			events := len(ps.Prop.Components.Values) == 0
 			for _, comp := range ps.Prop.Components.Values {
@@ -154,7 +184,7 @@ func (d CalDAV) Containers(ctx context.Context, b Binding, creds Credentials) ([
 		}
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("No event calendars found. Enter a calendar URL or calendar-home URL from your calendar app")
+		return nil, fmt.Errorf("No writable event calendars found. Use your private CalDAV URL and an account with permission to create events")
 	}
 	return out, nil
 }
@@ -291,6 +321,9 @@ func (d CalDAV) CreateID(b Binding, record c.Record) (string, error) {
 func (d CalDAV) Apply(ctx context.Context, b Binding, creds Credentials, id string, in Intent, base *Remote) (ApplyResult, error) {
 	if in.Operation.Type != "event.create" || base != nil {
 		return ApplyResult{State: "permanent_error"}, nil
+	}
+	if e := writableCalendarURL(b.Container); e != nil {
+		return ApplyResult{}, &Failure{State: "permanent_error"}
 	}
 	cal := ical.NewCalendar()
 	cal.Props.SetText(ical.PropVersion, "2.0")

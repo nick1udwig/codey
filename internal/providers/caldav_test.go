@@ -140,3 +140,24 @@ func TestCalDAVRejectsUnsafeAndIncompleteData(t *testing.T) {
 		t.Fatal("floating time accepted")
 	}
 }
+
+func TestCalDAVRejectsPublicShareBeforeRequest(t *testing.T) {
+	d := CalDAV{HTTP: HTTP{Client: &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		t.Fatal("public share must not be used for writable setup")
+		return nil, nil
+	})}}}
+	_, err := d.Containers(context.Background(), Binding{Endpoint: "https://calendar.test/remote.php/dav/public-calendars/share/"}, Credentials{Username: "user", Token: "password"})
+	if err == nil || !strings.Contains(err.Error(), "private CalDAV") {
+		t.Fatal(err)
+	}
+}
+
+func TestCalDAVSkipsReadOnlyCalendars(t *testing.T) {
+	d := CalDAV{HTTP: HTTP{Client: &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		return reply(207, `<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:response><d:href>/cal/read-only/</d:href><d:propstat><d:prop><d:resourcetype><c:calendar/></d:resourcetype><d:current-user-privilege-set><d:privilege><d:read/></d:privilege></d:current-user-privilege-set></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>`), nil
+	})}}}
+	_, err := d.Containers(context.Background(), Binding{Endpoint: "https://calendar.test/cal/"}, Credentials{Username: "user", Token: "password"})
+	if err == nil || !strings.Contains(err.Error(), "writable") {
+		t.Fatal(err)
+	}
+}

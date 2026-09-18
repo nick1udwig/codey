@@ -1,7 +1,21 @@
 {
   "version": 1,
-  "created_at": "2026-09-15T22:56:06.187785695+00:00",
+  "created_at": "2026-09-18T03:57:49.179795909+00:00",
   "documents": [
+    {
+      "id": "01a0b2a9-ce09-7522-ae81-2e72f14ccd7c",
+      "slug": "issues/caldav-writable-destination",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Reject read-only CalDAV destinations and expose failed uploads",
+      "content": "Context: live database has a Nextcloud public-calendars binding with successful imports and one event.create stopped as not_found. Public shares cannot accept writes. Acceptance: reject public URLs with private CalDAV setup guidance; filter explicit read-only DAV privileges; count blocked uploads as needing attention. Provider, store and setup tests pass. Account follow-up: reconnect using private CalDAV address and app password; export existing server events to recover the unsent event.",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-18T03:57:47.961432782Z",
+      "modified_at": "2026-09-18T03:57:47.961432782Z"
+    },
     {
       "id": "01a0a748-dafa-7be0-821f-dd1725d8644f",
       "slug": "issues/dashboard-telemetry-icon-offset",
@@ -1185,6 +1199,24 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a0b2a9-ce42-72e0-b0da-8a04ff8b586c",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Document CalDAV write diagnosis and destination checks",
+      "created_at": "2026-09-18T03:57:47.961432782Z",
+      "changes": [
+        {
+          "document_id": "01a0b2a9-ce09-7522-ae81-2e72f14ccd7c",
+          "slug": "issues/caldav-writable-destination",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "739a7314c3f4c18ec9dce62e98b3253295a10ccc2ff7d873cd7642d3dc09740d",
+          "doc_type": "task",
+          "title": "Reject read-only CalDAV destinations and expose failed uploads"
+        }
+      ]
+    },
     {
       "id": "01a0a748-e00f-7463-9292-021a489b2780",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

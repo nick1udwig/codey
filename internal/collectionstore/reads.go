@@ -364,7 +364,7 @@ func (s *Store) Status() (map[string]any, error) {
 	for _, entry := range []struct {
 		sql  string
 		dest *int
-	}{{"SELECT count(*) FROM provider_jobs WHERE state='pending'", &pending}, {"SELECT count(*) FROM conflicts WHERE json_extract(data,'$.resolved')=0", &attention}} {
+	}{{"SELECT count(*) FROM provider_jobs WHERE state='pending'", &pending}, {"SELECT (SELECT count(*) FROM conflicts WHERE json_extract(data,'$.resolved')=0) + (SELECT count(*) FROM provider_jobs WHERE state NOT IN ('pending','in_flight','applied','stopped'))", &attention}} {
 		if e := s.DB.QueryRow(entry.sql).Scan(entry.dest); e != nil {
 			return nil, e
 		}
