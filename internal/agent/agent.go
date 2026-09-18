@@ -243,7 +243,7 @@ type itemState struct {
 	phase    string
 	typeName string
 	started  bool
-	text     string
+	hasText  bool
 	pending  []string
 }
 
@@ -288,7 +288,7 @@ func (processor *turnProcessor) Accept(notification appserver.Notification) (boo
 				}
 			}
 			item.pending = nil
-			if notification.Method == "item/completed" && item.text == "" && params.Item.Text != "" {
+			if notification.Method == "item/completed" && !item.hasText && params.Item.Text != "" {
 				if err := processor.push(item, params.Item.Text); err != nil {
 					return false, err
 				}
@@ -368,6 +368,8 @@ func (processor *turnProcessor) item(id string) *itemState {
 }
 
 func (processor *turnProcessor) push(item *itemState, delta string) error {
-	item.text += delta
+	if delta != "" {
+		item.hasText = true
+	}
 	return processor.stream.Push(delta)
 }
