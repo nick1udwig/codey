@@ -234,10 +234,10 @@ test("Nextcloud setup connects, previews, and activates without closing settings
  h.elements["note-sync-endpoint"].value="https://cloud.test";h.elements["note-sync-username"].value="nick";h.elements["note-sync-secret"].value="app-password";
  h.elements["note-sync-connect"].handlers.click();assert.equal(saved,undefined);
  assert.match(requests[0].body,/token=app-password/);reply({message:"Password rejected"},400);
- assert.match(h.elements["note-sync-status"].textContent,/Password rejected/);assert.equal(saved,undefined);
+ assert.match(h.elements["note-sync-status"].textContent,/Password rejected/);assert.equal(h.elements["note-sync-secret"].value,"app-password");assert.equal(saved,undefined);
  h.elements["note-sync-secret"].value="valid-password";h.elements["note-sync-connect"].handlers.click();reply({...state,candidate_id:"candidate",containers:[{id:"category",name:"Work"}]});
  assert.match(h.elements["note-sync-progress"].textContent,/Step 2 of 4/);assert.equal(h.elements["note-sync-destination"].hidden,false);assert.equal(h.elements["note-sync-secret"].value,"");
- h.elements["note-sync-preview"].handlers.click();reply({...state,preview:"2 remote notes; no export"});assert.equal(h.elements["note-sync-activate"].hidden,false);assert.match(h.elements["note-sync-progress"].textContent,/Step 3 of 4/);
+ h.submit({preventDefault(){}});assert.equal(saved,undefined);assert.match(h.elements.status.textContent,/Finish connecting/);reply({...state,preview:"2 remote notes; no export"});assert.equal(h.elements["note-sync-activate"].hidden,false);assert.match(h.elements["note-sync-progress"].textContent,/Step 3 of 4/);
  h.elements["note-sync-activate"].handlers.click();assert.match(requests[0].body,/action=apply/);reply({...state,active:{col_note:"nextcloudnotes"},message:"Destination activated"});
  assert.equal(saved,undefined);assert.match(h.elements["note-sync-active"].textContent,/Nextcloud Notes/);assert.match(h.location.href,/^https:\/\/config.test/);
  assert.match(h.elements["note-sync-progress"].textContent,/Step 4 of 4/);assert.match(h.elements["note-sync-next"].textContent,/Open Notes/);
@@ -252,9 +252,19 @@ test("each task and calendar service has its own fields and numbered flow", () =
  function reply(data){const r=requests.shift();r.status=200;r.responseText=JSON.stringify(data);r.onload();}
  reply(state);
  for(const provider of ["todoist","googletasks"]){h.elements["todo-sync-provider"].value=provider;h.elements["todo-sync-provider"].handlers.change();assert.ok(!h.elements["todo-sync-help"].textContent.includes("Nextcloud"));assert.equal(h.elements["todo-sync-endpoint-label"].hidden,true);assert.equal(h.elements["todo-sync-credentials"].hidden,provider==="googletasks");assert.match(h.elements["todo-sync-progress"].textContent,/Step 1 of 4/);}
- h.elements["todo-sync-provider"].value="todoist";h.elements["todo-sync-provider"].handlers.change();assert.equal(h.elements["todo-sync-secret-title"].textContent,"Todoist API token");h.elements["todo-sync-secret"].value="api-token";h.elements["todo-sync-connect"].handlers.click();assert.match(requests[0].body,/provider=todoist/);reply({...state,candidate_id:"tasks",containers:[{id:"project",name:"Inbox"}]});assert.equal(h.elements["todo-sync-destination-title"].textContent,"Project");
+ h.elements["todo-sync-provider"].value="todoist";h.elements["todo-sync-provider"].handlers.change();assert.equal(h.elements["todo-sync-secret-title"].textContent,"Todoist API token");h.elements["todo-sync-secret"].value="api-token";h.elements["todo-sync-connect"].handlers.click();assert.match(requests[0].body,/provider=todoist/);reply({...state,candidate_id:"tasks",containers:[{id:"project",name:"Inbox"}]});assert.equal(h.elements["todo-sync-destination-title"].textContent,"Project");reply({...state,preview:"Tasks ready"});
  h.elements["calendar-sync-provider"].value="caldav";h.elements["calendar-sync-provider"].handlers.change();assert.equal(h.elements["calendar-sync-endpoint-label"].hidden,false);h.elements["calendar-sync-endpoint"].value="https://cal.test/home/";h.elements["calendar-sync-username"].value="user";h.elements["calendar-sync-secret"].value="app-pass";h.elements["calendar-sync-connect"].handlers.click();assert.match(requests[0].body,/collection=col_event/);reply({...state,candidate_id:"events",containers:[{id:"calendar",name:"Personal"}]});assert.equal(h.elements["calendar-sync-destination-title"].textContent,"Calendar");
- h.elements["calendar-sync-preview"].handlers.click();reply({...state,preview:"Two events"});assert.match(h.elements["calendar-sync-progress"].textContent,/Step 3 of 4/);h.elements["calendar-sync-back"].handlers.click();assert.match(h.elements["calendar-sync-progress"].textContent,/Step 2 of 4/);assert.equal(h.elements["calendar-sync-activate"].hidden,true);
+ reply({...state,preview:"Two events"});assert.match(h.elements["calendar-sync-progress"].textContent,/Step 3 of 4/);h.elements["calendar-sync-back"].handlers.click();assert.match(h.elements["calendar-sync-progress"].textContent,/Step 2 of 4/);assert.equal(h.elements["calendar-sync-activate"].hidden,true);
+});
+
+test("setup hydrates the active service instead of stale phone preferences", () => {
+ const requests=[];
+ function XHR(){} XHR.prototype.open=function(){};XHR.prototype.setRequestHeader=function(){};XHR.prototype.send=function(){requests.push(this);};
+ const h=runConfig("#"+encodeURIComponent(JSON.stringify({endpoint:"https://agent.test",integrationSetup:{url:"https://agent.test/integrations/setup-api",token:"temporary"}})),{},XHR);
+ requests[0].status=200;requests[0].responseText=JSON.stringify({collections:[],active:{col_event:"caldav"}});requests[0].onload();
+ assert.equal(h.elements["calendar-sync-provider"].value,"caldav");
+ assert.match(h.elements["calendar-sync-progress"].textContent,/Step 4 of 4/);
+ assert.equal(h.elements["calendar-sync-credentials"].hidden,true);
 });
 
 test("missing setup sessions show inline instructions and never close settings", () => {

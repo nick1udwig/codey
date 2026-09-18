@@ -167,11 +167,11 @@
     xhr.send(values?Object.keys(values).map(function(k){return encodeURIComponent(k)+"="+encodeURIComponent(values[k]);}).join("&"):null);
   }
   var panels={};
-  function updateActive(data){setupState=data;Object.keys(panels).forEach(function(k){var p=panels[k];var id=(data.active||{})[p.collection]||"server";p.active.textContent="Active backend: "+({server:"Server only",todoist:"Todoist",googletasks:"Google Tasks",nextcloudnotes:"Nextcloud Notes",caldav:"CalDAV Calendar"}[id]||id);if(id!=="server"&&p.selected.value===id&&!p.candidate)p.setStep(4);});}
+  function updateActive(data){setupState=data;Object.keys(panels).forEach(function(k){var p=panels[k];var id=(data.active||{})[p.collection]||"server";if(!p.edited){p.selected.value=id;p.update();}p.active.textContent="Active backend: "+({server:"Server only",todoist:"Todoist",googletasks:"Google Tasks",nextcloudnotes:"Nextcloud Notes",caldav:"CalDAV Calendar"}[id]||id);if(id!=="server"&&p.selected.value===id&&!p.candidate)p.setStep(4);});}
   ["todo","note","calendar"].forEach(function(kind){
     function el(name){return document.getElementById(kind+"-sync-"+name);}
     var select=extraFields[kind+"SyncProvider"];
-    var p=panels[kind]={collection:kind==="todo"?"col_task":kind==="note"?"col_note":"col_event",selected:select,setStep:step,active:el("active"),status:el("status"),candidate:null,preview:null,busy:false,sequence:0};
+    var p=panels[kind]={collection:kind==="todo"?"col_task":kind==="note"?"col_note":"col_event",selected:select,setStep:step,active:el("active"),status:el("status"),candidate:null,preview:null,busy:false,sequence:0,edited:false,update:update};
     function step(n){
       p.step=n;var dest=select.value==="todoist"?"project":select.value==="googletasks"?"task list":select.value==="caldav"?"calendar":"category";
       el("progress").textContent=select.value==="server"?"Server only · No account setup needed":"Step "+n+" of 4 · "+["Connect account","Choose "+dest,"Review and activate","Active"][n-1]+" · "+(4-n)+" remaining";
@@ -182,38 +182,42 @@
     function reset(){p.sequence++;p.candidate=null;p.preview=null;el("destination").hidden=true;el("activate").hidden=true;el("secret").value="";el("export").checked=false;el("stop").checked=false;step(1);}
     function update(){reset();var provider=select.value;el("credentials").hidden=provider==="server"||provider==="googletasks";el("endpoint-label").hidden=el("username-label").hidden=provider!=="nextcloudnotes"&&provider!=="caldav";
       el("connect").textContent=provider==="server"?"Use Server only":provider==="googletasks"?"Continue to Google authorization":"Connect";
-      document.getElementById(kind+"-sync-help").textContent=provider==="server"?"No external account is needed. Use Server only below to disconnect an existing backend; records are preserved.":provider==="nextcloudnotes"?"Enter the Nextcloud base URL, username, and app password. Connect to discover categories, then preview and activate. Private Nextcloud hosts must be allowed in ~/.codey/integrations.json.":provider==="caldav"?"Enter the HTTPS calendar or calendar-home URL from your calendar app, username, and app password. The agenda shows the next 90 days, including recurring events. Private hosts need server approval in ~/.codey/integrations.json.":provider==="todoist"?"Enter your Todoist API token. Connect to discover projects, then preview and activate.":"Google requires OAuth client credentials in ~/.codey/integrations.json (see README). Continue in this webview to authorize Google; this does not close Pebble settings.";
+      document.getElementById(kind+"-sync-help").textContent=provider==="server"?"No external account is needed. Use Server only below to disconnect an existing backend; records are preserved.":provider==="nextcloudnotes"?"Enter the Nextcloud base URL, username, and app password. We will find your categories and guide you through choosing one.":provider==="caldav"?"Use your private CalDAV address, username, and app password. Public sharing links are read-only. In Nextcloud, find the primary CalDAV address in Calendar settings.":provider==="todoist"?"Enter your Todoist API token. Connect to discover projects, then preview and activate.":"Google requires OAuth client credentials in ~/.codey/integrations.json (see README). Continue in this webview to authorize Google; this does not close Pebble settings.";
       el("secret-title").textContent=provider==="todoist"?"Todoist API token":"App password";
       p.status.textContent="";
     }
-    function send(values,done){if(p.busy)return;p.busy=true;var seq=p.sequence;p.status.textContent="Working…";["connect","preview","activate"].forEach(function(k){el(k).disabled=true;});
-      setupRequest(values,function(e,data){p.busy=false;["connect","preview","activate"].forEach(function(k){el(k).disabled=false;});el("secret").value="";
-        if(e){p.status.textContent=e.message;return;}updateActive(data);if(seq!==p.sequence){p.status.textContent="Previous setup request completed. Review the active backend before continuing.";return;}p.status.textContent=data.message||"";done(data);
+    function send(values,done){if(p.busy)return;p.busy=true;select.disabled=true;var seq=p.sequence;p.status.textContent=values.action==="connect"?"Connecting and finding destinations…":values.action==="bind"?"Checking what will sync…":values.action==="apply"?"Activating sync…":"Updating connection…";["connect","preview","activate"].forEach(function(k){el(k).disabled=true;});
+      setupRequest(values,function(e,data){p.busy=false;select.disabled=false;["connect","preview","activate"].forEach(function(k){el(k).disabled=false;});
+        if(seq!==p.sequence)return;
+        if(e){p.status.textContent=e.message;return;}if(values.action==="connect")el("secret").value="";updateActive(data);if(seq!==p.sequence){p.status.textContent="Previous setup request completed. Review the active backend before continuing.";return;}p.status.textContent=data.message||"";done(data);
       });
     }
     function generation(){var cols=setupState&&setupState.collections||[];for(var i=0;i<cols.length;i++)if(cols[i].id===p.collection)return cols[i].binding_generation;return "";}
-    select.addEventListener("change",update);update();
+    select.addEventListener("change",function(){p.edited=true;update();});update();
     el("credentials").addEventListener("keydown",function(e){if(e.key==="Enter"||e.keyCode===13){e.preventDefault();el("connect").click();}});
     el("back").addEventListener("click",function(){p.preview=null;step(2);});
     el("connect").addEventListener("click",function(){
-      if(p.step===4){update();return;}
+      p.edited=true;if(p.step===4){update();return;}
       if(!generation()){p.status.textContent="Setup is not ready. Reopen settings if the server could not be reached.";return;}
       var provider=select.value,values={action:provider==="server"?"disconnect":provider==="googletasks"?"authorize":"connect",collection:p.collection,generation:generation(),provider:provider,stop:el("stop").checked?"yes":""};
       if(values.action==="connect"){values.token=el("secret").value.trim();values.username=el("username").value.trim();values.endpoint=el("endpoint").value.trim();if(!values.token||((provider==="nextcloudnotes"||provider==="caldav")&&(!values.username||!values.endpoint))){p.status.textContent="Fill in the required connection fields.";return;}}
-      reset();send(values,function(data){
+      p.sequence++;p.candidate=null;p.preview=null;send(values,function(data){
         if(values.action==="disconnect"){p.status.textContent="Server only is active. Open your collection on the watch.";return;}
         if(data.url){var base=setup.url.replace(/\/integrations\/setup-api$/,"");if(data.url.indexOf(base+"/integrations?ticket=")!==0){p.status.textContent="Invalid authorization destination";return;}window.location.href=data.url;return;}
-        if(data.candidate_id){p.candidate=data.candidate_id;var dest=el("container");dest.textContent="";(data.containers||[]).forEach(function(c){var o=document.createElement("option");o.value=c.id;o.textContent=c.name;dest.appendChild(o);});if(data.containers&&data.containers.length){dest.value=data.containers[0].id;step(2);}else p.status.textContent="No destinations found for this account.";}
+        if(data.candidate_id){p.candidate=data.candidate_id;var dest=el("container");dest.textContent="";(data.containers||[]).forEach(function(c){var o=document.createElement("option");o.value=c.id;o.textContent=c.name;dest.appendChild(o);});if(data.containers&&data.containers.length){dest.value=data.containers[0].id;step(2);if(data.containers.length===1)preview();}else p.status.textContent="No destinations found for this account.";}
       });
     });
     ["container","export","stop"].forEach(function(k){el(k).addEventListener("change",function(){p.sequence++;p.preview=null;if(p.candidate)step(2);});});
-    el("preview").addEventListener("click",function(){if(!p.candidate)return;var values={action:"bind",candidate:p.candidate,container:el("container").value,export:el("export").checked?"yes":"",stop:el("stop").checked?"yes":""};send(values,function(data){p.preview=values;p.status.textContent=data.preview||"Review connection";step(3);});});
+    function preview(){if(!p.candidate)return;var values={action:"bind",candidate:p.candidate,container:el("container").value,export:el("export").checked?"yes":"",stop:el("stop").checked?"yes":""};send(values,function(data){p.preview=values;p.status.textContent=data.preview||"Review connection";step(3);});}
+    el("preview").addEventListener("click",preview);
     el("activate").addEventListener("click",function(){if(!p.preview)return;var values=Object.assign({},p.preview,{action:"apply"});send(values,function(){reset();step(4);p.status.textContent="Sync connection activated. Future items sync automatically.";});});
   });
   setupRequest(null,function(e,data){if(e){Object.keys(panels).forEach(function(k){panels[k].status.textContent=e.message;});return;}updateActive(data);});
   form.addEventListener("submit", function(event) {
     var settings;
     event.preventDefault();
+    var unfinished=Object.keys(panels).filter(function(k){return panels[k].busy||panels[k].candidate;});
+    if(unfinished.length){status.textContent="Finish connecting "+unfinished.join(", ")+" before saving, or choose the active service to cancel setup.";return;}
     var normalizedEndpoint = Endpoints.normalize(endpoint.value);
     if (normalizedEndpoint === null) {
       status.textContent = "Enter a server URL without credentials, a query, or a fragment.";
