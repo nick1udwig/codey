@@ -236,3 +236,18 @@ console.log("✓ collection journal: durable recovery, torn slots, duplicate ing
  restored.bridge("next_bridge");assert.strictEqual(Object.keys(restored.data.receipts).length,pending);
  assert.throws(function(){restored.accept(accepted[0].input);},/Stale/);
 })();
+
+(function cacheFocusFollowsNavigationNotResponseOrder(){
+ var client=new Client({storage:storage(),cacheBudget:{maxPages:1}}),pending=[];
+ client.request=function(method,path,body,done){pending.push(done);};
+ client.body({id:"old",revision:"1"},"",function(e){assert.ifError(e);});
+ client.body({id:"current",revision:"1"},"",function(e){assert.ifError(e);});
+ pending[1](null,{body:"current"});pending[0](null,{body:"old"});
+ assert.strictEqual(client.cacheStore.current,"current:1:");
+ assert.ok(client.cache.pages["current:1:"]);assert.ok(!client.cache.pages["old:1:"]);
+ var Cache=require("../src/common/collections/cache").Cache,cache=new Cache(storage(),"scope",{maxPages:2});
+ cache.putPage("first",{body:"one"},false);cache.putPage("second",{body:"two"},false);
+ cache.page("first"); // Offline back-navigation establishes current ownership.
+ cache.putPage("background",{body:"three"},false,false);cache.save("scope");
+ assert.ok(cache.data.pages.first);assert.ok(!cache.data.pages.second);
+})();

@@ -38,15 +38,19 @@ Cache.prototype.remember = function(group, key, value) {
   this.dirty = true;
   return true;
 };
-Cache.prototype.page = function(key) {
+Cache.prototype.focus = function(key) { this.current = key; };
+Cache.prototype.page = function(key, activate) {
   var entry = this.entries.pages[key];
-  if (entry) entry.used = ++this.clock;
+  if (entry) {
+    entry.used = ++this.clock;
+    if (activate !== false) this.focus(key);
+  }
   return this.data.pages[key];
 };
-Cache.prototype.putPage = function(key, page, first) {
+Cache.prototype.putPage = function(key, page, first, activate) {
   this.remember("pages", key, page);
   this.entries.pages[key].first = first;
-  this.current = key;
+  if (activate !== false) this.focus(key);
 };
 Cache.prototype.merge = function(records) {
   var self = this;

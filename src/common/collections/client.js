@@ -213,13 +213,14 @@ Client.prototype.listReady = function(kind, state, snapshot, cursor, done, prefe
     return;
   }
   var key = kind + ":" + state + ":" + (snapshot || "") + ":" + (cursor || "");
+  this.cacheStore.focus(key);
   if (preferCache && this.cacheStore.page(key)) {
     done(null, this.project(this.cacheStore.page(key), kind, state));
     return;
   }
   function receive(e, p) {
     if (e) {
-      var cached = self.cacheStore.page(key);
+      var cached = self.cacheStore.page(key, false);
       if (cached) {
         cached = J.clone(cached);
         cached.stale = true;
@@ -228,7 +229,7 @@ Client.prototype.listReady = function(kind, state, snapshot, cursor, done, prefe
       return;
     }
     self.merge(p.records);
-    self.cacheStore.putPage(key, p, !snapshot && !cursor);
+    self.cacheStore.putPage(key, p, !snapshot && !cursor, false);
     self.saveCache();
     try {
       self.journal.compact(self.cache.records);
@@ -303,9 +304,10 @@ Client.prototype.project = function(page, kind, state) {
 
 Client.prototype.body = function(record, cursor, done) {
   var self = this, key = record.id + ":" + record.revision + ":" + (cursor || "");
+  this.cacheStore.focus(key);
   this.request("GET", "/v1/records/" + encodeURIComponent(record.id) + "/body?revision=" + encodeURIComponent(record.revision) + "&max_bytes=704&cursor=" + encodeURIComponent(cursor || ""), null, function(e, v) {
     if (e) {
-      v = self.cacheStore.page(key);
+      v = self.cacheStore.page(key, false);
       if (v) {
         v = J.clone(v);
         v.stale = true;
@@ -313,7 +315,7 @@ Client.prototype.body = function(record, cursor, done) {
       } else done(e);
       return;
     }
-    self.cacheStore.putPage(key, v, !cursor);
+    self.cacheStore.putPage(key, v, !cursor, false);
     self.saveCache();
     done(null, v);
   });
