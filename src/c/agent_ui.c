@@ -1859,6 +1859,12 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
   int dx;
   int dy;
   if (!ui || !event) { return; }
+  // Firmware marks contacts that must not navigate. Reject before scrolling,
+  // arming, adjusting a control, or scheduling a hold callback.
+  if (event->non_navigational) {
+    prv_reset_touch_guard(ui);
+    return;
+  }
   // Reading drags bypass arming, but never activate a control or swipe binding.
   if (event->type == TouchEvent_Touchdown) {
     AgentUiElement *hit = prv_hit_test(ui, event->x, event->y);
