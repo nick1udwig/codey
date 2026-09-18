@@ -240,15 +240,15 @@ func (e *Engine) tick(ctx context.Context, force bool) {
 				break
 			}
 			windowStart, windowEnd = result.WindowStart, result.WindowEnd
+			imports := make([]p.Remote, 0, len(result.Records))
 			for _, r := range result.Records {
 				seen[r.ID] = true
-				if deferredCreates[strings.SplitN(r.ID, "#", 2)[0]] {
-					continue
+				if !deferredCreates[strings.SplitN(r.ID, "#", 2)[0]] {
+					imports = append(imports, r)
 				}
-				if err = e.Store.Import(b, r); err != nil {
-					success = false
-					break
-				}
+			}
+			if err = e.Store.ImportBatch(b, imports); err != nil {
+				success = false
 			}
 			if !success {
 				break

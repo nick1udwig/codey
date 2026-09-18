@@ -272,27 +272,90 @@ func contentHash(r c.Record) string {
 
 // Import writes a canonical revision before advancing any provider checkpoint.
 func (s *Store) Import(binding p.Binding, remote p.Remote) error {
+	return s.ImportBatch(binding, []p.Remote{remote})
+}
+
+// ImportBatch bounds foreground blocking by both record count and elapsed work.
+// Earlier chunks remain durable if a later chunk fails; replay is idempotent.
+func (s *Store) ImportBatch(binding p.Binding, records []p.Remote) error {
+	for len(records) > 0 {
+		n, err := s.importChunk(binding, records)
+		if err != nil {
+			return err
+		}
+		records = records[n:]
+	}
+	return nil
+}
+
+func (s *Store) importChunk(binding p.Binding, records []p.Remote) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx, e := s.DB.Begin()
-	if e != nil {
-		return e
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return 0, err
 	}
 	defer tx.Rollback()
-	var collectionData []byte
-	if e = tx.QueryRow("SELECT data FROM collections WHERE id=?", binding.CollectionID).Scan(&collectionData); e != nil {
-		return e
+	var raw []byte
+	if err = tx.QueryRow("SELECT data FROM collections WHERE id=?", binding.CollectionID).Scan(&raw); err != nil {
+		return 0, err
 	}
-	active, e := Decode[c.Collection](collectionData)
-	if e != nil {
-		return e
+	active, err := Decode[c.Collection](raw)
+	if err != nil {
+		return 0, err
 	}
 	if active.BindingID != binding.ID {
-		return nil
+		return len(records), nil
 	}
+	statements := make(map[string]*sql.Stmt)
+	defer func() {
+		for _, stmt := range statements {
+			stmt.Close()
+		}
+	}()
+	for _, query := range []string{
+		`SELECT record_id,data FROM mappings WHERE binding_id=? AND remote_id=?`,
+		`SELECT data FROM records WHERE id=?`,
+		`SELECT count(*) FROM provider_jobs WHERE binding_id=? AND record_id=? AND state NOT IN ('applied','stopped')`,
+		`INSERT OR IGNORE INTO conflicts VALUES(?,?)`,
+		`INSERT INTO records VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`,
+		`INSERT INTO versions VALUES(?,?,?)`,
+		`INSERT INTO changes(collection_id,data) VALUES(?,?)`,
+		`INSERT INTO mappings VALUES(?,?,?,?) ON CONFLICT(binding_id,remote_id) DO UPDATE SET data=excluded.data`,
+	} {
+		stmt, err := tx.Prepare(query)
+		if err != nil {
+			return 0, err
+		}
+		statements[query] = stmt
+	}
+	started := time.Now()
+	n := 0
+	for n < len(records) && n < 32 {
+		if err = s.importRecord(statements, binding, records[n]); err != nil {
+			return 0, err
+		}
+		n++
+		if err = s.hit("import.record"); err != nil {
+			return 0, err
+		}
+		if time.Since(started) >= 25*time.Millisecond {
+			break
+		}
+	}
+	if err = s.hit("import.before_commit"); err != nil {
+		return 0, err
+	}
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+	return n, s.hit("import.after_commit")
+}
+
+func (s *Store) importRecord(statements map[string]*sql.Stmt, binding p.Binding, remote p.Remote) error {
 	var raw []byte
 	var id string
-	e = tx.QueryRow("SELECT record_id,data FROM mappings WHERE binding_id=? AND remote_id=?", binding.ID, remote.ID).Scan(&id, &raw)
+	e := statements["SELECT record_id,data FROM mappings WHERE binding_id=? AND remote_id=?"].QueryRow(binding.ID, remote.ID).Scan(&id, &raw)
 	var old *c.Record
 	var mapping Mapping
 	if e == nil {
@@ -303,7 +366,7 @@ func (s *Store) Import(binding p.Binding, remote p.Remote) error {
 		if mapping.Remote.Version == remote.Version && c.Hash(mapping.Remote.Record) == c.Hash(remote.Record) {
 			return nil
 		}
-		if e = tx.QueryRow("SELECT data FROM records WHERE id=?", id).Scan(&raw); e != nil {
+		if e = statements["SELECT data FROM records WHERE id=?"].QueryRow(id).Scan(&raw); e != nil {
 			return e
 		}
 		r, e := Decode[c.Record](raw)
@@ -312,15 +375,15 @@ func (s *Store) Import(binding p.Binding, remote p.Remote) error {
 		}
 		old = &r
 		var pending int
-		if e = tx.QueryRow("SELECT count(*) FROM provider_jobs WHERE binding_id=? AND record_id=? AND state NOT IN ('applied','stopped')", binding.ID, id).Scan(&pending); e != nil {
+		if e = statements["SELECT count(*) FROM provider_jobs WHERE binding_id=? AND record_id=? AND state NOT IN ('applied','stopped')"].QueryRow(binding.ID, id).Scan(&pending); e != nil {
 			return e
 		}
 		if pending > 0 || old.Revision != mapping.LocalRevision {
 			conf := c.Conflict{ID: "provider_" + c.Hash([]string{binding.ID, id, remote.Version}), Current: old, Cause: "provider_concurrent_edit", Operation: c.Operation{RecordID: id, CollectionID: binding.CollectionID, Type: "provider.import", Payload: map[string]json.RawMessage{"remote": p.Raw(remote), "binding_id": p.Raw(binding.ID)}}}
-			if _, e = tx.Exec("INSERT OR IGNORE INTO conflicts VALUES(?,?)", conf.ID, encode(conf)); e != nil {
+			if _, e = statements["INSERT OR IGNORE INTO conflicts VALUES(?,?)"].Exec(conf.ID, encode(conf)); e != nil {
 				return e
 			}
-			return tx.Commit()
+			return nil
 		}
 	} else if !errors.Is(e, sql.ErrNoRows) {
 		return e
@@ -345,20 +408,20 @@ func (s *Store) Import(binding p.Binding, remote p.Remote) error {
 	r.UpdatedAt = c.Now()
 	r.ProviderState = "synced"
 	r.BodyHash = c.Hash(r.Body)
-	if _, e = tx.Exec("INSERT INTO records VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data", r.ID, r.CollectionID, encode(r)); e != nil {
+	if _, e = statements["INSERT INTO records VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data"].Exec(r.ID, r.CollectionID, encode(r)); e != nil {
 		return e
 	}
-	if _, e = tx.Exec("INSERT INTO versions VALUES(?,?,?)", r.ID, r.Revision, encode(r)); e != nil {
+	if _, e = statements["INSERT INTO versions VALUES(?,?,?)"].Exec(r.ID, r.Revision, encode(r)); e != nil {
 		return e
 	}
-	if _, e = tx.Exec("INSERT INTO changes(collection_id,data) VALUES(?,?)", r.CollectionID, encode(r.Summary())); e != nil {
+	if _, e = statements["INSERT INTO changes(collection_id,data) VALUES(?,?)"].Exec(r.CollectionID, encode(r.Summary())); e != nil {
 		return e
 	}
 	mapping = Mapping{Remote: remote, LocalRevision: r.Revision}
-	if _, e = tx.Exec("INSERT INTO mappings VALUES(?,?,?,?) ON CONFLICT(binding_id,remote_id) DO UPDATE SET data=excluded.data", binding.ID, remote.ID, r.ID, encode(mapping)); e != nil {
+	if _, e = statements["INSERT INTO mappings VALUES(?,?,?,?) ON CONFLICT(binding_id,remote_id) DO UPDATE SET data=excluded.data"].Exec(binding.ID, remote.ID, r.ID, encode(mapping)); e != nil {
 		return e
 	}
-	return tx.Commit()
+	return nil
 }
 func (s *Store) Lease(owner string) (bool, error) {
 	_, e := s.DB.Exec("CREATE TABLE IF NOT EXISTS worker_lease(id INTEGER PRIMARY KEY,owner TEXT,expires INTEGER)")

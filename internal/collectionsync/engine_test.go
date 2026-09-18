@@ -3,6 +3,7 @@ package collectionsync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	c "github.com/nick1udwig/pebble-agent/internal/collections"
 	"github.com/nick1udwig/pebble-agent/internal/collectionstore"
 	p "github.com/nick1udwig/pebble-agent/internal/providers"
@@ -21,6 +22,7 @@ type fakeAdapter struct {
 	unknown    bool
 	pullFail   bool
 	pulls      int
+	checkpoint string
 	afterApply func()
 }
 
@@ -38,7 +40,7 @@ func (f *fakeAdapter) Pull(_ context.Context, b p.Binding, _ p.Credentials, page
 	if f.pullFail {
 		return p.Page{}, &p.Failure{State: "auth_required"}
 	}
-	return p.Page{Records: []p.Remote{{ID: "remote-id", Container: b.Container, Version: "v1", Record: c.Record{Kind: "note", Title: "A", Body: "B", BodyComplete: true}}}}, nil
+	return p.Page{Checkpoint: f.checkpoint, Records: []p.Remote{{ID: "remote-id", Container: b.Container, Version: "v1", Record: c.Record{Kind: "note", Title: "A", Body: "B", BodyComplete: true}}}}, nil
 }
 
 func TestAdaptivePullsKeepExplicitRefreshAndPendingWritesImmediate(t *testing.T) {
@@ -216,7 +218,7 @@ func (f *deterministicAdapter) Apply(_ context.Context, b p.Binding, _ p.Credent
 	return p.ApplyResult{State: "applied", Remote: &f.remote}, nil
 }
 func (f *deterministicAdapter) Pull(context.Context, p.Binding, p.Credentials, string) (p.Page, error) {
-	return p.Page{Records: []p.Remote{f.remote}, Full: true}, nil
+	return p.Page{Checkpoint: f.checkpoint, Records: []p.Remote{f.remote}, Full: true}, nil
 }
 func TestUncertainDeterministicCreateIsNotImportedAsDuplicate(t *testing.T) {
 	s, e, _, b := fixture(t)
@@ -236,5 +238,34 @@ func TestUncertainDeterministicCreateIsNotImportedAsDuplicate(t *testing.T) {
 	jobs, err := s.Pending("binding")
 	if err != nil || len(jobs) != 0 {
 		t.Fatal(jobs, err)
+	}
+}
+
+func TestImportFailureDoesNotAdvanceCheckpoint(t *testing.T) {
+	s, engine, adapter, _ := fixture(t)
+	adapter.pullFail = false
+	adapter.checkpoint = "next"
+	s.Fault = func(point string) error {
+		if point == "import.before_commit" {
+			return errors.New("disk failed")
+		}
+		return nil
+	}
+	engine.Tick(context.Background())
+	bindings, err := s.Bindings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bindings[0].Checkpoint != "" {
+		t.Fatal("checkpoint advanced past failed import")
+	}
+	s.Fault = nil
+	engine.Tick(context.Background())
+	bindings, err = s.Bindings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bindings[0].Checkpoint != "next" {
+		t.Fatal("checkpoint not advanced after replay")
 	}
 }
