@@ -106,9 +106,46 @@ function operation(type, command, attrs) {
   return { type: "capability", node: { kind: "capability", attrs: attrs } };
 }
 
+// Calendar shortcuts require an explicit day, clock and duration. Ambiguous
+// requests still go to the agent, which can ask for the missing information.
+function calendarEvent(raw, now) {
+  var prefix = /^(?:please )?(?:calendar\s*:|(?:make|create|add|schedule) (?:me )?(?:(?:a|an|new) )?(?:calendar )?event\s*:?)(?:\s*|$)/i.exec(raw);
+  if (!prefix) { return null; }
+  var value = raw.slice(prefix[0].length).trim().replace(/[.!?]+$/, "");
+  if (!value) { return operation("calendar", "list"); }
+  var match = /^(.+?)\s+(?:on )?(today|tomorrow|\d{4}-\d{2}-\d{2})\s+(?:at (.+?) for (.+)|(?:all[ -]day))$/i.exec(value);
+  if (!match) { return null; }
+  var date = new Date(now.getTime());
+  var day = match[2].toLowerCase();
+  if (day === "tomorrow") { date.setDate(date.getDate() + 1); }
+  else if (day !== "today") {
+    var parts = day.split("-").map(Number);
+    date = new Date(parts[0], parts[1]-1, parts[2], 12);
+    if (date.getFullYear()!==parts[0] || date.getMonth()!==parts[1]-1 || date.getDate()!==parts[2]) { return null; }
+  }
+  function localDay(d) { return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2); }
+  var start, end;
+  if (!match[3]) {
+    start=localDay(date);date.setDate(date.getDate()+1);end=localDay(date);
+  } else {
+    var seconds=duration(normalize(match[4]));
+    if (seconds===null) { return null; }
+    var midnight=new Date(date.getFullYear(),date.getMonth(),date.getDate());
+    var at=alarmTime("today at "+normalize(match[3]),midnight);
+    if (normalize(match[3])==="midnight" || /^(?:00?:00|12\s*am)$/.test(normalize(match[3]))) { at=midnight.getTime()/1000; }
+    if (at===null) { return null; }
+    start=new Date(at*1000).toISOString();end=new Date(at*1000+seconds*1000).toISOString();
+  }
+  return operation("calendar","add",{title:match[1].trim(),start:start,end:end});
+}
+
 function parse(input, now) {
   if (typeof input !== "string" || input.length > 512) { return null; }
   var raw = input.trim();
+  now = now || new Date();
+  var calendar = calendarEvent(raw, now);
+  if (calendar) { return calendar; }
+  if (/^(?:show|open|list)(?: me)? (?:my |the )?(?:calendar|agenda|events)[.!?]?$/i.test(raw)) { return operation("calendar", "list"); }
   var noteEdit = /^(?:please )?edit (?:a |the )?note\s+(.+?)\s+to\s+(.+)$/i.exec(raw);
   if (noteEdit) { return operation("note", "edit", { match: noteEdit[1].trim(), value: noteEdit[2].trim() }); }
   if (/^(?:please )?(?:edit (?:a |the )?note|(?:show|open|list)(?: me)? (?:my |the )?notes)[.!]?$/i.test(raw)) { return operation("note", "list"); }

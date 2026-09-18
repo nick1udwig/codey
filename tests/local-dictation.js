@@ -3,6 +3,15 @@ var assert = require("assert");
 var parse = require("../src/common/local-dictation").parse;
 
 module.exports = function(test) {
+  test("calendar shortcuts preserve titles and require unambiguous event times", function() {
+    var now=new Date(2026,8,17,12);
+    ["Calendar: Café with Jo tomorrow at 3 pm for an hour", "make an event: Café with Jo tomorrow at 3 pm for an hour", "Add a calendar event Café with Jo tomorrow at 3 pm for an hour"].forEach(function(text){
+      assert.deepStrictEqual(parse(text,now).node.attrs,{type:"calendar",command:"add",title:"Café with Jo",start:new Date(2026,8,18,15).toISOString(),end:new Date(2026,8,18,16).toISOString()});
+    });
+    assert.deepStrictEqual(parse("Calendar: Holiday on 2026-09-20 all day",now).node.attrs,{type:"calendar",command:"add",title:"Holiday",start:"2026-09-20",end:"2026-09-21"});
+    assert.equal(parse("open my calendar",now).node.attrs.command,"list");
+    ["Calendar: Lunch tomorrow", "make an event: Lunch tomorrow at 3 pm", "Calendar: Lunch tomorrow at seven for an hour", "Calendar: Lunch on 2026-02-30 all day", "don't make an event: Lunch tomorrow at 3 pm for an hour"].forEach(function(text){assert.equal(parse(text,now),null,text);});
+  });
   test("local dictation recognizes complete timer phrases and spoken durations", function() {
     [
       ["Set a timer for 5 seconds.", 5], ["start another timer for 60 seconds", 60],
