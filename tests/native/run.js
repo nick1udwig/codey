@@ -10,7 +10,7 @@ var outputDirectory = path.join(root, "build", "tests");
 
 fs.mkdirSync(outputDirectory, { recursive: true });
 
-var cases = ["native_test", "schedules_test", "answer_notification_test", "watch_response_test", "control_test", "touch_guard_test", "refresh_policy_test", "ripple_test", "timeline_test", "artwork_cache_test"];
+var cases = ["native_test", "delivery_retry_test", "schedules_test", "answer_notification_test", "watch_response_test", "control_test", "touch_guard_test", "refresh_policy_test", "ripple_test", "timeline_test", "artwork_cache_test"];
 for (var testCase of cases) {
 var output = path.join(outputDirectory, testCase);
 var compile = childProcess.spawnSync("cc", [
@@ -26,6 +26,7 @@ var compile = childProcess.spawnSync("cc", [
   "-I" + path.join(root, "src", "c"),
   path.join(root, "tests", "native", testCase + ".c"),
   path.join(root, "src", "c", "agent_protocol.c"),
+  path.join(root, "src", "c", "delivery_retry.c"),
   path.join(root, "src", "c", "collection_preview.c"),
   path.join(root, "src", "c", "agent_capabilities.c"),
   path.join(root, "src", "c", "capabilities", "schedules.c"),

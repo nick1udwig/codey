@@ -7,6 +7,7 @@
 #include "answer_notification.h"
 #include "local_action.h"
 #include "watch_response.h"
+#include "delivery_retry.h"
 #include "message_keys.auto.h"
 
 #include <stdlib.h>
@@ -42,7 +43,7 @@ static uint32_t s_request_id;
 static OutgoingMessage *s_outbox;
 static uint8_t s_outbox_count;
 static bool s_outbox_busy;
-static AppTimer *s_outbox_retry_timer;
+static DeliveryRetry s_outbox_retry = { .delay_ms = OUTBOX_RETRY_MS };
 static AppTimer *s_ready_timer;
 static AppTimer *s_quick_launch_timer;
 static AppTimer *s_new_chat_timer;
@@ -54,7 +55,7 @@ static char s_collection_bridge[32], s_collection_view[16];
 static uint32_t s_collection_event;
 static OutgoingMessage s_collection_pending;
 static bool s_collection_waiting;
-static AppTimer *s_collection_retry_timer;
+static DeliveryRetry s_collection_retry = { .delay_ms = 3000 };
 static uint32_t s_note_token, s_note_sequence;
 static AnswerNotification s_answer_notification;
 static WatchResponse s_response;
@@ -144,13 +145,13 @@ static int32_t prv_tuple_int(DictionaryIterator *iter, uint32_t key, int32_t fal
 static void prv_flush_outbox(void);
 
 static void prv_collection_retry(void *context) {
-  (void)context;s_collection_retry_timer=NULL;
+  (void)context;
   if(!s_collection_waiting)return;
   if(connection_service_peek_pebble_app_connection()&&s_outbox_count<OUTBOX_QUEUE_SIZE) {
     bool queued=false;for(int i=0;i<s_outbox_count;i++)if(s_outbox[i].event==s_collection_pending.event&&!strcmp(s_outbox[i].bridge,s_collection_pending.bridge))queued=true;
     if(!queued){s_outbox[s_outbox_count++]=s_collection_pending;prv_flush_outbox();}
   }
-  s_collection_retry_timer=app_timer_register(3000,prv_collection_retry,NULL);
+  delivery_retry_schedule(&s_collection_retry, connection_service_peek_pebble_app_connection(), prv_collection_retry, NULL);
 }
 static void prv_remove_outbox_head(void) {
   if (!s_outbox_count) { return; }
@@ -158,18 +159,16 @@ static void prv_remove_outbox_head(void) {
     memmove(&s_outbox[0], &s_outbox[1], (s_outbox_count - 1) * sizeof(OutgoingMessage));
   }
   s_outbox_count -= 1;
+  delivery_retry_reset(&s_outbox_retry, OUTBOX_RETRY_MS);
 }
 
 static void prv_outbox_retry(void *context) {
   (void)context;
-  s_outbox_retry_timer = NULL;
   prv_flush_outbox();
 }
 
 static void prv_schedule_retry(void) {
-  if (!s_outbox_retry_timer) {
-    s_outbox_retry_timer = app_timer_register(OUTBOX_RETRY_MS, prv_outbox_retry, NULL);
-  }
+  delivery_retry_schedule(&s_outbox_retry, connection_service_peek_pebble_app_connection(), prv_outbox_retry, NULL);
 }
 
 static void prv_finish_outbox(bool sent) {
@@ -196,7 +195,7 @@ static void prv_flush_outbox(void) {
   DictionaryIterator *iter;
   AppMessageResult result;
   OutgoingMessage *message;
-  if (s_outbox_busy || !s_outbox_count) { return; }
+  if (s_outbox_busy || !s_outbox_count || !connection_service_peek_pebble_app_connection()) { return; }
   message = &s_outbox[0];
   result = app_message_outbox_begin(&iter);
   if (result != APP_MSG_OK || !iter) {
@@ -248,8 +247,8 @@ static bool prv_queue_message(const char *type, uint32_t request_id, const char 
     message->event=s_collection_event;
     if(!strcmp(action,"edit")||!strcmp(action,"append")||!strcmp(action,"complete")||!strcmp(action,"restore")) {
       s_collection_pending=*message;s_collection_waiting=true;
-      if(s_collection_retry_timer)app_timer_cancel(s_collection_retry_timer);
-      s_collection_retry_timer=app_timer_register(3000,prv_collection_retry,NULL);
+      delivery_retry_reset(&s_collection_retry, 3000);
+      delivery_retry_schedule(&s_collection_retry, connection_service_peek_pebble_app_connection(), prv_collection_retry, NULL);
       agent_ui_set_status(s_ui,"Sending…",false,true);
     }
   }
@@ -515,7 +514,11 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
     if (prv_tuple_int(iter,MESSAGE_KEY_CollectionProtocol,0)!=1) return;
     const char *bridge=prv_tuple_string(iter,MESSAGE_KEY_BridgeSession);
     if (strcmp(bridge,s_collection_bridge)) { s_collection_event=0; s_collection_view[0]=0; }
-    agent_protocol_copy(s_collection_bridge,sizeof(s_collection_bridge),bridge);return;
+    agent_protocol_copy(s_collection_bridge,sizeof(s_collection_bridge),bridge);
+    delivery_retry_reset(&s_collection_retry, 3000);
+    prv_collection_retry(NULL);
+    prv_flush_outbox();
+    return;
   }
   if(!strcmp(type,"bridge")&&!strcmp(operation,"collection-counts")){collection_preview_set_count(0,prv_tuple_int(iter,MESSAGE_KEY_Index,0));collection_preview_set_count(1,prv_tuple_int(iter,MESSAGE_KEY_Flags,0));collection_preview_set_count(2,prv_tuple_int(iter,MESSAGE_KEY_EventSequence,0));agent_capabilities_refresh_dashboard(s_capabilities);return;}
   if(!strcmp(type,"bridge")&&!strcmp(operation,"agent-dispatched")){agent_ui_animate_request(s_ui);return;}
@@ -533,8 +536,8 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
     return;
   }
   if (!strcmp(type,"collection-ack")) {
-    if(strcmp(prv_tuple_string(iter,MESSAGE_KEY_BridgeSession),s_collection_pending.bridge) || (uint32_t)prv_tuple_int(iter,MESSAGE_KEY_EventSequence,0)!=s_collection_pending.event)return;
-    s_collection_waiting=false;if(s_collection_retry_timer){app_timer_cancel(s_collection_retry_timer);s_collection_retry_timer=NULL;}
+    if(!s_collection_waiting || strcmp(prv_tuple_string(iter,MESSAGE_KEY_BridgeSession),s_collection_pending.bridge) || (uint32_t)prv_tuple_int(iter,MESSAGE_KEY_EventSequence,0)!=s_collection_pending.event)return;
+    s_collection_waiting=false;delivery_retry_cancel(&s_collection_retry);
     const char *state=prv_tuple_string(iter,MESSAGE_KEY_DeliveryState);
     agent_ui_set_status(s_ui,prv_tuple_string(iter,MESSAGE_KEY_Value),!strcmp(state,"rejected")||!strcmp(state,"needs_attention"),false);return;
   }
@@ -691,6 +694,12 @@ static void prv_show_boot(void) {
   agent_ui_set_status(s_ui, "Connecting", false, true);
 }
 
+static void prv_connection_changed(bool connected) {
+  delivery_retry_reset(&s_outbox_retry, OUTBOX_RETRY_MS);
+  delivery_retry_reset(&s_collection_retry, 3000);
+  if (connected) { prv_collection_retry(NULL); prv_flush_outbox(); }
+}
+
 static void prv_init(void) {
   s_outbox=calloc(OUTBOX_QUEUE_SIZE,sizeof(*s_outbox));
   if(!s_outbox){APP_LOG(APP_LOG_LEVEL_ERROR,"Cannot allocate phone queue");return;}
@@ -702,6 +711,7 @@ static void prv_init(void) {
     prv_show_boot();
   }
 
+  connection_service_subscribe((ConnectionHandlers) { .pebble_app_connection_handler = prv_connection_changed });
   app_message_register_inbox_received(prv_inbox_received);
   app_message_register_inbox_dropped(prv_inbox_dropped);
   app_message_register_outbox_sent(prv_outbox_sent);
@@ -725,12 +735,13 @@ static void prv_init(void) {
 }
 
 static void prv_deinit(void) {
+  connection_service_unsubscribe();
   prv_stop_response_timer();
-  if(s_collection_retry_timer)app_timer_cancel(s_collection_retry_timer);
+  delivery_retry_reset(&s_collection_retry, 3000);
   if (s_ready_timer) { app_timer_cancel(s_ready_timer); }
   if (s_quick_launch_timer) { app_timer_cancel(s_quick_launch_timer); }
   if (s_new_chat_timer) { app_timer_cancel(s_new_chat_timer); }
-  if (s_outbox_retry_timer) { app_timer_cancel(s_outbox_retry_timer); }
+  delivery_retry_cancel(&s_outbox_retry);
 #if defined(PBL_MICROPHONE)
   if (s_dictation) { dictation_session_destroy(s_dictation); }
 #endif
