@@ -146,3 +146,36 @@ console.log("✓ collection journal: durable recovery, torn slots, duplicate ing
   read("snap","second");assert.strictEqual(views.resolve(page.token,"previous").cursor,"");assert.strictEqual(views.eventPages.length,2);
  } finally {if(oldTZ===undefined)delete process.env.TZ;else process.env.TZ=oldTZ;}
 })();
+
+(function boundedCacheRetainsNavigationAndSkipsUnchangedWrites(){
+ var Cache=require("../src/common/collections/cache"),s=storage(),scope=JSON.stringify({server:"a"});
+ var cache=new Cache.Cache(s,scope,{maxBytes:16000,maxPages:6,maxRecords:12});
+ cache.data.collections=[{id:"col_note",kind:"note"}];
+ var first={records:[{id:"note",revision:"1",title:"First"}],snapshot_id:"pinned"};
+ cache.putPage("note:active::",first,true);cache.merge(first.records);cache.save(scope);
+ for(var i=0;i<100;i++){
+  cache.putPage("note:1:"+i,{text:"José 🌙 ".repeat(80),cursor:String(i)},false);
+  cache.save(scope);
+  assert.ok(s.values[Cache.KEY].length*2<=16000);
+  assert.ok(Object.keys(cache.data.pages).length<=6);
+ }
+ assert.ok(cache.page("note:active::"),"useful first page retained");
+ assert.ok(cache.page("note:1:99"),"current page retained");
+ var written=cache.stats.writtenBytes,serialized=cache.stats.serializedBytes;
+ var current=cache.page("note:1:99");
+ cache.putPage("note:1:99",current,false);cache.save(scope);
+ assert.strictEqual(cache.stats.writtenBytes,written,"identical response skips storage write");
+ assert.strictEqual(cache.stats.serializedBytes-serialized,JSON.stringify(current).length*2,"only incoming page is serialized");
+ var reopened=new Cache.Cache(s,scope,{maxBytes:16000,maxPages:6,maxRecords:12});
+ assert.deepStrictEqual(reopened.page("note:1:99"),current);
+ assert.deepStrictEqual(reopened.data.collections,cache.data.collections);
+ reopened.merge([{id:"note",revision:"2",title:"New"}]);reopened.save(scope);
+ assert.strictEqual(reopened.page("note:active::").records[0].revision,"1","snapshot stays pinned");
+ assert.strictEqual(reopened.data.records.note.revision,"2");
+ s.fail(true);reopened.putPage("note:2:",{text:"fresh"},true);
+ assert.doesNotThrow(function(){reopened.save(scope);});
+ assert.strictEqual(reopened.page("note:2:").text,"fresh","failed persistence keeps current in-memory read");
+ var other=new Cache.Cache(s,JSON.stringify({server:"b"}));
+ assert.deepStrictEqual(other.data.pages,{},"scope change rejects old cache");
+ console.log("✓ bounded cache: evictions="+cache.stats.evictions+", serialized bytes="+cache.stats.serializedBytes+", written bytes="+written);
+})();
