@@ -179,3 +179,60 @@ console.log("✓ collection journal: durable recovery, torn slots, duplicate ing
  assert.deepStrictEqual(other.data.pages,{},"scope change rejects old cache");
  console.log("✓ bounded cache: evictions="+cache.stats.evictions+", serialized bytes="+cache.stats.serializedBytes+", written bytes="+written);
 })();
+
+(function normalizedJournalMigrationAndExactReplay(){
+ var f=enrolled(),one=input(1),op=f.j.accept(one),legacy=J.clone(f.j.data);
+ legacy.entries[0].input=one;
+ legacy.receipts[one.ingress].hash=JSON.stringify(one);
+ delete legacy.receipts[one.ingress].input;
+ var payload=JSON.stringify(legacy);
+ function envelope(generation){return JSON.stringify({schema:1,generation:generation,payload:payload,checksum:J.checksum(payload)});}
+ f.s.values[J.PREFIX+0]=envelope(20);f.s.values[J.PREFIX+1]=envelope(21);
+ var migrated=new J.Journal(f.s),before=Object.assign({},f.s.values);
+ assert.deepStrictEqual(migrated.accept(one),op);
+ assert.deepStrictEqual(f.s.values,before,"load and replay do not rewrite accepted legacy input");
+ assert.strictEqual(migrated.data.entries[0].operation,migrated.data.receipts[one.ingress].operation);
+ var save=f.s.setItem;
+ f.s.setItem=function(k,v){save(k,v.slice(0,20));};
+ assert.throws(function(){migrated.accept(input(2));},/verification/);
+ assert.deepStrictEqual(new J.Journal(f.s).accept(one),op,"old winning slot survives a torn migration");
+ f.s.setItem=save;
+ migrated=new J.Journal(f.s);migrated.accept(input(2));migrated.accept(input(3));
+ [0,1].forEach(function(slot){assert.strictEqual(JSON.parse(f.s.values[J.PREFIX+slot]).schema,2);});
+ var restarted=new J.Journal(f.s);
+ assert.deepStrictEqual(restarted.accept(one),op);
+ var different=input(1);different.view="new-view";
+ assert.throws(function(){restarted.accept(different);},/reused/);
+ different=input(1);different.payload.body+="!";
+ assert.throws(function(){restarted.accept(different);},/reused/);
+})();
+
+(function journalSizeAndAcknowledgedLifecycle(){
+ [20,100].forEach(function(count){
+  var f=enrolled(),written=0,save=f.s.setItem;
+  f.s.setItem=function(k,v){written+=v.length*2;save(k,v);};
+  for(var i=0;i<count;i++)f.j.accept(input(i));
+  var current=JSON.parse(f.s.values[J.PREFIX+f.j.slot]),legacy=J.clone(f.j.data);
+  legacy.entries.forEach(function(entry){entry.input=input(Number(entry.operation.sequence)-1);});
+  Object.keys(legacy.receipts).forEach(function(key){var receipt=legacy.receipts[key];receipt.hash=JSON.stringify(input(Number(receipt.operation.sequence)-1));delete receipt.input;});
+  assert.ok(current.payload.length<JSON.stringify(legacy).length/2);
+  console.log("✓ normalized journal "+count+" notes: payload bytes="+current.payload.length*2+", legacy="+JSON.stringify(legacy).length*2+", cumulative envelope writes="+written);
+ });
+ var f=enrolled();f.j.options.maxBytes=20000;
+ var accepted=[],full=false;
+ for(var i=0;i<100;i++){
+  var value=input(i);value.payload.body="small";
+  var op;
+  try{op=f.j.accept(value);}catch(e){assert.match(e.message,/full/);full=true;break;}
+  accepted.push({input:value,operation:op});
+  try{f.j.receipts([{operation_id:op.id,outcome:"applied",revision:"1",durably_recorded:true}]);}
+  catch(e){assert.match(e.message,/full/);full=true;break;}
+  var records={};records[op.record_id]={revision:"1"};f.j.compact(records);
+ }
+ assert.ok(full,"byte budget bounds live exact replay receipts");
+ var restored=new J.Journal(f.s);
+ accepted.forEach(function(item){assert.deepStrictEqual(restored.accept(item.input),item.operation);});
+ var pending=restored.data.entries.filter(function(e){return !e.receipt;}).length;
+ restored.bridge("next_bridge");assert.strictEqual(Object.keys(restored.data.receipts).length,pending);
+ assert.throws(function(){restored.accept(accepted[0].input);},/Stale/);
+})();

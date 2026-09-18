@@ -58,10 +58,18 @@ runs again; it is not a permanent background service. Uninstalling/clearing phon
 storage can destroy input that has not reached the server.
 
 The journal has two checksummed slots with read-back verification. Defaults are
-256 retained operations and 512 KiB per slot, plus a 1 MiB disposable cache.
+256 retained operations and a 512 KiB estimated UTF-16 payload budget per slot,
+plus a 256 KiB disposable cache (at most 48 pages and 128 merged records).
 Cache eviction never removes pending input. Queue exhaustion rejects the next
 save. When more than eight uncommitted creates exist, the view explicitly reports
 partial coverage; remaining records become browsable after server upload.
+
+Journal schema 2 stores each operation payload once, with entry references and
+payload-free input metadata for exact duplicate comparison. Schema 1 is read
+without modifying storage; subsequent verified writes migrate each alternating
+slot. Keep this app version after migration: older clients cannot read schema 2.
+Live watch receipts remain until bridge rollover; the byte budget rejects new
+work rather than discarding replay evidence. Pending work survives rollover.
 
 ## Read efficiency
 
