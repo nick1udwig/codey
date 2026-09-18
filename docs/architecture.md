@@ -165,3 +165,20 @@ The phone's `src/common/collections` owns accepted-but-uncommitted input and
 disposable caches. `collection-views.js` projects bounded PAM pages. Native
 Notes/To-dos modules emit requests and hold no collection content in persistence.
 See [collections](collections.md) for enrollment, outages, and release limits.
+
+## Internal ownership boundaries
+
+The PebbleKit entry point owns settings, active request identity, the watch queue,
+and the PAM pipeline. `pkjs/collection-controller.js` owns collection polling,
+view tokens and acknowledgments. `pkjs/job-coordinator.js` owns presentation and
+action acknowledgments; durable job data stays in `common/jobs.js`. Controllers
+receive narrow callbacks for transport, settings and request ownership rather
+than importing the entry point. Disposable cache budgeting lives separately from
+the verified two-slot journal.
+
+`AgentUi` owns widget state and lifecycle. The dashboard renderer receives a
+read-only view of elements, selection and status, with mutable access only to its
+artwork cache. Dashboard frame calculation is independent of widget state. The
+gesture controller owns recognition state and accepts semantic targets, contact
+coordinates and time; the UI applies resulting navigation and animation. Element
+normalization and repaint invalidation are separately testable private modules.

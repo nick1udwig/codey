@@ -4,15 +4,10 @@ var Endpoints = require("../common/endpoints");
 var Pam = require("../common/pam");
 var Model = require("../common/model");
 var WatchProtocol = require("../common/watch-protocol");
-var JobModule = require("../common/jobs");
-var JobActions = require("../common/job-actions");
 var Settings = require("../common/settings");
 var Capabilities = require("../common/capabilities");
 var Weather = require("../common/weather");
 var DashboardStatus = require("../common/dashboard-status");
-var Poll = require("../common/poll");
-var CollectionClient = require("../common/collections/client").Client;
-var CollectionViews = require("../common/collection-views");
 var LocalDictation = require("../common/local-dictation");
 
 var Key = WatchProtocol.Key;
@@ -25,98 +20,14 @@ var watchReady = false;
 var failedDeliveries = {};
 var sessionId = loadSessionId();
 var commandSequence = loadCommandSequence();
-var collections=null, collectionViews=null, collectionError="", collectionCounts={};
-function collectionBase() {
- return (Endpoints.normalize(settings.endpoint)||"").replace(/\/v1\/agent$/,"").replace(/^ws:/,"http:").replace(/^wss:/,"https:");
-}
-try {
- collections=new CollectionClient({storage:localStorage,XMLHttpRequest:typeof XMLHttpRequest!=="undefined"?XMLHttpRequest:null,base:collectionBase,token:function(){return settings.token;},allowHTTP:function(){return settings.collectionDevelopmentHTTP;}});
- collectionViews=new CollectionViews(collections);
- collections.journal.bridge(Date.now().toString(36)+"-"+Math.floor(Math.random()*0xffffff).toString(36));
-} catch(e){collectionError=e.message;}
-function collectionHandshake(){
- collectionCounts={};
- if(!collections)return;
- var m={};m[Key.messageType]="bridge";m[Key.operation]="collections";m[Key.collectionProtocol]=1;m[Key.bridgeSession]=collections.journal.data.bridge;watchQueue.enqueue(m);
-}
-var collectionPoll = new Poll(function(done) {
- if(!collections||!collectionBase()||!settings.token){done(false);return;}
- collections.connect(function(e){
-  if(e){done(false);return;}
-  var counts={task:0,note:0,event:0},changed=false;
-  collections.collections.forEach(function(c){counts[c.kind]=c.count||0;});
-  Object.keys(counts).forEach(function(kind){if(counts[kind]!==collectionCounts[kind])changed=true;});
-  if(changed){
-   var m={};m[Key.messageType]="bridge";m[Key.operation]="collection-counts";
-   m[Key.index]=counts.task;m[Key.flags]=counts.note;m[Key.eventSequence]=counts.event;
-   collectionCounts=counts;watchQueue.enqueue(m);
-  }
-  collections.drain();
-  done(changed||collections.journal.data.entries.some(function(e){return !e.receipt;}));
- });
+var collectionController = require("./collection-controller")({
+ storage:localStorage, XMLHttpRequest:typeof XMLHttpRequest!=="undefined"?XMLHttpRequest:null,
+ settings:function(){return settings;}, enqueue:function(message){watchQueue.enqueue(message);},
+ beginRequest:function(){activeRequestId=nextRequestId();return activeRequestId;},
+ isCurrent:function(id){return id===activeRequestId;},
+ read:read,sendStatus:sendStatus,sendAnswerNotification:sendAnswerNotification,
+ capabilityContext:capabilityContext,log:log,nextCommandId:nextCommandId
 });
-function syncCollections(){
- if(!collections||!collectionBase()||!settings.token){collectionPoll.stop();return;}
- collectionPoll.refresh();
-}
-function collectionAck(payload,state,text){var m={};m[Key.messageType]="collection-ack";m[Key.bridgeSession]=String(read(payload,Key.bridgeSession,"BridgeSession")||"");m[Key.eventSequence]=Number(read(payload,Key.eventSequence,"EventSequence")||0);m[Key.deliveryState]=state;m[Key.value]=text;if(state==="rejected")m[Key.errorCode]=/stale|session|view/i.test(text)?"stale_view":/reused/i.test(text)?"idempotency_mismatch":"invalid_input";watchQueue.enqueue(m);}
-function renderCollection(requestId,error,view){
- if(requestId!==activeRequestId)return;
- if(error){sendStatus(error.message,"error",requestId);return;}
- var m={};m[Key.requestId]=requestId;m[Key.viewToken]=view.token;
- if(view.list){
-  var list=view.list;m[Key.messageType]="collection-list";m[Key.operation]=list.kind;
-  m[Key.value]=list.titles.join("\n");m[Key.meta]=list.states;m[Key.index]=list.total;
-  if(list.kind==="event")m[Key.title]=list.timeline.join("\n");
-  m[Key.flags]=(list.state==="completed"?1:0)|(list.next?2:0)|(list.stale?4:0)|(list.partial?8:0)|(list.first?16:0);
-  if(list.kind==="event")m[Key.flags]|=(list.previous?32:0)|(Math.max(0,Math.min(7,list.focus||0))<<8);
-  m[Key.subtitle]=list.stale?"Cached · Server unavailable":list.pending?list.pending+" pending server":list.partial?"First 8 · More after sync":"Saved on server";
-  // A list may change the watch count optimistically, or be superseded before delivery.
-  if(list.state!=="completed"&&collectionCounts[list.kind]!==list.total)delete collectionCounts[list.kind];
-  watchQueue.enqueue(m);
- }else{m[Key.messageType]="collection-view";watchQueue.enqueue(m);capabilityContext(requestId).renderPam(view.source);}
- sendAnswerNotification(requestId,"complete",true);
-}
-function handleCollectionRequest(kind,action,id,value,token,payload){
- var requestId=nextRequestId();activeRequestId=requestId;sendAnswerNotification(requestId,"begin",true,token);
- if(!collections){sendStatus(collectionError||"Collections unavailable","error",requestId);return;}
- var started=Date.now(),viewToken=String(read(payload,Key.viewToken,"ViewToken")||""),done=function(e,v){log("collection read "+kind+" "+action+" ms="+(Date.now()-started));renderCollection(requestId,e,v);};
- try {
-  if(action==="list"||action==="archive"){
-   if((value==="return"||value==="previous")&&kind==="event"){var previous=collectionViews.resolve(viewToken,value==="return"?"back":"previous");collectionViews.list(kind,previous.state,previous.snapshot,previous.cursor,function(e,v){if(v)v.list.focus=value==="previous"?Math.max(0,v.list.titles.length-1):previous.focus;done(e,v);});}
-   else if(value==="next"){var page=collectionViews.resolve(viewToken,"next");collectionViews.list(kind,page.state,page.snapshot,page.cursor,done);}
-   else collectionViews.list(kind,action==="archive"?"completed":"active","","",done);
-   collections.drain();return;
-  }
-  var session=String(read(payload,Key.bridgeSession,"BridgeSession")||""),seq=Number(read(payload,Key.eventSequence,"EventSequence")||0),ingress="watch:"+session+":"+seq;
-  var receipt=collections.journal.data.receipts[ingress];
-  if(receipt){if(receipt.alias!==id||receipt.view!==viewToken||receipt.operation.type!==({edit:"note.replace",append:"note.append",complete:"task.complete",restore:"task.restore"}[action])||JSON.stringify(receipt.operation.payload)!==JSON.stringify(action==="edit"?{body:value,whole_note:true}:action==="append"?{text:value}:{}))throw new Error("Event identity reused with different input.");collectionAck(payload,"accepted_phone","Saved on phone · Pending server");collections.drain();return;}
-  var target=collectionViews.resolve(viewToken,id);
-  if(action==="read"){collectionViews.body(target.record,target.cursor||"",done);return;}
-  if(session!==collections.journal.data.bridge||seq<=0)throw new Error("Stale collection session.");
-  var type={edit:"note.replace",append:"note.append",complete:"task.complete",restore:"task.restore"}[action];if(!type||(target.record.capabilities||[]).indexOf(type)<0)throw new Error("Action unavailable for this record.");
-  var col=collections.collection(kind);var accepted=collections.accept({alias:id,view:viewToken,ingress:ingress,collection_id:col.id,generation:col.binding_generation,record_id:target.record.id,revision:target.record.revision,type:type,payload:action==="edit"?{body:value,whole_note:true}:action==="append"?{text:value}:{}});
-  collectionAck(payload,"accepted_phone","Saved on phone · Pending server");
-  collections.drain(function(e,data){if(!e&&data&&data.results.some(function(r){return r.operation_id===accepted.id&&r.durably_recorded&&r.outcome==="applied";}))collectionAck(payload,"accepted_server","Saved on server");else if(!e&&data&&data.results.some(function(r){return r.operation_id===accepted.id&&r.durably_recorded;}))collectionAck(payload,"needs_attention","Needs attention in server settings");});
-  collectionViews.list(kind,target.state||"active",target.snapshot||"",target.cursor||"",function(e,v){if(e){sendStatus("Saved on phone · Pending server. List unavailable.","show",requestId);sendAnswerNotification(requestId,"complete",true);}else done(null,v);},true);
- }catch(e){collectionAck(payload,"rejected",e.message);sendStatus(e.message,"error",requestId);}
-}
-function phoneCollection(attrs,requestId,complete,job,commandIndex,background){
- if(!collections){sendStatus(collectionError||"Collections unavailable","error",requestId);if(complete)complete(false);return;}
- collections.ensure(function(e){
-  if(e){sendStatus(e.message,"error",requestId);if(complete)complete(false);return;}
-  phoneCollectionReady(attrs,requestId,complete,job,commandIndex,background);
- });
-}
-function phoneCollectionReady(attrs,requestId,complete,job,commandIndex,background){
- var kind=attrs.type==="calendar"?"event":attrs.type==="todo"?"task":"note";
- function finish(e,op){if(background){if(e){if(complete)complete(false);return;}collections.drain(function(){});if(complete)complete(true);return;}if(e){sendStatus(e.message,"error",requestId);if(complete)complete(false);return;}var delivery="Saved on phone · Pending server";collections.drain(function(error,data){if(error||!op||!data)return;data.results.forEach(function(r){if(r.operation_id===op.id&&r.durably_recorded){delivery=r.outcome==="applied"?"Saved on server":"Needs attention in server settings";if(requestId===activeRequestId)sendStatus(delivery,"show",requestId);}});});collectionViews.list(kind,"active","","",function(e,v){if(e&&op){sendStatus(delivery+" · List unavailable","show",requestId);sendAnswerNotification(requestId,"complete",true);if(complete)complete(true);return;}renderCollection(requestId,e,v);if(op)sendStatus(delivery,"show",requestId);if(complete)complete(!e);});}
- try{if(!collections)throw new Error(collectionError);if(attrs.command==="list"||attrs.command==="archive"){collectionViews.list(kind,attrs.command==="archive"?"completed":"active","","",function(e,v){renderCollection(requestId,e,v);if(complete)complete(!e);});return;}if(attrs.command!=="add")throw new Error("Open the collection and choose a record to edit.");var col=collections.collection(kind),scope=collections.journal.data.scope;
- var input={ingress:job?"agent:"+scope.server_instance_id+":"+job.id+":"+commandIndex:"direct:"+scope.client_id+":"+nextCommandId(),collection_id:col.id,generation:col.binding_generation,type:kind+".create",payload:kind==="event"?{title:String(attrs.title||attrs.value||""),start:String(attrs.start||""),end:String(attrs.end||""),location:String(attrs.location||""),description:String(attrs.description||"")}:kind==="note"?{title:WatchProtocol.truncateUtf8(String(attrs.title||attrs.value).replace(/\s+/g," "),71),body:String(attrs.value||""),body_format:"plain"}:{title:String(attrs.value||attrs.title||"")}};
- if(job)collections.agent(input,finish);else finish(null,collections.accept(input));
- }catch(e){finish(e);}
-}
-
 
 function loadCommandSequence() {
   try {
@@ -168,11 +79,8 @@ var watchQueue = new WatchProtocol.MessageQueue(function(message, success, failu
   maxRetries: 3,
   retryDelay: 120,
   onError: function(error, message) {
-    if(message&&message[Key.messageType]==="job-action"){
-      var key=message[Key.parentId]+":"+message[Key.eventSequence], receipt=actionReceipts&&actionReceipts[key];
-      if(receipt){delete actionReceipts[key];receipt(new Error("Watch disconnected. Open Notifications to retry."));}
-    }
-    collectionCounts={}; // Retry counts after a failed or dropped Bluetooth delivery.
+    if(jobPresentation)jobPresentation.deliveryError(message);
+    collectionController.resetCounts(); // Retry counts after failed delivery.
     if (message && message[Key.requestId]) { failedDeliveries[message[Key.requestId]] = true; watchQueue.clearRequest(message[Key.requestId]); }
     log("watch message failed", error);
   }
@@ -287,13 +195,13 @@ function capabilityContext(requestId, complete, isFailed, job, commandIndex) {
   return {
     settings: settings,
     summary: saveWeather,
-    phoneNote: function(attrs) { phoneCollection(attrs,requestId,complete,job,commandIndex); },
+    phoneNote: function(attrs) { collectionController.command(attrs,requestId,complete,job,commandIndex); },
     sendWatchCapability: function(operation) {
       if (requestId !== activeRequestId || (isFailed && isFailed())) { return; }
       // Assign once before queueing; retries retain the same ID, while new
       // model commands (even in the same response) receive different IDs.
       if (job) {
-        if (!job.commands[commandIndex]) { job.commands[commandIndex] = nextCommandId(); jobManager.save(); }
+        if (!job.commands[commandIndex]) { job.commands[commandIndex] = nextCommandId(); jobPresentation.save(); }
         operation.invocationId = job.commands[commandIndex];
       } else { operation.invocationId = nextCommandId(); }
       watchQueue.enqueueOperation(operation, requestId);
@@ -338,7 +246,7 @@ function createPipeline(requestId, job) {
     if (finished && !pendingCapabilities && !failed && sawRenderable && !notified && requestId === activeRequestId) {
       notified = true;
       sendStatus("", "idle", requestId);
-      if (!job) { sendAnswerNotification(requestId); } else { sendJobPresented(job, requestId); }
+      if (!job) { sendAnswerNotification(requestId); } else { jobPresentation.presented(job, requestId); }
     }
   }
   var model = new Model.ScreenModel({
@@ -420,7 +328,7 @@ function requestAgent(input) {
   var preference = input.kind === "dictation" ? Settings.parseDictation(input.text) : null;
   if (preference) {
     sendAnswerNotification(requestId, "begin");
-    sendJob({id:"pending"}, false, "remove");
+    jobPresentation.send({id:"pending"}, false, "remove");
     try {
       var updated=Settings.normalize(settings);
       Object.keys(preference.patch).forEach(function(key){updated[key]=preference.patch[key];});
@@ -436,14 +344,13 @@ function requestAgent(input) {
   var local = input.kind === "dictation" ? LocalDictation.parse(input.text, now) : null;
   if (local) { sendAnswerNotification(requestId, "begin"); }
   if (local) {
-    sendJob({ id:"pending" }, false, "remove");
+    jobPresentation.send({ id:"pending" }, false, "remove");
     var pipeline = createPipeline(requestId);
     pipeline.model.accept({ kind: local.node.kind, attrs: local.node.attrs, depth: 0 });
     pipeline.finishAnswer();
     return;
   }
-  selectedJob = "";
-  try { jobManager.submit({
+  try { jobPresentation.submit({
     id: requestId,
     session: sessionId,
     endpoint: settings.endpoint,
@@ -466,90 +373,20 @@ function requestAgent(input) {
       utc_offset_minutes: -now.getTimezoneOffset()
     }
   }); }
-  catch(error) { sendJob({id:"pending",title:input.text || "Agent request",status:"failed",error:error.message},false); }
+  catch(error) { jobPresentation.send({id:"pending",title:input.text || "Agent request",status:"failed",error:error.message},false); }
 
 }
 
 
-var selectedJob = "";
-function sendJob(job, buzz, operation) {
-  var message = {};
-  message[Key.messageType] = "job";
-  message[Key.operation] = operation || (job.status === "checking" ? "checking" : "upsert");
-  message[Key.elementId] = job.id || "";
-  message[Key.title] = WatchProtocol.truncateUtf8(job.title || "Agent request", 71);
-  message[Key.subtitle] = job.status || "";
-  message[Key.value] = WatchProtocol.truncateUtf8(job.error || "", 179);
-  message[Key.flags] = buzz && settings.answerVibrate ? 1 : 0;
-  watchQueue.enqueue(message);
-}
-var jobManager = new JobModule.Jobs({
-  storage: localStorage, XMLHttpRequest: typeof XMLHttpRequest !== "undefined" ? XMLHttpRequest : null,
-  token: function() { return settings.token; },
-  endpoint: function() { return JobModule.endpoint(settings.endpoint); },
-  dispatched: function(){var m={};m[Key.messageType]="bridge";m[Key.operation]="agent-dispatched";watchQueue.enqueue(m);},
-  update: function(job, buzz) { if (!job.opened && !(actionRunner && actionRunner.process(job))) { sendJob(job, buzz); } }
+var jobPresentation = require("./job-coordinator")({
+ storage:localStorage, XMLHttpRequest:typeof XMLHttpRequest!=="undefined"?XMLHttpRequest:null,
+ settings:function(){return settings;},enqueue:function(message){watchQueue.enqueue(message);},
+ nextCommandId:nextCommandId,collectionCommand:collectionController.command,
+ beginRequest:function(){activeRequestId=nextRequestId();delete failedDeliveries[activeRequestId];return activeRequestId;},
+ isCurrent:function(id){return id===activeRequestId;},deliveryFailed:function(id){return failedDeliveries[id];},
+ resumeSession:function(id){sessionId=id;localStorage.setItem("pebble-agent.session.v1",id);},
+ createPipeline:createPipeline,sendAnswerNotification:sendAnswerNotification
 });
-var actionReceipts={};
-var actionRunner = new JobActions.Runner({
-  save:function(){jobManager.save();},
-  update:function(job){sendJob(job,false);},
-  complete:function(job){jobManager.acknowledge(job);sendJob(job,false,"remove");},
-  run:function(job,action,done){
-    if(job.endpoint!==JobModule.endpoint(settings.endpoint)){done(new Error("Reconnect the original server to apply this action."));return;}
-    var attrs=Object.assign({},action.attrs,{show:"false"});
-    if(/^(todo|note|calendar)$/.test(attrs.type)){
-      phoneCollection(attrs,0,function(ok){done(ok?null:new Error("Collection action needs attention. Open the job to retry."));},job,action.index,true);return;
-    }
-    try {
-      if(!job.commands[action.index]){job.commands[action.index]=nextCommandId();try{jobManager.save();}catch(e){delete job.commands[action.index];throw e;}}
-      var key=job.id+":"+action.index;
-      actionReceipts[key]=done;
-      var messages=WatchProtocol.encodeOperation({type:"capability",node:{kind:"capability",attrs:attrs},invocationId:job.commands[action.index]},0);
-      messages.forEach(function(m){m[Key.messageType]="job-action";m[Key.parentId]=job.id;m[Key.eventSequence]=action.index;watchQueue.enqueue(m);});
-    }catch(e){done(e);}
-  }
-});
-function retryJobActions(){
-  Object.keys(actionReceipts).forEach(function(key){delete actionRunner.busy[key.split(":")[0]];});
-  actionReceipts={};
-  jobManager.entries.slice().forEach(function(job){actionRunner.process(job);});
-}
-function sendJobPresented(job, requestId) {
-  if (failedDeliveries[requestId]) { return; }
-  var presented = {};
-  presented[Key.messageType] = "job-result";
-  presented[Key.requestId] = requestId;
-  presented[Key.elementId] = job.id;
-  watchQueue.enqueue(presented);
-}
-function openJob(id, cancel) {
-  var cachedAction=jobManager.find(id), plan=cachedAction&&JobActions.inspect(cachedAction.result||"");
-  if(!cancel&&cachedAction&&plan&&plan.onlyActions){actionRunner.process(cachedAction);return;}
-  selectedJob = id;
-  var requestId = nextRequestId();
-  activeRequestId = requestId;
-  delete failedDeliveries[requestId];
-  sendAnswerNotification(requestId, "begin");
-  var callback = function(error, job) {
-    if (selectedJob !== id || activeRequestId !== requestId) { return; }
-    if (error) {
-      var cached = jobManager.find(id);
-      sendJob({id:id,title:cached ? cached.title : "Agent request",status:cached ? cached.status : "Unknown",error:error.message},false);
-      return;
-    }
-    if (job.status === "done" && job.result) {
-      // Resume the conversation that produced this form, even if the user
-      // started another thread while it was running.
-      sessionId = job.session;
-      localStorage.setItem("pebble-agent.session.v1", sessionId);
-      var pipeline = createPipeline(requestId, job);
-      pipeline.parser.push(job.result); pipeline.parser.finish(); pipeline.finishAnswer();
-
-    } else { sendJob(job, false); }
-  };
-  if (cancel) { jobManager.cancel(id, callback); } else { jobManager.check(id, callback); }
-}
 
 function handleWatchMessage(event) {
   var payload = event && event.payload || {};
@@ -564,30 +401,24 @@ function handleWatchMessage(event) {
     watchReady = true;
     lastWeatherMessage = "";
     lastDashboardStatus="";dashboardStatus.last=null;dashboardStatus.refresh();
-    jobManager.retryAcknowledgements();
-    sendJob({}, false, "reset");
-    jobManager.entries.forEach(function(job) { if (!job.opened) { sendJob(job, false); } });
-    retryJobActions();
+    jobPresentation.ready();
     sendConnection();
     refreshWeather();
     sendPreferences();
-    if(collections){collections.journal.bridge(Date.now().toString(36)+"-"+Math.floor(Math.random()*0xffffff).toString(36));}
-    collectionHandshake(); syncCollections();
+    collectionController.ready();
     return;
   }
   if (type === "capability_event" && operation === "status") {dashboardStatus.refresh();return;}
-  if (type === "capability_event" && (operation === "note" || operation === "todo" || operation === "calendar")) { handleCollectionRequest(operation==="calendar"?"event":operation==="note"?"note":"task",action,element,value,Number(read(payload,Key.meta,"Meta"))||0,payload);return; }
+  if (type === "capability_event" && (operation === "note" || operation === "todo" || operation === "calendar")) { collectionController.handle(operation==="calendar"?"event":operation==="note"?"note":"task",action,element,value,Number(read(payload,Key.meta,"Meta"))||0,payload);return; }
   if (type === "capability_event" && operation === "job") {
     if (action === "executed" || action === "execution-failed") {
-      var receiptKey=element+":"+value, receipt=actionReceipts[receiptKey];
-      if(receipt){delete actionReceipts[receiptKey];receipt(action==="executed"?null:new Error("Watch could not apply action. Open the job to retry."));}
+      jobPresentation.receipt(element,value,action);
       return;
     }
-    if (action === "refresh") { retryJobActions();jobManager.refreshAll(); return; }
+    if (action === "refresh") { jobPresentation.refresh(); return; }
     if (action === "retrieved" || action === "dismiss") {
-      var job = jobManager.find(element);
-      if (job) { jobManager.acknowledge(job); sendJob(job, false, "remove"); }
-    } else { openJob(element, action === "cancel"); }
+      jobPresentation.dismiss(element);
+    } else { jobPresentation.open(element, action === "cancel"); }
     return;
   }
   if (type === "capability_event" && operation === "weather" && action === "refresh") { refreshWeather(); return; }
@@ -650,10 +481,7 @@ Pebble.addEventListener("showConfiguration", function() {
   function open(catalog) {
     if (opened) { return; }
     opened = true;
-    if(!collections||!collectionBase()||!settings.token){Pebble.openURL(Settings.buildConfigUrl(settings,Date.now(),catalog));return;}
-    collections.request("POST","/v1/integration-setup-sessions",{public_url:collectionBase()},function(e,setup){
-      var base=collectionBase();
-      if(!e&&(!setup||setup.url!==base+"/integrations/setup-api"||!setup.token))e=new Error("Invalid sync setup destination");
+    collectionController.setup(function(e,setup){
       Pebble.openURL(Settings.buildConfigUrl(settings,Date.now(),catalog,e?e.message:null,e?null:setup));
     });
   }
@@ -687,7 +515,7 @@ Pebble.addEventListener("webviewclosed", function(event) {
   }
   if (!updated.token) updated.token=settings.token;
   settings = Settings.save(updated);
-  if(updated.recoverCollections&&collections)collections.recover(function(e){sendStatus(e?e.message:"Pending input archived for recovery. Reopen collections.",e?"error":"show");if(!e)syncCollections();});else syncCollections();
+  if(updated.recoverCollections)collectionController.recover();else collectionController.sync();
   if (updated.newSession) { startNewSession(); }
   if (watchReady) { sendConnection(); refreshWeather(); sendPreferences(); dashboardStatus.refresh(); }
 });
