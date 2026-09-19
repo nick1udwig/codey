@@ -4,6 +4,15 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# The launcher uses the supplied blue smiling mascot, centered in a 24x24 icon.
+source = Image.open(ROOT / 'assets/codey-smile-blue-144.png').convert('RGBA')
+source = source.crop(source.getbbox())
+source.thumbnail((24, 24), Image.Resampling.NEAREST)
+menu_icon = Image.new('RGBA', (24, 24))
+menu_icon.paste(source, ((24 - source.width) // 2, (24 - source.height) // 2))
+menu_icon.save(ROOT / 'resources/images/menu_smiley.png')
+
 for state in ('sleep', 'think'):
     source = Image.open(ROOT / f'assets/codey-{state}-144.png').convert('RGBA')
     source = source.crop(source.getbbox())

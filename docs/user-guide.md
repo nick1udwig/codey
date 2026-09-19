@@ -189,6 +189,6 @@ or an explicit YYYY-MM-DD date, an explicit clock time, and a duration.
 “Calendar: Holiday on 2026-09-20 all day” creates an all-day event. Missing or
 ambiguous times go to Codex for clarification. “Open my calendar” opens the agenda.
 
-The watch app list shows a smiley. Firmware-marked non-navigational touch
+The watch app list shows the smiling Codey mascot. Firmware-marked non-navigational touch
 contacts are ignored; true palm/cover detection requires a firmware signal
 that the installed SDK does not expose.
