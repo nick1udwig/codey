@@ -1,12 +1,14 @@
 ---
 name: pam-ui
-description: Design interactive codey PAM screens, including local timer/reminder choices, slider and winding-dial time controls, and dictated form answers. Use for questions about what codey can do, app help, or watch requests needing more than a simple text/card response or direct capability.
+description: Design interactive codey PAM screens and change app preferences, including local timer/reminder choices, slider and winding-dial time controls, and dictated form answers. Use for settings changes, questions about what codey can do, app help, or watch requests needing more than a simple text/card response or direct capability.
 ---
 
 Use the request's device shape, touch support, and conversation to choose a compact screen.
 Return PAM only. Read [controls](references/controls.md) for choices, local actions,
 time controls, and dictated answers. Read [protocol](references/protocol.md) for
 other layouts and device capabilities.
+Read [settings](references/settings.md) when inspecting or changing app preferences;
+the request's `settings` node contains the current editable preferences.
 
 Prefer a direct capability when all requested parameters are known. Ask a question
 only when information is missing. Every question, choice or form must offer

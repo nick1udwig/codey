@@ -22,8 +22,13 @@ func TestInstalledSkillAndExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	settings, err := os.ReadFile(filepath.Join(filepath.Dir(path), "references", "settings.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	controls = append(controls, settings...)
 	examples := regexp.MustCompile("(?s)```pam\\n(.*?)```").FindAllStringSubmatch(string(controls), -1)
-	if len(examples) < 2 {
+	if len(examples) < 4 {
 		t.Fatal("missing interactive examples")
 	}
 	for _, example := range examples {
@@ -44,7 +49,7 @@ func TestInstalledSkillAndExamples(t *testing.T) {
 	if !strings.Contains(a.instructions(false), "## Explaining codey") || !strings.Contains(a.instructions(false), "# codey feature guide") {
 		t.Fatal("tool-disabled fallback missing app help")
 	}
-	if !strings.Contains(a.instructions(false), "type=slider") {
+	if !strings.Contains(a.instructions(false), "type=slider") || !strings.Contains(a.instructions(false), "key=model value=default") {
 		t.Fatal("tool-disabled fallback missing")
 	}
 }

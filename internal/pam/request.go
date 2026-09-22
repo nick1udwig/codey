@@ -17,6 +17,7 @@ type Request struct {
 	Input    map[string]string
 	Context  map[string]string
 	Device   map[string]string
+	Settings map[string]string
 	Backend  BackendOptions
 	Bearer   string
 	Raw      string
@@ -47,7 +48,7 @@ func ParseRequest(source []byte) (Request, error) {
 			if err != nil || request.ID < 1 || request.ID > 65535 {
 				return Request{}, fmt.Errorf("PAM line %d: request id must be 1..65535", node.Line)
 			}
-		case "input", "context", "device", "auth", "backend":
+		case "input", "context", "device", "auth", "backend", "settings":
 			if !requestSeen || doneSeen || node.Depth != 1 || node.ParentKind != "request" {
 				return Request{}, fmt.Errorf("PAM line %d: %s must be a request child", node.Line, node.Kind)
 			}
@@ -62,6 +63,13 @@ func ParseRequest(source []byte) (Request, error) {
 				request.Context = node.Attrs
 			case "device":
 				request.Device = node.Attrs
+			case "settings":
+				for key := range node.Attrs {
+					if key != "model" && settingValues[key] == nil {
+						return Request{}, nodeError(&node, "unsupported setting")
+					}
+				}
+				request.Settings = node.Attrs
 			case "backend":
 				request.Backend, err = ParseBackendOptions(node.Attrs)
 				if err != nil {
@@ -116,6 +124,7 @@ func (request Request) agentDocument() string {
 		{kind: "input", attrs: request.Input},
 		{kind: "context", attrs: request.Context},
 		{kind: "device", attrs: request.Device},
+		{kind: "settings", attrs: request.Settings},
 	} {
 		if node.attrs == nil {
 			continue

@@ -53,6 +53,7 @@ Use these root capability nodes when the request asks the device to perform the 
 - capability type=reminder command=schedule id=... title=... subtitle=... in=<duration>
 - reminder schedule may instead use at=<Unix timestamp seconds>; other commands are show, list, cancel or ack with id, and cancel_all
 - alarm is an alias of reminder, with the same commands; use it for alarm requests
+- capability type=settings command=set key=... value=... changes a phone preference; read [settings](settings.md) for keys, values, and timing.
 
 The watch has a persistent local dashboard with Notifications, Timers, Alarms & reminders, and a stopwatch. Up to four timers and four alarms/reminders can coexist. For each NEW timer or alarm, choose a distinct id shorter than 32 bytes, incorporating device.now and request id. Use show to open an existing alert. New creation commands always create separate alerts; the watch assigns a unique suffix if an id is accidentally reused. To explicitly change an existing timer/alarm, reuse its id and include replace=true. Do not replace earlier timers when the user asks for another. Timer list and reminder/alarm list open the dashboard. Back returns to the dashboard while work continues; Cancel stops only the selected alert. Completed alerts buzz repeatedly until acknowledged or snoozed and stay in Notifications. Do not emit a screen after creating a capability, because the watch renders its own controls. Never claim creation succeeded before the watch executes it.
 

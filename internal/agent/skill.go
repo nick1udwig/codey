@@ -42,6 +42,7 @@ func (agent *Agent) instructions(canReadSkill bool) string {
 	content, _ := skillFiles.ReadFile("skills/pam-ui/references/protocol.md")
 	controls, _ := skillFiles.ReadFile("skills/pam-ui/references/controls.md")
 	guide, _ := skillFiles.ReadFile("skills/pam-ui/references/app-guide.md")
+	settings, _ := skillFiles.ReadFile("skills/pam-ui/references/settings.md")
 	entry, _ := skillFiles.ReadFile("skills/pam-ui/SKILL.md")
-	return developerInstructions + "\n" + string(entry) + "\n" + string(content) + "\n" + string(controls) + "\n" + string(guide)
+	return developerInstructions + "\n" + string(entry) + "\n" + string(content) + "\n" + string(controls) + "\n" + string(guide) + "\n" + string(settings)
 }

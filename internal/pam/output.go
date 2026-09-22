@@ -18,6 +18,7 @@ var layouts = set("text", "list", "menu", "grid", "card", "progress", "form", "c
 var elements = set("section", "item", "text", "metric", "progress", "field", "choice", "action", "bind", "image", "spacer", "hotspot")
 var inputs = set("up", "select", "down", "back", "tap", "swipe-left", "swipe-right", "swipe-up", "swipe-down")
 var capabilityCommands = map[string]map[string]bool{
+	"settings":  set("set"),
 	"todo":      set("add", "list", "archive"),
 	"calendar":  set("add", "list"),
 	"note":      set("add", "edit", "list"),
@@ -116,6 +117,11 @@ func (validator *OutputValidator) acceptNode(node *Node) error {
 		commands := capabilityCommands[node.Attrs["type"]]
 		if commands == nil || !commands[node.Attrs["command"]] {
 			return nodeError(node, "unsupported capability command")
+		}
+		if node.Attrs["type"] == "settings" {
+			if err := validateSettingsCapability(node); err != nil {
+				return err
+			}
 		}
 		if err := boundedAttribute(node, "id", 31); err != nil {
 			return err

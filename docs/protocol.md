@@ -90,6 +90,32 @@ error message="I couldn't complete that request"
 
 Invokes a registered phone-side or watch-side module. See [Capabilities](#capabilities).
 
+#### Settings
+
+```pam
+pam version=1
+capability type=settings command=set key=double_tap value=false
+capability type=settings command=set key=effort value=high
+done
+```
+
+The phone persists each update on result arrival, sends watch preferences, and
+refreshes weather for units changes. Completed updates have durable job receipts
+and are not reapplied when the result is opened; the phone renders the saved-value
+confirmation. Failed saves remain retryable. Multiple lines are separate updates.
+Backend changes apply on subsequent requests, subject to server restrictions.
+
+Supported keys and values are defined in the agent's
+[settings reference](../internal/agent/skills/pam-ui/references/settings.md).
+Only `type`, `command`, `key`, `value`, and optional `id` are accepted. Credentials,
+endpoint, sync setup, and tool/approval permissions remain in phone settings.
+
+Requests may include a `settings` child of `request` containing the eight editable
+preferences using the same keys. It is preserved in the model-facing request;
+authentication and backend policy nodes are still excluded. Old clients may omit
+it. Values describe saved preferences at submission time, not effective backend
+configuration. Empty model/effort overrides are represented as `default`.
+
 ## Layouts
 
 - `text` — long prose, explanations, and logs; scrolls by default.
