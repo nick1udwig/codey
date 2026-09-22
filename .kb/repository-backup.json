@@ -1,7 +1,46 @@
 {
   "version": 1,
-  "created_at": "2026-09-19T04:40:03.897463425+00:00",
+  "created_at": "2026-09-22T20:44:06.746291969+00:00",
   "documents": [
+    {
+      "id": "01a0cad9-62e5-70f2-9266-4a4b9776d45b",
+      "slug": "issues/bound-collection-migration-startup",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Bound collection schema migration startup time",
+      "content": "## Context\n\nDuring the 2026-09-22 server deployment, a collection database with schema\nversion 2, about 8 GB of data, and 3,393,706 stored revisions triggered the\nversion-body migration in `internal/collectionstore/store.go` and\n`version_bodies.go`. The service opens its HTTP listener only after this\nmigration, so `/healthz` and collection access were unavailable while one\nlarge transaction wrote several GB to the WAL. The process remained active\nwith no migration progress log. This is a deployment availability issue for\nlarge existing stores. See [[issues/backend-sync-release-qualification]].\n\n## Acceptance criteria\n\n- [ ] Bound service unavailability during collection schema upgrades on a\n      representative multi-million-revision store, with a documented target.\n- [ ] Make migration progress and recovery state observable without logging\n      note bodies or credentials.\n- [ ] Verify restart/interruption safety and unchanged collection and version\n      contents after migration.\n- [ ] Add a representative large-store migration benchmark or performance gate.\n\n## Progress\n\n- 2026-09-22: Confirmed during deployment of the current server binary. The\n  service restarted at 13:31:46 PDT and first logged its listener at 13:43:06,\n  about 11 minutes 20 seconds later. The WAL reached about 9.2 GB. Schema\n  version 3 and `/healthz` succeeded afterward; the process did not restart.\n",
+      "frontmatter": {
+        "status": "active",
+        "priority": "high",
+        "tags": [
+          "collections",
+          "migration",
+          "operations"
+        ],
+        "references": [
+          "issues/backend-sync-release-qualification"
+        ]
+      },
+      "created_at": "2026-09-22T20:44:04.073985399Z",
+      "modified_at": "2026-09-22T20:44:04.073985399Z"
+    },
+    {
+      "id": "01a0bc94-4883-7680-b359-be02f4c5a492",
+      "slug": "issues/pam-settings",
+      "version": 1,
+      "doc_type": "task",
+      "title": "Change preferences through PAM and expose settings guidance to the agent",
+      "content": "Context: voice shortcuts previously intercepted settings locally; agent-produced PAM could not change preferences. Related: [[issues/dictated-settings]].\n\nAcceptance and results:\n- [x] Add validated `capability type=settings command=set key=... value=...` for the eight existing voice-editable preferences.\n- [x] Persist updates on result arrival, update watch preferences and weather units, and forward backend preferences on later requests. Keep credentials, endpoint, sync setup, and tool/approval permissions in phone settings.\n- [x] Record job execution receipts, show saved-value confirmations, and avoid reapplying completed changes on reopening after restart. Surface storage failures and allow retries.\n- [x] Include an allowlisted settings snapshot in model-facing requests, preserving authentication redaction and old-client compatibility.\n- [x] Document syntax, allowed values, default resets, timing, and limitations in the embedded pam-ui settings reference; load it in the no-file-tools fallback.\n- [x] Refresh affected documentation snapshots and code index.\n\nCompletion evidence (2026-09-19): 106 JavaScript tests pass both from source and from the Pebble SDK bundle, collection tests and native sanitizer tests pass, 13 integration tests pass, `go test ./...` passes, skill validation passes, and `pebble build` succeeds for Emery/Gabbro. The sandbox initially blocked loopback sockets and SDK state writes; required checks passed with scoped escalation. No emulator was used and nothing was deployed.\n\nTests cover settings validation, current preference snapshots, background saves, later backend requests, preserved credentials/permissions, storage failure/retry, receipt replay after restart, Go request/output validation, and skill example validity.\n",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium",
+        "references": [
+          "issues/dictated-settings"
+        ]
+      },
+      "created_at": "2026-09-20T02:16:58.266696682Z",
+      "modified_at": "2026-09-20T02:16:58.266696682Z"
+    },
     {
       "id": "01a0b7f6-c493-7eb0-a9d2-bb2933305e93",
       "slug": "issues/app-list-blue-codey-mascot",
@@ -995,10 +1034,10 @@
     {
       "id": "01a09bc6-8200-7a03-932c-76782a4a3e2c",
       "slug": "reference/docs/user-guide",
-      "version": 13,
+      "version": 14,
       "doc_type": "reference",
       "title": "docs/user-guide.md",
-      "content": "Source: `docs/user-guide.md`\n\n# Using codey\n\nFor installation and first setup, see the [README](../README.md).\n\n## Controls and everyday use\n\nTap Talk to codey, then speak normally.\nThe phone first matches common commands locally.\nOnly unmatched dictation is sent to the configured Codex agent.\n**Thinking** can appear briefly while the phone processes the transcription.\n\nLocal examples: “timer 5 minutes,” “start a five-minute timer,” “set a timer for one hour and thirty minutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up tomorrow at seven am,” “remind me in an hour to check the oven,” “pause the stopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”\nThese commands need no agent endpoint; weather still uses the phone's location and weather service.\n\nClock alarms use the phone's local timezone.\nAM/PM, noon/midnight, or 24-hour HH:MM notation is required; without a date they mean the next occurrence.\nAmbiguous times (“set an alarm for seven”), recurring alarms, commands targeting an individual timer, and requests with additional instructions fall back to Codex unchanged.\nMatching is for complete phrases, never just a command buried inside a longer sentence.\nRelative durations support 1 second through 7 days.\n\n## Dashboard\n\nOn the dashboard, Up opens Notifications, Down opens the selected collection, and Select starts dictation.\nTouch taps open each section:\n\n- **Clock / Calendar:** opens your upcoming calendar agenda.\n  The top row shows battery and remaining agent quota as numbers around a shared `%`, with the brain at the far right.\n  The public SDK cannot directly open the system Timeline; it is accessible from the watchface.\n- **Weather:** shows current temperature, daily low/high, and a condition icon (including sun/moon and cloudy day/night variants).\n  It refreshes through the phone on startup and every 15 minutes; cached readings older than an hour are discarded on refresh.\n  Tapping opens the full forecast without an agent request.\n  Location permission and connectivity are required; missing readings show dashes.\n- **Notifications:** initially includes a **Welcome to codey** tour, which stays until you select **Got it**.\n  After dismissal it stays empty until items exist, then shows their labels.\n  Timer rings fill clockwise from 12 o’clock as elapsed time increases, freezing when paused and filling completely at completion.\n  Up to four entries fit; additional entries are indicated by a “MORE” count.\n  Select opens the complete live list of timers, alarms, reminders, and stopwatch controls.\n- **Talk to codey:** the full-button Codey artwork sleeps with zero active threads and thinks with one or more active threads. Tap it to dictate into the current conversation. Agent notification icons use the same sleeping/thinking state.\n- **Todos:** shows the undone count and opens the active task list.\n  Tap a checkbox or press Select to archive an item; archived items can be restored.\n  Swipe vertically or use Up/Down to navigate.\n  Drag item text horizontally, or hold Up to pan the selected item. Hold Down opens the collection menu.\n  Add items by talking to codey: “make a to-do to buy milk,” “set a task to call José,” or “create a todo to book tickets.”\n  The bare prefix also works: “to-do send a birthday card to John.” Speech variants `2D`, `2 d`, `two`, `two two`, `two do`, `to`, and `to o` also create a to-do when followed by item text at the start of dictation. These short prefixes are ambiguous: “to note the address” creates a task called “note the address.” Use “note: …” or “make a note …” to save a note. Embedded phrases and negated commands do not trigger this shortcut; “set two timers …” is not a to-do.\n\n## Gestures and new chats\n\nDrag scrollable text or lists directly to scroll; no arming tap is needed.\nUp/Down scroll when they have no assigned action or next control to select.\nBy default, other touchscreen controls require an arming tap: tap twice to activate a control, or tap then hold/drag/swipe on the same target.\nThe arming tap expires after 1.5 seconds and is consumed by one gesture.\nAn unarmed hold or control-adjusting drag does nothing.\nMenus and screen changes clear the arm; physical buttons keep their existing behavior.\n\nTap then hold Talk to codey (or hold Select on the dashboard) to open an animated menu with **Talk to codey** and **New Chat**.\nThe dashboard stays visible behind it; tap twice outside or press Back to dismiss.\nNew Chat resets the conversation before starting dictation and reports an unavailable phone after eight seconds.\nOn other screens, hold Select to dictate into the current conversation.\n\n## Requests and stored items\n\nNotes and to-dos are saved on the server. The phone queues accepted changes during server outages; the watch needs its phone connection to save. Cached pages are marked stale when the server is unavailable. See [collection setup and recovery](collections.md).\nAgent requests animate into **Notifications** when the phone submits them. Local\ndictation shortcuts do not show this animation.\nCompleted action commands run as soon as their result reaches the phone. Timers, alarms, reminders, and stopwatches appear in Notifications without opening the job; notes, to-dos, and calendar events enter the durable collection queue. The job disappears after watch execution or durable phone acceptance. Delivery failures remain available to retry, using the same command identity. Plain answers and forms stay in the job list for you to open.\nA completed plain answer buzzes during the configured notification window (45 seconds by default), without replacing the current screen.\nAfter that window there is no automatic polling.\nOpening Notifications immediately marks ongoing requests as **Checking** and refreshes them once.\nTap a request to refresh its status; finished requests open their answer, and ongoing requests offer **Cancel request**.\nConnection failures keep the job available for another check.\nCanceling does not undo work already performed.\n\nTo Do and Notes share the collection tile. Tap, then hold it, or hold\nDown, to choose **To Do** or **Notes**. Down opens your selected\ncollection; the top-left date tile opens Calendar.\nThe last collection opened stays on the dashboard.\nSay “make a note Call Jane” or “note: Call Jane.”\nOpen a note and select **Append to note** or **Replace entire note**.\nNotes live on the server; the phone loads bounded summaries and revision-pinned content pages.\nThe watch persists the first page of truncated titles and loads it immediately\nwhile refreshing from the phone. Full content is fetched in pages.\nSee [collection setup and backend sync](collections.md).\n\nThe arming tap shows a brief expanding ripple with edge reflection.\nThe next touch stops it immediately.\nDisable the effect with **First-tap ripple animation** in phone settings.\n**Require double tap** is a separate setting: turn it off to activate controls\nwith a single tap or hold. Both settings default to enabled.\n\n## Timers, alerts, and Quick Launch\n\nBack from a note or calendar event returns to its list. Back from a list returns\nto the dashboard without stopping anything; Back from the dashboard exits the app.\nTimers and stopwatches share controls: X (Down) cancels, Select pauses/resumes, and the arrow (Up) or Back returns home while timekeeping continues. Say “reset the stopwatch” to reset it. Notifications highlights the most recently fired timer or alarm.\n\nYou can have four timers and four alarms/reminders at once.\nFinished alerts return you to Notifications and buzz every three seconds until acknowledged or snoozed.\nOpen a finished entry and press Select to acknowledge, or Down to snooze ten minutes.\nAcknowledging one leaves other notifications active.\nIf you close codey with an unacknowledged alert, it requests a wakeup to remind you again in a minute.\nPebble only lets the app vibrate while running; if the system refuses a wakeup, codey displays “keep codey open” instead of silently promising a background alert.\n\nAssign codey to a button in the watch's Quick Launch settings.\nLaunching with that shortcut opens dictation automatically; opening codey from the app menu shows the dashboard, and a scheduled wakeup shows notifications.\n\n## Phone settings and conversations\n\nSettings default to GPT-5.6 Luna, extra-high reasoning effort, fast mode, and live web search.\nThe Fast mode toggle requests priority processing and can be turned off for standard speed.\nExplicitly saved preferences are preserved.\nUse **Load available models** to fetch the server's supported choices.\nPermissions control web search, user-file access, command execution, command networking, and auto-review.\nFilesystem, command, network, and auto-review permissions start off.\nAuto-review can approve exceptions to the selected baseline; when off, additional-permission requests are denied.\nChanging permissions uses a separate conversation.\nSee [backend settings](server.md#codex-configuration).\n\nThe gear icon is supplied by the Pebble mobile app.\nThe settings page requires internet access when it opens.\n\nTo start fresh, check **Start new conversation when I save** in phone settings and save.\nThe next query opens a new agent thread with no previous conversation context.\nExisting conversations are retained.\nThis is a one-time action; ordinary settings saves continue the current conversation.\n\n## Troubleshooting\n\n**A request is still working.**\nOpen Notifications and tap it to fetch current status.\nThe 45-second completion notification window does not stop the agent.\nCheck the server log for job acceptance/completion and agent activity.\nUnconfirmed delivery means the phone has not received an acknowledgement; checking can safely retry the same job ID.\nUpgrade both the server and watch app for the job API.\n\n**Where are the server logs?**\nStart debugging with `~/.codey/server.log`.\nThe server also writes the same records to stderr.\nIt rotates the file at 10 MiB and retains five backups, from `server.log.1` (newest) through `server.log.5` (oldest).\nSet `CODEY_LOG_FILE` or pass `--log-file /absolute/path` to move it; pass `--log-file -` for stderr only.\n\n**The home screen says Configure endpoint.**\nOpen codey's gear icon in the paired phone app, save a valid endpoint, then reopen the watchapp if needed.\n\n**Dictation reports Voice unavailable, Voice disabled, or Voice connection failed.**\nCheck microphone/voice permissions and the phone/watch connection, then retry.\nVoice recognition depends on the system dictation service.\n\n**Weather cannot get a location.**\nAllow location access for the Pebble mobile app and make sure the phone has network access.\n\n**The settings page will not open.**\nConfirm the phone is online.\nThe hosted page is [nick1udwig.github.io/codey/config/](https://nick1udwig.github.io/codey/config/).\n\n\n## Calendar\n\nTap the top-left date tile to see calendar events in time order. The watch\ncaches the first eight dated titles; opening the list refreshes them through the\nphone. The Timeline-style view expands the selected event, previews the next,\nand separates dates with day headings. Up/Down move between events and load\nadjacent pages at the boundaries. Select opens the event; Back returns to the\nsame page and selection. Dragging the list snaps to an event when released.\nOpen an event for its end time, location, and description. Date-only events\nare all day; their end date is exclusive.\n\nSay “Add a calendar event: lunch tomorrow from noon to one at Café Central.”\nCodey asks for missing dates or times, then saves the event through the phone.\nCalendar defaults to Server only. For syncing, choose CalDAV in phone settings,\nuse your private CalDAV calendar or calendar-home URL, username, and app password. Public sharing links cannot accept events. The setup flow automatically previews a sole destination; choose Activate to finish. Failed connections retain entered credentials for retry. See [backend setup](../README.md#backend-sync-setup). The agenda imports the\nnext 90 days and recurring occurrences. Manage edits, invitations, and recurring\nseries in your calendar app. This agenda lives in codey, separate from OS Timeline.\n\nThe lower-right dashboard tile counts all active tasks or notes, including\nitems beyond the cached first page. Completing a task updates the list from the\nphone cache immediately while delivery continues in the background.\n\n## Voice settings and calendar shortcuts\n\nSay “turn off double tap,” “turn on ripple,” “turn off answer vibration,” or\n“turn on fast mode” to change a preference immediately. You can also say\n“set weather units to metric,” “set reasoning effort to high,” “set web search\nto cached,” and “set model to default.” Codey shows the saved value. Credentials\nand backend account setup remain in phone settings.\n\n“Calendar: Lunch tomorrow at noon for an hour” and “make an event: Lunch\ntomorrow at noon for an hour” save locally parsed events. Use today, tomorrow,\nor an explicit YYYY-MM-DD date, an explicit clock time, and a duration.\n“Calendar: Holiday on 2026-09-20 all day” creates an all-day event. Missing or\nambiguous times go to Codex for clarification. “Open my calendar” opens the agenda.\n\nThe watch app list shows the smiling Codey mascot. Firmware-marked non-navigational touch\ncontacts are ignored; true palm/cover detection requires a firmware signal\nthat the installed SDK does not expose.\n",
+      "content": "Source: `docs/user-guide.md`\n\n# Using codey\n\nFor installation and first setup, see the [README](../README.md).\n\n## Controls and everyday use\n\nTap Talk to codey, then speak normally.\nThe phone first matches common commands locally.\nOnly unmatched dictation is sent to the configured Codex agent.\n**Thinking** can appear briefly while the phone processes the transcription.\n\nLocal examples: “timer 5 minutes,” “start a five-minute timer,” “set a timer for one hour and thirty minutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up tomorrow at seven am,” “remind me in an hour to check the oven,” “pause the stopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”\nThese commands need no agent endpoint; weather still uses the phone's location and weather service.\n\nClock alarms use the phone's local timezone.\nAM/PM, noon/midnight, or 24-hour HH:MM notation is required; without a date they mean the next occurrence.\nAmbiguous times (“set an alarm for seven”), recurring alarms, commands targeting an individual timer, and requests with additional instructions fall back to Codex unchanged.\nMatching is for complete phrases, never just a command buried inside a longer sentence.\nRelative durations support 1 second through 7 days.\n\n## Dashboard\n\nOn the dashboard, Up opens Notifications, Down opens the selected collection, and Select starts dictation.\nTouch taps open each section:\n\n- **Clock / Calendar:** opens your upcoming calendar agenda.\n  The top row shows battery and remaining agent quota as numbers around a shared `%`, with the brain at the far right.\n  The public SDK cannot directly open the system Timeline; it is accessible from the watchface.\n- **Weather:** shows current temperature, daily low/high, and a condition icon (including sun/moon and cloudy day/night variants).\n  It refreshes through the phone on startup and every 15 minutes; cached readings older than an hour are discarded on refresh.\n  Tapping opens the full forecast without an agent request.\n  Location permission and connectivity are required; missing readings show dashes.\n- **Notifications:** initially includes a **Welcome to codey** tour, which stays until you select **Got it**.\n  After dismissal it stays empty until items exist, then shows their labels.\n  Timer rings fill clockwise from 12 o’clock as elapsed time increases, freezing when paused and filling completely at completion.\n  Up to four entries fit; additional entries are indicated by a “MORE” count.\n  Select opens the complete live list of timers, alarms, reminders, and stopwatch controls.\n- **Talk to codey:** the full-button Codey artwork sleeps with zero active threads and thinks with one or more active threads. Tap it to dictate into the current conversation. Agent notification icons use the same sleeping/thinking state.\n- **Todos:** shows the undone count and opens the active task list.\n  Tap a checkbox or press Select to archive an item; archived items can be restored.\n  Swipe vertically or use Up/Down to navigate.\n  Drag item text horizontally, or hold Up to pan the selected item. Hold Down opens the collection menu.\n  Add items by talking to codey: “make a to-do to buy milk,” “set a task to call José,” or “create a todo to book tickets.”\n  The bare prefix also works: “to-do send a birthday card to John.” Speech variants `2D`, `2 d`, `two`, `two two`, `two do`, `to`, and `to o` also create a to-do when followed by item text at the start of dictation. These short prefixes are ambiguous: “to note the address” creates a task called “note the address.” Use “note: …” or “make a note …” to save a note. Embedded phrases and negated commands do not trigger this shortcut; “set two timers …” is not a to-do.\n\n## Gestures and new chats\n\nDrag scrollable text or lists directly to scroll; no arming tap is needed.\nUp/Down scroll when they have no assigned action or next control to select.\nBy default, other touchscreen controls require an arming tap: tap twice to activate a control, or tap then hold/drag/swipe on the same target.\nThe arming tap expires after 1.5 seconds and is consumed by one gesture.\nAn unarmed hold or control-adjusting drag does nothing.\nMenus and screen changes clear the arm; physical buttons keep their existing behavior.\n\nTap then hold Talk to codey (or hold Select on the dashboard) to open an animated menu with **Talk to codey** and **New Chat**.\nThe dashboard stays visible behind it; tap twice outside or press Back to dismiss.\nNew Chat resets the conversation before starting dictation and reports an unavailable phone after eight seconds.\nOn other screens, hold Select to dictate into the current conversation.\n\n## Requests and stored items\n\nNotes and to-dos are saved on the server. The phone queues accepted changes during server outages; the watch needs its phone connection to save. Cached pages are marked stale when the server is unavailable. See [collection setup and recovery](collections.md).\nAgent requests animate into **Notifications** when the phone submits them. Local\ndictation shortcuts do not show this animation.\nCompleted action commands run as soon as their result reaches the phone. Timers, alarms, reminders, and stopwatches appear in Notifications without opening the job; notes, to-dos, and calendar events enter the durable collection queue. The job disappears after watch execution or durable phone acceptance. Delivery failures remain available to retry, using the same command identity. Plain answers and forms stay in the job list for you to open.\nA completed plain answer buzzes during the configured notification window (45 seconds by default), without replacing the current screen.\nAfter that window there is no automatic polling.\nOpening Notifications immediately marks ongoing requests as **Checking** and refreshes them once.\nTap a request to refresh its status; finished requests open their answer, and ongoing requests offer **Cancel request**.\nConnection failures keep the job available for another check.\nCanceling does not undo work already performed.\n\nTo Do and Notes share the collection tile. Tap, then hold it, or hold\nDown, to choose **To Do** or **Notes**. Down opens your selected\ncollection; the top-left date tile opens Calendar.\nThe last collection opened stays on the dashboard.\nSay “make a note Call Jane” or “note: Call Jane.”\nOpen a note and select **Append to note** or **Replace entire note**.\nNotes live on the server; the phone loads bounded summaries and revision-pinned content pages.\nThe watch persists the first page of truncated titles and loads it immediately\nwhile refreshing from the phone. Full content is fetched in pages.\nSee [collection setup and backend sync](collections.md).\n\nThe arming tap shows a brief expanding ripple with edge reflection.\nThe next touch stops it immediately.\nDisable the effect with **First-tap ripple animation** in phone settings.\n**Require double tap** is a separate setting: turn it off to activate controls\nwith a single tap or hold. Both settings default to enabled.\n\n## Timers, alerts, and Quick Launch\n\nBack from a note or calendar event returns to its list. Back from a list returns\nto the dashboard without stopping anything; Back from the dashboard exits the app.\nTimers and stopwatches share controls: X (Down) cancels, Select pauses/resumes, and the arrow (Up) or Back returns home while timekeeping continues. Say “reset the stopwatch” to reset it. Notifications highlights the most recently fired timer or alarm.\n\nYou can have four timers and four alarms/reminders at once.\nFinished alerts return you to Notifications and buzz every three seconds until acknowledged or snoozed.\nOpen a finished entry and press Select to acknowledge, or Down to snooze ten minutes.\nAcknowledging one leaves other notifications active.\nIf you close codey with an unacknowledged alert, it requests a wakeup to remind you again in a minute.\nPebble only lets the app vibrate while running; if the system refuses a wakeup, codey displays “keep codey open” instead of silently promising a background alert.\n\nAssign codey to a button in the watch's Quick Launch settings.\nLaunching with that shortcut opens dictation automatically; opening codey from the app menu shows the dashboard, and a scheduled wakeup shows notifications.\n\n## Phone settings and conversations\n\nSettings default to GPT-5.6 Luna, extra-high reasoning effort, fast mode, and live web search.\nThe Fast mode toggle requests priority processing and can be turned off for standard speed.\nExplicitly saved preferences are preserved.\nUse **Load available models** to fetch the server's supported choices.\nPermissions control web search, user-file access, command execution, command networking, and auto-review.\nFilesystem, command, network, and auto-review permissions start off.\nAuto-review can approve exceptions to the selected baseline; when off, additional-permission requests are denied.\nChanging permissions uses a separate conversation.\nSee [backend settings](server.md#codex-configuration).\n\nThe gear icon is supplied by the Pebble mobile app.\nThe settings page requires internet access when it opens.\n\nTo start fresh, check **Start new conversation when I save** in phone settings and save.\nThe next query opens a new agent thread with no previous conversation context.\nExisting conversations are retained.\nThis is a one-time action; ordinary settings saves continue the current conversation.\n\n## Troubleshooting\n\n**A request is still working.**\nOpen Notifications and tap it to fetch current status.\nThe 45-second completion notification window does not stop the agent.\nCheck the server log for job acceptance/completion and agent activity.\nUnconfirmed delivery means the phone has not received an acknowledgement; checking can safely retry the same job ID.\nUpgrade both the server and watch app for the job API.\n\n**Where are the server logs?**\nStart debugging with `~/.codey/server.log`.\nThe server also writes the same records to stderr.\nIt rotates the file at 10 MiB and retains five backups, from `server.log.1` (newest) through `server.log.5` (oldest).\nSet `CODEY_LOG_FILE` or pass `--log-file /absolute/path` to move it; pass `--log-file -` for stderr only.\n\n**The home screen says Configure endpoint.**\nOpen codey's gear icon in the paired phone app, save a valid endpoint, then reopen the watchapp if needed.\n\n**Dictation reports Voice unavailable, Voice disabled, or Voice connection failed.**\nCheck microphone/voice permissions and the phone/watch connection, then retry.\nVoice recognition depends on the system dictation service.\n\n**Weather cannot get a location.**\nAllow location access for the Pebble mobile app and make sure the phone has network access.\n\n**The settings page will not open.**\nConfirm the phone is online.\nThe hosted page is [nick1udwig.github.io/codey/config/](https://nick1udwig.github.io/codey/config/).\n\n\n## Calendar\n\nTap the top-left date tile to see calendar events in time order. The watch\ncaches the first eight dated titles; opening the list refreshes them through the\nphone. The Timeline-style view expands the selected event, previews the next,\nand separates dates with day headings. Up/Down move between events and load\nadjacent pages at the boundaries. Select opens the event; Back returns to the\nsame page and selection. Dragging the list snaps to an event when released.\nOpen an event for its end time, location, and description. Date-only events\nare all day; their end date is exclusive.\n\nSay “Add a calendar event: lunch tomorrow from noon to one at Café Central.”\nCodey asks for missing dates or times, then saves the event through the phone.\nCalendar defaults to Server only. For syncing, choose CalDAV in phone settings,\nuse your private CalDAV calendar or calendar-home URL, username, and app password. Public sharing links cannot accept events. The setup flow automatically previews a sole destination; choose Activate to finish. Failed connections retain entered credentials for retry. See [backend setup](../README.md#backend-sync-setup). The agenda imports the\nnext 90 days and recurring occurrences. Manage edits, invitations, and recurring\nseries in your calendar app. This agenda lives in codey, separate from OS Timeline.\n\nThe lower-right dashboard tile counts all active tasks or notes, including\nitems beyond the cached first page. Completing a task updates the list from the\nphone cache immediately while delivery continues in the background.\n\n## Voice settings and calendar shortcuts\n\nSay “turn off double tap,” “turn on ripple,” “turn off answer vibration,” or\n“turn on fast mode” to change a preference immediately. You can also say\n“set weather units to metric,” “set reasoning effort to high,” “set web search\nto cached,” and “set model to default.” Codey shows the saved value. Credentials\nand backend account setup remain in phone settings.\n\nYou can also ask the agent conversationally to change these preferences, including\nin a follow-up answer. It can change multiple preferences in one response. Changes\nare saved when the result arrives; open the result to see the saved value. Model,\neffort, fast mode, and search changes apply to subsequent requests. File, network,\nshell, and approval permissions still require phone settings.\n\n“Calendar: Lunch tomorrow at noon for an hour” and “make an event: Lunch\ntomorrow at noon for an hour” save locally parsed events. Use today, tomorrow,\nor an explicit YYYY-MM-DD date, an explicit clock time, and a duration.\n“Calendar: Holiday on 2026-09-20 all day” creates an all-day event. Missing or\nambiguous times go to Codex for clarification. “Open my calendar” opens the agenda.\n\nThe watch app list shows the smiling Codey mascot. Firmware-marked non-navigational touch\ncontacts are ignored; true palm/cover detection requires a firmware signal\nthat the installed SDK does not expose.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -1008,7 +1047,7 @@
         ]
       },
       "created_at": "2026-09-13T17:17:58.043845561Z",
-      "modified_at": "2026-09-18T15:52:01.122303764Z"
+      "modified_at": "2026-09-20T02:16:58.266696682Z"
     },
     {
       "id": "01a09900-a432-7840-9f5e-663d0da68b7b",
@@ -1438,10 +1477,10 @@
     {
       "id": "01a091f6-6759-7d51-8645-6a6c40097e31",
       "slug": "issues/configure-codex-backend",
-      "version": 3,
+      "version": 5,
       "doc_type": "task",
       "title": "Configure Codex models and permissions from phone settings",
-      "content": "Implementation: git commit `885b444`.\n\n- [x] Model and effort selection using the installed Codex model/list catalog.\n- [x] Web search, filesystem, command, network, and auto-review options.\n- [x] Validated backend attributes kept out of model input; isolated permission profiles.\n- [x] 57 JavaScript tests, native scheduler tests, 6 integration tests, all Go tests passed.\n- [x] Emery/Gabbro builds and phone-sized browser layout checked.\n- [x] Real Codex greeting smoke test and authenticated model discovery passed.\n- [x] Running tmux server updated while preserving its environment; watch installed.\n- [x] KB documentation imported, code indexed, and portable backup restore verified.\n- [x] Defaults updated to Luna / xhigh / fast and live web search; fast-mode toggle maps to per-turn fast/default service tier. Saved explicit settings are preserved. Full tests and real Codex fast-mode smoke test passed; server and watch updated.\n- [ ] Publish the settings page. Push to nick1udwig/pebble-agent requires explicit user approval following automatic approval review rejection. Until publication, the hosted settings page retains its previous controls.\n\nImplementation detail: turn/start must inherit the thread-local resolved permission\nprofile. Sending its name again attempts to resolve against global config and fails.\nPermission changes therefore use separate threads; model/effort changes reuse them.\n",
+      "content": "Implementation: git commit `885b444`.\n\n- [x] Model and effort selection using the installed Codex model/list catalog.\n- [x] Web search, filesystem, command, network, and auto-review options.\n- [x] Validated backend attributes kept out of model input; isolated permission profiles.\n- [x] 57 JavaScript tests, native scheduler tests, 6 integration tests, all Go tests passed.\n- [x] Emery/Gabbro builds and phone-sized browser layout checked.\n- [x] Real Codex greeting smoke test and authenticated model discovery passed.\n- [x] Running tmux server updated while preserving its environment; watch installed.\n- [x] KB documentation imported, code indexed, and portable backup restore verified.\n- [x] Defaults updated to Luna / xhigh / fast and live web search; fast-mode toggle maps to per-turn fast/default service tier. Saved explicit settings are preserved. Full tests and real Codex fast-mode smoke test passed; server and watch updated.\n- [x] 2026-09-22: Set new phone and server model defaults to `gpt-6-luna`; kept explicit saved selections and `CODEY_MODEL` overrides. JavaScript unit, settings integration, and focused Go tests passed.\n- [x] 2026-09-22: Full `npm test` and release watch build passed. Installed the release PBW through the connected phone; restarted `codey.service`. After the one-time collection schema migration, `/healthz` returned 200 and `/v1/models` reported `gpt-6-luna` / `xhigh`. See [[issues/bound-collection-migration-startup]] for the startup delay.\n- [ ] Publish the settings page. Push to nick1udwig/pebble-agent requires explicit user approval following automatic approval review rejection. Until publication, the hosted settings page retains its previous controls.\n\nImplementation detail: turn/start must inherit the thread-local resolved permission\nprofile. Sending its name again attempts to resolve against global config and fails.\nPermission changes therefore use separate threads; model/effort changes reuse them.\n",
       "frontmatter": {
         "status": "active",
         "priority": "medium",
@@ -1449,10 +1488,13 @@
           "issue",
           "settings",
           "codex"
+        ],
+        "references": [
+          "issues/bound-collection-migration-startup"
         ]
       },
       "created_at": "2026-09-11T19:36:42.120639199Z",
-      "modified_at": "2026-09-11T20:59:03.035123072Z"
+      "modified_at": "2026-09-22T20:44:04.073985399Z"
     },
     {
       "id": "01a091eb-498b-73f3-9b2f-bf1076dcc440",
@@ -1547,10 +1589,10 @@
     {
       "id": "01a091eb-493e-7da2-a8aa-cf6e205ef385",
       "slug": "reference/docs/backend",
-      "version": 4,
+      "version": 5,
       "doc_type": "reference",
       "title": "docs/backend.md",
-      "content": "# Agent backend contract\n\n## HTTP\n\nThe phone sends:\n\n- Method: `POST`\n- `Content-Type: text/x-pebble-agent-markup; version=1; charset=utf-8`\n- `Accept: text/x-pebble-agent-markup; version=1`\n- Optional `Authorization: Bearer …`\n- Body: one PAM request document\n\nReturn status `2xx` and stream raw PAM bytes. Do not wrap PAM in JSON, an SSE `data:` field, Markdown fences, or an OpenAI/Anthropic provider envelope. Flush after every useful line. Chunk boundaries may occur anywhere; newline boundaries are the commit points.\n\nIf the phone runtime exposes progressive `XMLHttpRequest.responseText`, lines reach the watch immediately. A runtime that buffers HTTP still produces the same final result. Use WebSocket when guaranteed incremental delivery is required.\n\n## WebSocket\n\nThe phone opens the configured `ws:`/`wss:` endpoint with subprotocol `pam.v1`, then sends one complete PAM request as a text message. The bearer token is included in a nested `auth` request node because browser-style WebSockets cannot set an Authorization header. Send one or more text messages containing PAM chunks, then close normally (`1000`).\n\nPrefer WSS. Avoid putting long-lived high-value credentials directly on a watch/phone client; a short-lived backend session token is safer.\n\n## Request nodes\n\n```pam\npam version=1\nrequest id=42 protocol=pam/1 session=1788123456-12345\n  input action=result.open element=row-2 kind=select text= value=\n  context layout=list screen=results selected=row-2\n  device model=pebble_time_2 now=1788220800 platform=emery shape=rect touch=true utc_offset_minutes=-420\ndone\n```\n\n- `request.id` is a 1–65535 transport generation, not a global conversation ID.\n- `request.session` is stable in phone-local storage and may key backend conversation state.\n- `input.kind` is `dictation`, a button/gesture name, `field`, or `capability`.\n- `input.text` contains dictation.\n- `input.action`, `element`, and `value` contain a semantic UI event.\n- `context` describes the currently rendered agent screen.\n- `device` lets an agent favor, for example, a two-column grid on round hardware without emitting pixel geometry. `now` is Unix time in seconds and `utc_offset_minutes` is the phone's offset east of UTC, allowing absolute reminder times to be resolved without guessing the user's clock.\n\nTreat every field as untrusted client input. Authenticate the session separately and authorize external side effects on the backend.\n\n## Suggested agent instruction\n\nUse this as a starting system/developer instruction for the model that chooses the interface:\n\n```text\nReturn only Pebble Agent Markup version 1 (PAM), never JSON, Markdown, or prose outside PAM.\nStart with exactly: pam version=1\n\nPAM is line-streamed. Emit the screen line as soon as you know the best layout, then emit useful\nchildren one complete newline-terminated line at a time. Indent children with exactly two spaces.\nUse quoted attribute values for whitespace. Keep copy concise enough for a watch.\n\nChoose one layout from text, list, menu, grid, card, progress, form, choice, modal. Use stable,\nshort element IDs. Visible elements are section, item, text, metric, progress, field, choice,\naction, image, spacer. Bind inputs with bind and input=up|select|down|back|tap|swipe-left|\nswipe-right|swipe-up|swipe-down. Never attempt to bind long Select; it is reserved for dictation.\nEnd a screen with done.\n\nUse patch target=<id> for later updates and remove target=<id> for deletion. Do not reference an\nelement before emitting it.\n\nFor a timer, stopwatch, weather lookup, or reminder, prefer a root capability node over pretending\nthe operation happened. Allowed commands and attributes follow the supplied PAM capability schema.\nDo not invent capabilities. Never claim an external side effect succeeded unless the backend has\nactually completed it or the watch capability reports success.\n```\n\nSupply the detailed layout/element/capability portion of [protocol.md](protocol.md) to the model as tool/schema context. Enforce the same allowlist server-side; model instructions are not a security boundary.\n\n## Production adapter pattern\n\n1. Parse the request with `Pam.Parser` or another strict implementation.\n2. Load conversation/session state and any authorized tools.\n3. Ask the model for PAM under the instruction above.\n4. Validate each complete output line before flushing it downstream.\n5. Stop and emit `error message=\"…\"` on invalid structure rather than forwarding arbitrary text.\n6. Persist only the state needed for the next semantic event.\n\nThe included `examples/server.mjs` is a deterministic transport fixture, not a production AI or authentication service. The real reference implementation is `cmd/codey-server`; see [server.md](server.md).\n\n## Codex settings\n\nThe Go backend accepts an optional request child such as:\n\n```pam\n  backend model=gpt-5.6-luna effort=xhigh fast_mode=true web_search=live file_access=none network_access=false shell_access=false auto_review=false\n```\n\nThese are configuration attributes, not model instructions. The Go parser validates\nthem and removes the entire node from the model-facing request. Missing attributes\nuse server model/effort defaults, fast mode on, and restrictive tool defaults. Generic PAM endpoints\nmay ignore this node if they do not support Codex settings. See [server settings](server.md).\n",
+      "content": "# Agent backend contract\n\n## HTTP\n\nThe phone sends:\n\n- Method: `POST`\n- `Content-Type: text/x-pebble-agent-markup; version=1; charset=utf-8`\n- `Accept: text/x-pebble-agent-markup; version=1`\n- Optional `Authorization: Bearer …`\n- Body: one PAM request document\n\nReturn status `2xx` and stream raw PAM bytes. Do not wrap PAM in JSON, an SSE `data:` field, Markdown fences, or an OpenAI/Anthropic provider envelope. Flush after every useful line. Chunk boundaries may occur anywhere; newline boundaries are the commit points.\n\nIf the phone runtime exposes progressive `XMLHttpRequest.responseText`, lines reach the watch immediately. A runtime that buffers HTTP still produces the same final result. Use WebSocket when guaranteed incremental delivery is required.\n\n## WebSocket\n\nThe phone opens the configured `ws:`/`wss:` endpoint with subprotocol `pam.v1`, then sends one complete PAM request as a text message. The bearer token is included in a nested `auth` request node because browser-style WebSockets cannot set an Authorization header. Send one or more text messages containing PAM chunks, then close normally (`1000`).\n\nPrefer WSS. Avoid putting long-lived high-value credentials directly on a watch/phone client; a short-lived backend session token is safer.\n\n## Request nodes\n\n```pam\npam version=1\nrequest id=42 protocol=pam/1 session=1788123456-12345\n  input action=result.open element=row-2 kind=select text= value=\n  context layout=list screen=results selected=row-2\n  device model=pebble_time_2 now=1788220800 platform=emery shape=rect touch=true utc_offset_minutes=-420\ndone\n```\n\n- `request.id` is a 1–65535 transport generation, not a global conversation ID.\n- `request.session` is stable in phone-local storage and may key backend conversation state.\n- `input.kind` is `dictation`, a button/gesture name, `field`, or `capability`.\n- `input.text` contains dictation.\n- `input.action`, `element`, and `value` contain a semantic UI event.\n- `context` describes the currently rendered agent screen.\n- `device` lets an agent favor, for example, a two-column grid on round hardware without emitting pixel geometry. `now` is Unix time in seconds and `utc_offset_minutes` is the phone's offset east of UTC, allowing absolute reminder times to be resolved without guessing the user's clock.\n\nTreat every field as untrusted client input. Authenticate the session separately and authorize external side effects on the backend.\n\n## Suggested agent instruction\n\nUse this as a starting system/developer instruction for the model that chooses the interface:\n\n```text\nReturn only Pebble Agent Markup version 1 (PAM), never JSON, Markdown, or prose outside PAM.\nStart with exactly: pam version=1\n\nPAM is line-streamed. Emit the screen line as soon as you know the best layout, then emit useful\nchildren one complete newline-terminated line at a time. Indent children with exactly two spaces.\nUse quoted attribute values for whitespace. Keep copy concise enough for a watch.\n\nChoose one layout from text, list, menu, grid, card, progress, form, choice, modal. Use stable,\nshort element IDs. Visible elements are section, item, text, metric, progress, field, choice,\naction, image, spacer. Bind inputs with bind and input=up|select|down|back|tap|swipe-left|\nswipe-right|swipe-up|swipe-down. Never attempt to bind long Select; it is reserved for dictation.\nEnd a screen with done.\n\nUse patch target=<id> for later updates and remove target=<id> for deletion. Do not reference an\nelement before emitting it.\n\nFor a timer, stopwatch, weather lookup, or reminder, prefer a root capability node over pretending\nthe operation happened. Allowed commands and attributes follow the supplied PAM capability schema.\nDo not invent capabilities. Never claim an external side effect succeeded unless the backend has\nactually completed it or the watch capability reports success.\n```\n\nSupply the detailed layout/element/capability portion of [protocol.md](protocol.md) to the model as tool/schema context. Enforce the same allowlist server-side; model instructions are not a security boundary.\n\n## Production adapter pattern\n\n1. Parse the request with `Pam.Parser` or another strict implementation.\n2. Load conversation/session state and any authorized tools.\n3. Ask the model for PAM under the instruction above.\n4. Validate each complete output line before flushing it downstream.\n5. Stop and emit `error message=\"…\"` on invalid structure rather than forwarding arbitrary text.\n6. Persist only the state needed for the next semantic event.\n\nThe included `examples/server.mjs` is a deterministic transport fixture, not a production AI or authentication service. The real reference implementation is `cmd/codey-server`; see [server.md](server.md).\n\n## Codex settings\n\nThe Go backend accepts an optional request child such as:\n\n```pam\n  backend model=gpt-6-luna effort=xhigh fast_mode=true web_search=live file_access=none network_access=false shell_access=false auto_review=false\n```\n\nThese are configuration attributes, not model instructions. The Go parser validates\nthem and removes the entire node from the model-facing request. Missing attributes\nuse server model/effort defaults, fast mode on, and restrictive tool defaults. Generic PAM endpoints\nmay ignore this node if they do not support Codex settings. See [server settings](server.md).\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -1560,15 +1602,15 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-13T17:47:20.512106254Z"
+      "modified_at": "2026-09-22T20:23:15.514292691Z"
     },
     {
       "id": "01a091eb-494b-70e2-a1ae-cedae4248f70",
       "slug": "reference/docs/protocol",
-      "version": 19,
+      "version": 20,
       "doc_type": "reference",
       "title": "docs/protocol.md",
-      "content": "Source: `docs/protocol.md`\n\n# Pebble Agent Markup 1\n\nPAM is a UTF-8, newline-framed tree protocol for dynamic watch interfaces and capability calls. It is not JSON, TOML, YAML, or Markdown.\n\n## Why this format\n\nTOML tables are pleasant for static configuration but do not cleanly express ordered, repeated UI children while they are still arriving. YAML is broad and difficult to parse safely in the Pebble phone runtime. XML is streamable but verbose and requires a substantially larger parser.\n\nPAM has four properties that matter here:\n\n1. A newline commits exactly one node. No later token can change how that line parses.\n2. Two-space indentation supplies parent/child hierarchy, and a child can only follow an already-emitted parent.\n3. Attributes are bounded `name=value` tokens with one quoting/escaping rule.\n4. The parser has no aliases, executable tags, implicit typing, or ambiguous scalars.\n\nAs soon as this arrives:\n\n```pam\npam version=1\nscreen id=results layout=list title=Results\n  item id=first title=\"First result\"\n```\n\nthe watch can show the screen and first row. It does not wait for `done`.\n\n## Lexical grammar\n\n```text\ndocument  = header, newline, { node, newline } ;\nheader    = \"pam version=1\" ;\nnode      = indent, kind, { space, attribute } ;\nindent    = { \"  \" } ;\nkind      = lowercase-letter, { lowercase-letter | digit | \"_\" | \"-\" } ;\nattribute = name, \"=\", (bare-value | quoted-value) ;\n```\n\n- Indentation is exactly two spaces per level. Tabs and skipped levels are errors.\n- Blank lines and lines whose first non-space character is `#` are ignored.\n- Bare values contain no whitespace.\n- Single or double quotes may delimit values.\n- Quoted escapes are `\\\\`, `\\\"`, `\\'`, `\\n`, `\\r`, `\\t`, and `\\uXXXX`.\n- Duplicate attributes on one line are errors.\n- The current implementation accepts at most 2,048 bytes per agent line and eight hierarchy levels.\n\nAttributes remain strings at the protocol boundary. Schema consumers explicitly parse booleans and numbers.\n\n## Root nodes\n\n### `screen`\n\nBegins a new screen and replaces the previous agent screen immediately.\n\nRequired attributes:\n\n- `id` — stable identifier, at most 31 UTF-8 bytes on the watch.\n- `layout` — one of the layouts below.\n\nCommon optional attributes:\n\n- `title`, `subtitle`\n- `status=true` — show Pebble's time/status bar.\n- `actionbar=true` — reserve a right action rail for Up/Select/Down bindings.\n- `columns=1..4` — grid column count; defaults to two.\n\n### `patch`\n\nUpdates an existing element. The model merges the supplied attributes with the existing element before forwarding the patch, so omitted fields remain intact.\n\n```pam\npatch target=download value=63 subtitle=\"63 percent\"\n```\n\n### `remove`\n\n```pam\nremove target=stale-row\n```\n\n### `done`\n\nMarks the active screen complete and removes its streaming indicator. It does not close the screen.\n\n### `error`\n\n```pam\nerror message=\"I couldn't complete that request\"\n```\n\n### `capability`\n\nInvokes a registered phone-side or watch-side module. See [Capabilities](#capabilities).\n\n## Layouts\n\n- `text` — long prose, explanations, and logs; scrolls by default.\n- `list` / `menu` — Pebble-style rows and sections with row selection.\n- `grid` — compact choices, app launchers, and numeric tiles with grid selection.\n- `card` — a focused fact plus supporting metrics or items.\n- `progress` — ongoing work, countdowns, and progress bars.\n- `form` — fields, toggles, and submit actions.\n- `choice` — radio/check-style decisions.\n- `modal` — alerts, confirmations, and important decisions.\n\nThese cover Pebble's standard menu/list, scrolling text, card, status bar, action bar, choice dialog, progress, form, and number-input idioms. The renderer adapts geometry to rectangular and round displays.\n\n## Screen elements\n\nEvery addressable element should have a unique `id`. If it does not, the phone assigns a response-local ID, but explicit IDs are required for patching and are strongly recommended.\n\n### Content\n\n```pam\n  section id=nearby title=Nearby\n  item id=cafe title=\"Coffee shop\" subtitle=\"0.2 mi\" action=place.open\n  text id=summary value=\"A paragraph that wraps and scrolls.\"\n  metric id=heart-rate label=\"Heart rate\" value=\"72 bpm\"\n  image id=notice title=\"Heads up\" value=warning icon=warning\n  spacer id=gap height=16\n```\n\nSupported symbolic image icons are `info`, `check`, `warning`, `sun`/`weather`, `timer`, `close`, `up`, `down`, `left`, and `right`. The image element is deliberately symbolic: arbitrary remote bitmaps are not accepted into the watch heap.\n\n### Progress\n\n```pam\n  progress id=download title=Downloading value=35 min=0 max=100\n```\n\n`value`, `min`, and `max` are integers.\n\n### Forms and choices\n\n```pam\nscreen id=settings layout=form title=Settings\n  field id=servings title=Servings value=2 type=number min=1 max=12 step=1 action=settings.servings\n  choice id=metric title=Metric checked=true action=settings.units.metric\n  choice id=imperial title=Imperial action=settings.units.imperial\n  action id=save title=Save action=settings.save primary=true\ndone\n```\n\nA selected numeric field opens Pebble's native `NumberWindow`. Its confirmed value is returned as an input event.\n\n### Flags\n\nAll selectable elements accept:\n\n- `disabled=true`\n- `checked=true`\n- `selected=true`\n- `primary=true`\n- `destructive=true`\n\n## Input bindings\n\nAn element's `action` is emitted when the user selects or taps it. A `bind` maps a physical or gesture input without drawing another content row:\n\n```pam\n  bind id=older input=up action=page.previous title=Older icon=up\n  bind id=open input=select action=result.open title=Open icon=check\n  bind id=newer input=down action=page.next title=Newer icon=down\n  bind id=back-swipe input=swipe-right action=navigate.back\n```\n\nInputs are:\n\n- Buttons: `up`, `select`, `down`, `back`\n- Touch: `tap`, `swipe-left`, `swipe-right`, `swipe-up`, `swipe-down`\n\nIf Up or Down has no binding, it navigates/selects or scrolls. If Back has no binding, it closes the current window. A right swipe without a binding follows Pebble's Back convention.\n\nLong Select is not bindable. It always starts dictation, regardless of a short-Select binding.\n\n### Touch hotspots\n\nNormal visual elements are automatically tappable. Invisible percentage-based regions are available for custom layouts:\n\n```pam\n  hotspot id=map-west x=0 y=20 width=50 height=80 action=map.west\n```\n\nCoordinates are percentages of the full display. Prefer element taps unless a genuine free-form region is necessary.\n\n## Capabilities\n\nCapabilities are root nodes so they can execute as soon as their line arrives. The registry allows additional modules without a protocol change.\n\n### Timer\n\n```pam\ncapability type=timer command=start id=tea title=\"Tea\" duration=5m\ncapability type=timer command=pause id=tea\ncapability type=timer command=resume id=tea\ncapability type=timer command=cancel id=tea\ncapability type=timer command=show id=tea\n```\n\nDurations accept an integer number of seconds or `s`, `m`, `h`, and `d` suffixes. Timers persist and schedule a wakeup.\n\n### Stopwatch\n\n```pam\ncapability type=stopwatch command=start id=run title=\"Run\"\ncapability type=stopwatch command=pause id=run\ncapability type=stopwatch command=resume id=run\ncapability type=stopwatch command=lap id=run\ncapability type=stopwatch command=reset id=run\ncapability type=stopwatch command=show id=run\n```\n\n### Weather\n\nFetch at the phone's current location:\n\n```pam\ncapability type=weather command=current id=weather location=\"Current location\"\n```\n\nOr let the agent supply already-known data without a second network request:\n\n```pam\ncapability type=weather command=show id=weather location=\"London\" temperature=18 unit=\"°C\" condition=Rain high=20 low=14 wind=\"12 km/h\"\n```\n\nLatitude and longitude can be supplied as `latitude` and `longitude`. Weather networking runs in a phone registry module and emits a normal card screen.\n\n### Reminder\n\n```pam\ncapability type=reminder command=schedule id=medicine title=\"Take medicine\" subtitle=\"With food\" in=2h\ncapability type=reminder command=schedule id=meeting title=\"Meeting\" at=1788201000\ncapability type=reminder command=list\ncapability type=reminder command=cancel id=meeting\ncapability type=reminder command=cancel_all\n```\n\n`at` is a Unix timestamp in seconds; `in` is a duration from 1 second to 7 days.\n`alarm` is an alias of `reminder`. Four timers and four alarms/reminders are\npersisted independently, including unacknowledged notifications. Use a unique\nID shorter than 32 bytes for each new alert. Each new creation command allocates\na separate alert even if the model reuses an ID; collisions receive a unique\nsuffix. Use `show` to open an existing alert, or `replace=true` to replace it.\nThe phone supplies a persisted delivery sequence in `Index` for capability\nmessages. A retry retains that sequence and cannot restart or duplicate its\nalert. The watch persists this delivery identity separately from the model ID.\nTimer and reminder/alarm support `show`, `list`, `ack`, `cancel`, and\n`cancel_all` (the latter only affects its own category). Timer also supports\n`start`, `pause`, and `resume`; alarm/reminder use `schedule`.\n\nFinished alerts appear in the native dashboard and buzz repeatedly until\nacknowledged or snoozed ten minutes. Local completion does not trigger an agent\nturn. Back returns home without canceling. The native scheduler multiplexes all\ndeadlines onto one system wakeup; when wakeup scheduling fails, it warns that\nAgent must stay open. The native watch sends `ready value=local-active`; the\nphone sends `MessageType=bridge` with connection/configuration status instead\nof streaming an onboarding screen over the local dashboard.\n\n## Answer arrival notification\n\nThe phone sends `MessageType=answer Operation=begin` when a query starts.\nAfter a successful response has finished parsing and any phone capability has\nfinished, it queues `MessageType=answer Operation=complete`, its `RequestId`,\nand `Flags=1` when the `answerVibrate`\nsetting is enabled (`0` when disabled). This setting defaults to on and appears\nas \"Answer arrived vibration\" on the phone settings page. The watch tracks the\nrequest from its begin message and emits one short pulse on completion, even\nif the user has returned to the dashboard. It checks `quiet_time_is_active()`\nat delivery time and suppresses the pulse during Quiet Time. Duplicate or stale\ncompletion messages do not vibrate. Startup screens, local timer events,\ntransport failures, and malformed responses do not send this notification.\n\n## Limits and failure behavior\n\n- The watch stores up to 48 elements per screen.\n- Render text values are capped to a contiguous 319-byte UTF-8 prefix on the phone, then sent in at most two append-compatible chunks. Canonical records and stored job results retain their full text. Patches transmit only affected fields; changing one flag or metadata attribute sends its complete merged group so other members are preserved.\n- Titles, subtitles, IDs, actions, and metadata have smaller fixed limits declared in `agent_ui.h`.\n- Unknown kinds/layouts and invalid hierarchy produce a visible protocol error rather than partially executing an unrecognized node.\n- A new response supersedes queued operations from an older request. The watch also rejects stale request IDs.\n- Capability commands are allowlisted by registries; PAM cannot call arbitrary native functions.\n\n\n### Dashboard controls\n\n`input` with operation `new-chat` and action `local.new-chat` carries a watch\nrequest ID. PebbleKit JS saves a fresh session ID, cancels the previous response,\nand replies with `control`, operation `dictate`, and the same request ID. Only\nthen does the watch start dictation. The watch rejects stale acknowledgments,\nincluding those superseded by a local navigation or notification revision, and\ntimes out after eight seconds. Ordinary `local.dictate` keeps the current session.\n\n`input` with action `local.weather` invokes the existing local weather capability\non the phone. Calendar is a local placeholder. Todos use the phone collection capability (`add` with quoted `value`, `list`, and `archive`), backed by canonical server records. Notifications\nuses a separate native list; arrival of an alert opens it without incrementing\nthe navigation revision that protects pending capability commands.\n\n### Request failures\n\nThe server normalizes a narrowly defined model formatting mistake before strict\nvalidation: an unquoted trailing display-text attribute containing spaces (for\nexample `title=File search results`) is quoted. It does not relax request parsing,\nrepair command arguments, or guess around malformed quotes or ambiguous attributes.\nOther failures are emitted as a terminal PAM `error message=\"Request failed: ...\"`,\nincluding when only the header or a partial screen has already streamed.\n\nThe phone sends `answer begin` before response status/render messages; the watch\nbinds that phone response ID immediately, so a failure before `render begin` is\naccepted. Error status clears loading and incomplete-screen indicators, cancels\nsuccess vibration, and rejects subsequent render/status traffic for that request.\nThe next request can start normally. A 135-second watch watchdog clears Thinking\nif the phone never completes delivery; it does not overwrite a newer screen or\nan alert. Phone transport timeouts normally report the failure sooner.\n\nThe dashboard maps Up to Notifications, Down to Todos, and Select to dictation.\nHolding Talk to codey or Select opens a reusable animated overlay menu; outside\ntaps and Back dismiss it without changing the dashboard. New Chat lives in this\nmenu. Todo rows use `choice` with `meta` containing `todo=true`, text in `value`,\nand the checked flag for archived items. Horizontal touch drags or long Up/Down\npan text; short Up/Down scroll the list. Checking archives, unchecking restores.\nLists are transient eight-record pages. The phone resolves short aliases against the exact view token and displayed revision; no native collection store exists.\n\nTerminal errors replace the content with a scrollable Request failed screen,\nincluding the reason and Try again / Dashboard actions. Transport HTTP 0,\n401/403, and other HTTP failures have distinct explanations. Non-PAM HTML error\nbodies are not fed to the PAM parser.\n\n### Dashboard weather summaries\n\nThe phone sends `bridge operation=weather` with current temperature/unit in\n`Value`, low/high in `Subtitle`, and `icon=<condition>` in `Meta`. The native\nhost caches these fields independently of the current screen and patches only\nthe dashboard weather tile. This channel neither starts nor completes an agent\nrequest. A native `capability_event operation=weather action=refresh` every 15\nminutes requests a background update; startup and saved settings also refresh.\nThe phone caches validated fetched data for up to an hour. Weather failures leave\nthe current screen alone. Current Open-Meteo `is_day` selects day/night icons.\n\nTodos and Calendar enable the native time status bar. Todos have no add control:\nwhole-phrase local regex matching accepts add/create/make/set/put down plus\ntodo/to-do/to do/task, preserving the trailing task text. The public Pebble SDK\nsupports Timeline pins and launches from pins, but no direct open-Timeline call;\nCalendar remains a placeholder.\n\n### Deferred local actions and range controls\n\nA selectable row can declare `action=local.run capability=reminder seconds=86400\ntask=\"Send a card\"`. Nothing runs while rendering; selection creates a native\nreminder without phone/model traffic. Supported capability types are timer,\nreminder and alarm; seconds are 1..604800 and task labels at most 71 UTF-8 bytes.\n\n`field type=slider|dial` declares min, max, step and value integers (0 <= min <\nmax <= 604800), plus an optional unit label. A local field uses `seconds=\"$value\"`.\nDragging only adjusts; `action=local.submit control=<field-id>` confirms. Select\non a field opens the button-operated number picker, whose Select confirms and\nBack cancels. A dial winds through the range clockwise/counterclockwise without\njumping at noon. An ordinary field action sends the confirmed value to the agent.\nInteractive metadata must fit 220 bytes; the bridge rejects oversized declarations.\nFor existing interactive definitions, patches may update only title or an in-range\nvalue; replace the screen to change ranges or actions.\n\nEvery generated form/question should include `action=local.answer` titled\n\"Dictate answer\". The phone inserts a fallback for choice/form layouts or screens\ncontaining choice/field elements if omitted; reserve one of 48 slots. Its\n`input.kind=dictate-answer` bypasses local speech regexes and goes to the same\nagent thread with screen context. Local actions do not generate a model turn.\n\nThe maintained advanced examples live in the server's\n`internal/agent/skills/pam-ui/` package. On startup the server installs it under\n`<state-directory>/skills/pam-ui/`, points the base prompt to SKILL.md, and supplies\nfull fallback guidance when file-reading tools are disabled. The Codex app-server\nmust share that filesystem. Native notification and timer behavior is unchanged.\n\n## Notes capabilities\n\nUse `capability type=note command=add value=\"Call Jane\"` to request a real save,\nand `capability type=note command=list` to browse. Existing-record edits use the\nrecord picker and its revision-scoped Append / Replace entire note actions.\nText matches and invented IDs cannot authorize an edit. Body pages stay pinned\nto one revision, and displayed chunks are never submitted as a full replacement.\nSee [collections](collections.md) for server ownership and durability handoff.\n\n## Collection protocol version 1\n\nAppMessage keys 0–12 retain their values. New keys are:\n\n| Number | Name | Meaning |\n|---|---|---|\n| 13 | CollectionProtocol | Version 1 |\n| 14 | BridgeSession | Phone-issued bridge session |\n| 15 | EventSequence | Monotonic event identity; retransmissions reuse it |\n| 16 | ViewToken | Exact alias/revision mapping |\n| 17 | DeliveryState | accepted_phone, accepted_server, synced, needs_attention, rejected |\n| 18 | ErrorCode | Bounded machine-readable error |\n\n`bridge operation=collections` supplies protocol/session readiness. `collection-view`\nsets the token for the matching render request. Lists instead use one\n`collection-list` message: Operation is `note`, `task`, or `event`, Value contains up to eight\nnewline-separated titles (71 UTF-8 bytes each; embedded whitespace is normalized),\nViewToken binds `r0` through `r7` to the exact phone records/revisions, and Meta has\none delivery-state character per row (`p` pending server, `s` synced, `b` backend\npending, `d` saved on server). Flags are completed=1, next page=2, stale=4,\npartial=8, first active page=16. Index is the full filtered collection count,\nnot just the number of preview rows. Event titles include date/time. Subtitle carries the overall status. Only first\nactive pages replace the persistent title preview. Preview rows have no mutation\nor read aliases until a live response arrives. All list messages are guarded by\nthe same request/navigation checks as render messages. Existing `capability_event` messages\nwith operation `note`, `todo`, or `calendar` carry list/read/edit/append/complete/restore actions.\nThe phone resolves an alias only within that exact view. It checks an existing\nreceipt before rejecting an expired view, so retransmission cannot target a reused\nrow. `collection-ack` carries the original session/event and delivery state.\nThe native app retains and retries an unacknowledged mutation in RAM only.\n\nJSON collection routes, schemas, and recovery are documented in\n[the collection specification](notes-todos-backend-sync-spec.md),\n[JSON schema](collections-api.schema.json), and [operations](collections-server-operations.md).\nAll routes require bearer authentication. Mutation revisions/sequences are decimal\nstrings. Snapshot pages are fixed; body pages are UTF-8 safe and revision-pinned.\n`POST /v1/sync/snapshots` accepts an optional positive `limit` (capped at 200).\nWith it, the response includes the first page's `records`, full `total`, `complete`,\nand optional `next_cursor`, along with `snapshot_id` and the high-water `cursor`.\nWithout it, creation returns snapshot metadata with an empty `records` array.\nThe phone uses `limit: 8` to avoid a second request for the first screen.\nManagement uses a single-use `/v1/integration-sessions` ticket and server cookies.\nIts authenticated POST accepts `{public_url, provider, collection_id}` from phone settings. The\nHTTPS base (including any proxy prefix) is bound to the ticket/session, not inferred\nfrom forwarded headers or stored as a mutable global URL. The provider choice\nopens that service’s setup section for the selected collection; authentication and activation remain explicit.\nManagement sessions use secure cookies,\nnever a provider token in a phone settings fragment.\n\n### In-page sync setup\n\nBefore opening phone settings, the bridge posts `{public_url}` to bearer-protected\n`/v1/integration-setup-sessions`. The result is a 30-minute setup-only token and\nan exact `/integrations/setup-api` URL. Only this temporary token travels in the\nsettings URL fragment; the page removes the fragment from browser history and\nnever returns it with saved phone settings. The main bearer token stays on the phone.\n\nThe setup API accepts GET for public descriptors/collections/active bindings and\nURL-encoded POST actions: connect, bind (preview), apply, disconnect, and authorize\n(Google's existing browser flow). Requests use the temporary bearer token. CORS\nallows only the hosted settings origin `https://nick1udwig.github.io`; no cookie\nauthentication is used by this API. Provider credentials are omitted from every\nresponse. Candidates are tied to their originating setup session. Errors are JSON\nand displayed inline. The `webviewclosed` handler never opens another page.\n\n### Calendar and interaction preferences\n\nThe third collection is `col_event`, kind `event`. `event.create` accepts title,\nstart, end, optional location and description. Times require RFC3339 offsets, or\ntwo YYYY-MM-DD values for an all-day event with exclusive end. Read APIs retain\nstart/end/location in summaries and return the description through body pages.\nActive event snapshots are chronological and exclude ended events. Snapshot\ncreation accepts `utc_offset_minutes`; collection listing accepts the same query\nparameter, so all-day dates and counts follow the phone's local date.\n\nPAM uses `capability type=calendar command=list` and\n`capability type=calendar command=add title=\"Lunch\" start=\"2026-09-16T12:00:00-07:00\" end=\"2026-09-16T13:00:00-07:00\"`.\nPhone journal/receipt semantics match notes and tasks. CalDAV performs deterministic\nconditional creates and 90-day expanded calendar-query reads. Absence reconciliation\nis restricted to the successfully read time window. Records remain read-only on\nthe watch after creation; edits and recurring-series creation use a calendar client.\n\n`bridge operation=collection-counts` sends task count in Index, note count in Flags,\nand event count in EventSequence. Watch caches use ten keys per kind: 4480, 4490,\n4500; base+1..8 hold titles, base+9 holds the full count.\n`bridge operation=preferences` uses Flags for ripple enabled, Index for double-tap\nrequired (both default 1). `bridge operation=agent-dispatched` starts the blue\nrequest animation only after the phone submits an agent job over HTTP.\n",
+      "content": "Source: `docs/protocol.md`\n\n# Pebble Agent Markup 1\n\nPAM is a UTF-8, newline-framed tree protocol for dynamic watch interfaces and capability calls. It is not JSON, TOML, YAML, or Markdown.\n\n## Why this format\n\nTOML tables are pleasant for static configuration but do not cleanly express ordered, repeated UI children while they are still arriving. YAML is broad and difficult to parse safely in the Pebble phone runtime. XML is streamable but verbose and requires a substantially larger parser.\n\nPAM has four properties that matter here:\n\n1. A newline commits exactly one node. No later token can change how that line parses.\n2. Two-space indentation supplies parent/child hierarchy, and a child can only follow an already-emitted parent.\n3. Attributes are bounded `name=value` tokens with one quoting/escaping rule.\n4. The parser has no aliases, executable tags, implicit typing, or ambiguous scalars.\n\nAs soon as this arrives:\n\n```pam\npam version=1\nscreen id=results layout=list title=Results\n  item id=first title=\"First result\"\n```\n\nthe watch can show the screen and first row. It does not wait for `done`.\n\n## Lexical grammar\n\n```text\ndocument  = header, newline, { node, newline } ;\nheader    = \"pam version=1\" ;\nnode      = indent, kind, { space, attribute } ;\nindent    = { \"  \" } ;\nkind      = lowercase-letter, { lowercase-letter | digit | \"_\" | \"-\" } ;\nattribute = name, \"=\", (bare-value | quoted-value) ;\n```\n\n- Indentation is exactly two spaces per level. Tabs and skipped levels are errors.\n- Blank lines and lines whose first non-space character is `#` are ignored.\n- Bare values contain no whitespace.\n- Single or double quotes may delimit values.\n- Quoted escapes are `\\\\`, `\\\"`, `\\'`, `\\n`, `\\r`, `\\t`, and `\\uXXXX`.\n- Duplicate attributes on one line are errors.\n- The current implementation accepts at most 2,048 bytes per agent line and eight hierarchy levels.\n\nAttributes remain strings at the protocol boundary. Schema consumers explicitly parse booleans and numbers.\n\n## Root nodes\n\n### `screen`\n\nBegins a new screen and replaces the previous agent screen immediately.\n\nRequired attributes:\n\n- `id` — stable identifier, at most 31 UTF-8 bytes on the watch.\n- `layout` — one of the layouts below.\n\nCommon optional attributes:\n\n- `title`, `subtitle`\n- `status=true` — show Pebble's time/status bar.\n- `actionbar=true` — reserve a right action rail for Up/Select/Down bindings.\n- `columns=1..4` — grid column count; defaults to two.\n\n### `patch`\n\nUpdates an existing element. The model merges the supplied attributes with the existing element before forwarding the patch, so omitted fields remain intact.\n\n```pam\npatch target=download value=63 subtitle=\"63 percent\"\n```\n\n### `remove`\n\n```pam\nremove target=stale-row\n```\n\n### `done`\n\nMarks the active screen complete and removes its streaming indicator. It does not close the screen.\n\n### `error`\n\n```pam\nerror message=\"I couldn't complete that request\"\n```\n\n### `capability`\n\nInvokes a registered phone-side or watch-side module. See [Capabilities](#capabilities).\n\n#### Settings\n\n```pam\npam version=1\ncapability type=settings command=set key=double_tap value=false\ncapability type=settings command=set key=effort value=high\ndone\n```\n\nThe phone persists each update on result arrival, sends watch preferences, and\nrefreshes weather for units changes. Completed updates have durable job receipts\nand are not reapplied when the result is opened; the phone renders the saved-value\nconfirmation. Failed saves remain retryable. Multiple lines are separate updates.\nBackend changes apply on subsequent requests, subject to server restrictions.\n\nSupported keys and values are defined in the agent's\n[settings reference](../internal/agent/skills/pam-ui/references/settings.md).\nOnly `type`, `command`, `key`, `value`, and optional `id` are accepted. Credentials,\nendpoint, sync setup, and tool/approval permissions remain in phone settings.\n\nRequests may include a `settings` child of `request` containing the eight editable\npreferences using the same keys. It is preserved in the model-facing request;\nauthentication and backend policy nodes are still excluded. Old clients may omit\nit. Values describe saved preferences at submission time, not effective backend\nconfiguration. Empty model/effort overrides are represented as `default`.\n\n## Layouts\n\n- `text` — long prose, explanations, and logs; scrolls by default.\n- `list` / `menu` — Pebble-style rows and sections with row selection.\n- `grid` — compact choices, app launchers, and numeric tiles with grid selection.\n- `card` — a focused fact plus supporting metrics or items.\n- `progress` — ongoing work, countdowns, and progress bars.\n- `form` — fields, toggles, and submit actions.\n- `choice` — radio/check-style decisions.\n- `modal` — alerts, confirmations, and important decisions.\n\nThese cover Pebble's standard menu/list, scrolling text, card, status bar, action bar, choice dialog, progress, form, and number-input idioms. The renderer adapts geometry to rectangular and round displays.\n\n## Screen elements\n\nEvery addressable element should have a unique `id`. If it does not, the phone assigns a response-local ID, but explicit IDs are required for patching and are strongly recommended.\n\n### Content\n\n```pam\n  section id=nearby title=Nearby\n  item id=cafe title=\"Coffee shop\" subtitle=\"0.2 mi\" action=place.open\n  text id=summary value=\"A paragraph that wraps and scrolls.\"\n  metric id=heart-rate label=\"Heart rate\" value=\"72 bpm\"\n  image id=notice title=\"Heads up\" value=warning icon=warning\n  spacer id=gap height=16\n```\n\nSupported symbolic image icons are `info`, `check`, `warning`, `sun`/`weather`, `timer`, `close`, `up`, `down`, `left`, and `right`. The image element is deliberately symbolic: arbitrary remote bitmaps are not accepted into the watch heap.\n\n### Progress\n\n```pam\n  progress id=download title=Downloading value=35 min=0 max=100\n```\n\n`value`, `min`, and `max` are integers.\n\n### Forms and choices\n\n```pam\nscreen id=settings layout=form title=Settings\n  field id=servings title=Servings value=2 type=number min=1 max=12 step=1 action=settings.servings\n  choice id=metric title=Metric checked=true action=settings.units.metric\n  choice id=imperial title=Imperial action=settings.units.imperial\n  action id=save title=Save action=settings.save primary=true\ndone\n```\n\nA selected numeric field opens Pebble's native `NumberWindow`. Its confirmed value is returned as an input event.\n\n### Flags\n\nAll selectable elements accept:\n\n- `disabled=true`\n- `checked=true`\n- `selected=true`\n- `primary=true`\n- `destructive=true`\n\n## Input bindings\n\nAn element's `action` is emitted when the user selects or taps it. A `bind` maps a physical or gesture input without drawing another content row:\n\n```pam\n  bind id=older input=up action=page.previous title=Older icon=up\n  bind id=open input=select action=result.open title=Open icon=check\n  bind id=newer input=down action=page.next title=Newer icon=down\n  bind id=back-swipe input=swipe-right action=navigate.back\n```\n\nInputs are:\n\n- Buttons: `up`, `select`, `down`, `back`\n- Touch: `tap`, `swipe-left`, `swipe-right`, `swipe-up`, `swipe-down`\n\nIf Up or Down has no binding, it navigates/selects or scrolls. If Back has no binding, it closes the current window. A right swipe without a binding follows Pebble's Back convention.\n\nLong Select is not bindable. It always starts dictation, regardless of a short-Select binding.\n\n### Touch hotspots\n\nNormal visual elements are automatically tappable. Invisible percentage-based regions are available for custom layouts:\n\n```pam\n  hotspot id=map-west x=0 y=20 width=50 height=80 action=map.west\n```\n\nCoordinates are percentages of the full display. Prefer element taps unless a genuine free-form region is necessary.\n\n## Capabilities\n\nCapabilities are root nodes so they can execute as soon as their line arrives. The registry allows additional modules without a protocol change.\n\n### Timer\n\n```pam\ncapability type=timer command=start id=tea title=\"Tea\" duration=5m\ncapability type=timer command=pause id=tea\ncapability type=timer command=resume id=tea\ncapability type=timer command=cancel id=tea\ncapability type=timer command=show id=tea\n```\n\nDurations accept an integer number of seconds or `s`, `m`, `h`, and `d` suffixes. Timers persist and schedule a wakeup.\n\n### Stopwatch\n\n```pam\ncapability type=stopwatch command=start id=run title=\"Run\"\ncapability type=stopwatch command=pause id=run\ncapability type=stopwatch command=resume id=run\ncapability type=stopwatch command=lap id=run\ncapability type=stopwatch command=reset id=run\ncapability type=stopwatch command=show id=run\n```\n\n### Weather\n\nFetch at the phone's current location:\n\n```pam\ncapability type=weather command=current id=weather location=\"Current location\"\n```\n\nOr let the agent supply already-known data without a second network request:\n\n```pam\ncapability type=weather command=show id=weather location=\"London\" temperature=18 unit=\"°C\" condition=Rain high=20 low=14 wind=\"12 km/h\"\n```\n\nLatitude and longitude can be supplied as `latitude` and `longitude`. Weather networking runs in a phone registry module and emits a normal card screen.\n\n### Reminder\n\n```pam\ncapability type=reminder command=schedule id=medicine title=\"Take medicine\" subtitle=\"With food\" in=2h\ncapability type=reminder command=schedule id=meeting title=\"Meeting\" at=1788201000\ncapability type=reminder command=list\ncapability type=reminder command=cancel id=meeting\ncapability type=reminder command=cancel_all\n```\n\n`at` is a Unix timestamp in seconds; `in` is a duration from 1 second to 7 days.\n`alarm` is an alias of `reminder`. Four timers and four alarms/reminders are\npersisted independently, including unacknowledged notifications. Use a unique\nID shorter than 32 bytes for each new alert. Each new creation command allocates\na separate alert even if the model reuses an ID; collisions receive a unique\nsuffix. Use `show` to open an existing alert, or `replace=true` to replace it.\nThe phone supplies a persisted delivery sequence in `Index` for capability\nmessages. A retry retains that sequence and cannot restart or duplicate its\nalert. The watch persists this delivery identity separately from the model ID.\nTimer and reminder/alarm support `show`, `list`, `ack`, `cancel`, and\n`cancel_all` (the latter only affects its own category). Timer also supports\n`start`, `pause`, and `resume`; alarm/reminder use `schedule`.\n\nFinished alerts appear in the native dashboard and buzz repeatedly until\nacknowledged or snoozed ten minutes. Local completion does not trigger an agent\nturn. Back returns home without canceling. The native scheduler multiplexes all\ndeadlines onto one system wakeup; when wakeup scheduling fails, it warns that\nAgent must stay open. The native watch sends `ready value=local-active`; the\nphone sends `MessageType=bridge` with connection/configuration status instead\nof streaming an onboarding screen over the local dashboard.\n\n## Answer arrival notification\n\nThe phone sends `MessageType=answer Operation=begin` when a query starts.\nAfter a successful response has finished parsing and any phone capability has\nfinished, it queues `MessageType=answer Operation=complete`, its `RequestId`,\nand `Flags=1` when the `answerVibrate`\nsetting is enabled (`0` when disabled). This setting defaults to on and appears\nas \"Answer arrived vibration\" on the phone settings page. The watch tracks the\nrequest from its begin message and emits one short pulse on completion, even\nif the user has returned to the dashboard. It checks `quiet_time_is_active()`\nat delivery time and suppresses the pulse during Quiet Time. Duplicate or stale\ncompletion messages do not vibrate. Startup screens, local timer events,\ntransport failures, and malformed responses do not send this notification.\n\n## Limits and failure behavior\n\n- The watch stores up to 48 elements per screen.\n- Render text values are capped to a contiguous 319-byte UTF-8 prefix on the phone, then sent in at most two append-compatible chunks. Canonical records and stored job results retain their full text. Patches transmit only affected fields; changing one flag or metadata attribute sends its complete merged group so other members are preserved.\n- Titles, subtitles, IDs, actions, and metadata have smaller fixed limits declared in `agent_ui.h`.\n- Unknown kinds/layouts and invalid hierarchy produce a visible protocol error rather than partially executing an unrecognized node.\n- A new response supersedes queued operations from an older request. The watch also rejects stale request IDs.\n- Capability commands are allowlisted by registries; PAM cannot call arbitrary native functions.\n\n\n### Dashboard controls\n\n`input` with operation `new-chat` and action `local.new-chat` carries a watch\nrequest ID. PebbleKit JS saves a fresh session ID, cancels the previous response,\nand replies with `control`, operation `dictate`, and the same request ID. Only\nthen does the watch start dictation. The watch rejects stale acknowledgments,\nincluding those superseded by a local navigation or notification revision, and\ntimes out after eight seconds. Ordinary `local.dictate` keeps the current session.\n\n`input` with action `local.weather` invokes the existing local weather capability\non the phone. Calendar is a local placeholder. Todos use the phone collection capability (`add` with quoted `value`, `list`, and `archive`), backed by canonical server records. Notifications\nuses a separate native list; arrival of an alert opens it without incrementing\nthe navigation revision that protects pending capability commands.\n\n### Request failures\n\nThe server normalizes a narrowly defined model formatting mistake before strict\nvalidation: an unquoted trailing display-text attribute containing spaces (for\nexample `title=File search results`) is quoted. It does not relax request parsing,\nrepair command arguments, or guess around malformed quotes or ambiguous attributes.\nOther failures are emitted as a terminal PAM `error message=\"Request failed: ...\"`,\nincluding when only the header or a partial screen has already streamed.\n\nThe phone sends `answer begin` before response status/render messages; the watch\nbinds that phone response ID immediately, so a failure before `render begin` is\naccepted. Error status clears loading and incomplete-screen indicators, cancels\nsuccess vibration, and rejects subsequent render/status traffic for that request.\nThe next request can start normally. A 135-second watch watchdog clears Thinking\nif the phone never completes delivery; it does not overwrite a newer screen or\nan alert. Phone transport timeouts normally report the failure sooner.\n\nThe dashboard maps Up to Notifications, Down to Todos, and Select to dictation.\nHolding Talk to codey or Select opens a reusable animated overlay menu; outside\ntaps and Back dismiss it without changing the dashboard. New Chat lives in this\nmenu. Todo rows use `choice` with `meta` containing `todo=true`, text in `value`,\nand the checked flag for archived items. Horizontal touch drags or long Up/Down\npan text; short Up/Down scroll the list. Checking archives, unchecking restores.\nLists are transient eight-record pages. The phone resolves short aliases against the exact view token and displayed revision; no native collection store exists.\n\nTerminal errors replace the content with a scrollable Request failed screen,\nincluding the reason and Try again / Dashboard actions. Transport HTTP 0,\n401/403, and other HTTP failures have distinct explanations. Non-PAM HTML error\nbodies are not fed to the PAM parser.\n\n### Dashboard weather summaries\n\nThe phone sends `bridge operation=weather` with current temperature/unit in\n`Value`, low/high in `Subtitle`, and `icon=<condition>` in `Meta`. The native\nhost caches these fields independently of the current screen and patches only\nthe dashboard weather tile. This channel neither starts nor completes an agent\nrequest. A native `capability_event operation=weather action=refresh` every 15\nminutes requests a background update; startup and saved settings also refresh.\nThe phone caches validated fetched data for up to an hour. Weather failures leave\nthe current screen alone. Current Open-Meteo `is_day` selects day/night icons.\n\nTodos and Calendar enable the native time status bar. Todos have no add control:\nwhole-phrase local regex matching accepts add/create/make/set/put down plus\ntodo/to-do/to do/task, preserving the trailing task text. The public Pebble SDK\nsupports Timeline pins and launches from pins, but no direct open-Timeline call;\nCalendar remains a placeholder.\n\n### Deferred local actions and range controls\n\nA selectable row can declare `action=local.run capability=reminder seconds=86400\ntask=\"Send a card\"`. Nothing runs while rendering; selection creates a native\nreminder without phone/model traffic. Supported capability types are timer,\nreminder and alarm; seconds are 1..604800 and task labels at most 71 UTF-8 bytes.\n\n`field type=slider|dial` declares min, max, step and value integers (0 <= min <\nmax <= 604800), plus an optional unit label. A local field uses `seconds=\"$value\"`.\nDragging only adjusts; `action=local.submit control=<field-id>` confirms. Select\non a field opens the button-operated number picker, whose Select confirms and\nBack cancels. A dial winds through the range clockwise/counterclockwise without\njumping at noon. An ordinary field action sends the confirmed value to the agent.\nInteractive metadata must fit 220 bytes; the bridge rejects oversized declarations.\nFor existing interactive definitions, patches may update only title or an in-range\nvalue; replace the screen to change ranges or actions.\n\nEvery generated form/question should include `action=local.answer` titled\n\"Dictate answer\". The phone inserts a fallback for choice/form layouts or screens\ncontaining choice/field elements if omitted; reserve one of 48 slots. Its\n`input.kind=dictate-answer` bypasses local speech regexes and goes to the same\nagent thread with screen context. Local actions do not generate a model turn.\n\nThe maintained advanced examples live in the server's\n`internal/agent/skills/pam-ui/` package. On startup the server installs it under\n`<state-directory>/skills/pam-ui/`, points the base prompt to SKILL.md, and supplies\nfull fallback guidance when file-reading tools are disabled. The Codex app-server\nmust share that filesystem. Native notification and timer behavior is unchanged.\n\n## Notes capabilities\n\nUse `capability type=note command=add value=\"Call Jane\"` to request a real save,\nand `capability type=note command=list` to browse. Existing-record edits use the\nrecord picker and its revision-scoped Append / Replace entire note actions.\nText matches and invented IDs cannot authorize an edit. Body pages stay pinned\nto one revision, and displayed chunks are never submitted as a full replacement.\nSee [collections](collections.md) for server ownership and durability handoff.\n\n## Collection protocol version 1\n\nAppMessage keys 0–12 retain their values. New keys are:\n\n| Number | Name | Meaning |\n|---|---|---|\n| 13 | CollectionProtocol | Version 1 |\n| 14 | BridgeSession | Phone-issued bridge session |\n| 15 | EventSequence | Monotonic event identity; retransmissions reuse it |\n| 16 | ViewToken | Exact alias/revision mapping |\n| 17 | DeliveryState | accepted_phone, accepted_server, synced, needs_attention, rejected |\n| 18 | ErrorCode | Bounded machine-readable error |\n\n`bridge operation=collections` supplies protocol/session readiness. `collection-view`\nsets the token for the matching render request. Lists instead use one\n`collection-list` message: Operation is `note`, `task`, or `event`, Value contains up to eight\nnewline-separated titles (71 UTF-8 bytes each; embedded whitespace is normalized),\nViewToken binds `r0` through `r7` to the exact phone records/revisions, and Meta has\none delivery-state character per row (`p` pending server, `s` synced, `b` backend\npending, `d` saved on server). Flags are completed=1, next page=2, stale=4,\npartial=8, first active page=16. Index is the full filtered collection count,\nnot just the number of preview rows. Event titles include date/time. Subtitle carries the overall status. Only first\nactive pages replace the persistent title preview. Preview rows have no mutation\nor read aliases until a live response arrives. All list messages are guarded by\nthe same request/navigation checks as render messages. Existing `capability_event` messages\nwith operation `note`, `todo`, or `calendar` carry list/read/edit/append/complete/restore actions.\nThe phone resolves an alias only within that exact view. It checks an existing\nreceipt before rejecting an expired view, so retransmission cannot target a reused\nrow. `collection-ack` carries the original session/event and delivery state.\nThe native app retains and retries an unacknowledged mutation in RAM only.\n\nJSON collection routes, schemas, and recovery are documented in\n[the collection specification](notes-todos-backend-sync-spec.md),\n[JSON schema](collections-api.schema.json), and [operations](collections-server-operations.md).\nAll routes require bearer authentication. Mutation revisions/sequences are decimal\nstrings. Snapshot pages are fixed; body pages are UTF-8 safe and revision-pinned.\n`POST /v1/sync/snapshots` accepts an optional positive `limit` (capped at 200).\nWith it, the response includes the first page's `records`, full `total`, `complete`,\nand optional `next_cursor`, along with `snapshot_id` and the high-water `cursor`.\nWithout it, creation returns snapshot metadata with an empty `records` array.\nThe phone uses `limit: 8` to avoid a second request for the first screen.\nManagement uses a single-use `/v1/integration-sessions` ticket and server cookies.\nIts authenticated POST accepts `{public_url, provider, collection_id}` from phone settings. The\nHTTPS base (including any proxy prefix) is bound to the ticket/session, not inferred\nfrom forwarded headers or stored as a mutable global URL. The provider choice\nopens that service’s setup section for the selected collection; authentication and activation remain explicit.\nManagement sessions use secure cookies,\nnever a provider token in a phone settings fragment.\n\n### In-page sync setup\n\nBefore opening phone settings, the bridge posts `{public_url}` to bearer-protected\n`/v1/integration-setup-sessions`. The result is a 30-minute setup-only token and\nan exact `/integrations/setup-api` URL. Only this temporary token travels in the\nsettings URL fragment; the page removes the fragment from browser history and\nnever returns it with saved phone settings. The main bearer token stays on the phone.\n\nThe setup API accepts GET for public descriptors/collections/active bindings and\nURL-encoded POST actions: connect, bind (preview), apply, disconnect, and authorize\n(Google's existing browser flow). Requests use the temporary bearer token. CORS\nallows only the hosted settings origin `https://nick1udwig.github.io`; no cookie\nauthentication is used by this API. Provider credentials are omitted from every\nresponse. Candidates are tied to their originating setup session. Errors are JSON\nand displayed inline. The `webviewclosed` handler never opens another page.\n\n### Calendar and interaction preferences\n\nThe third collection is `col_event`, kind `event`. `event.create` accepts title,\nstart, end, optional location and description. Times require RFC3339 offsets, or\ntwo YYYY-MM-DD values for an all-day event with exclusive end. Read APIs retain\nstart/end/location in summaries and return the description through body pages.\nActive event snapshots are chronological and exclude ended events. Snapshot\ncreation accepts `utc_offset_minutes`; collection listing accepts the same query\nparameter, so all-day dates and counts follow the phone's local date.\n\nPAM uses `capability type=calendar command=list` and\n`capability type=calendar command=add title=\"Lunch\" start=\"2026-09-16T12:00:00-07:00\" end=\"2026-09-16T13:00:00-07:00\"`.\nPhone journal/receipt semantics match notes and tasks. CalDAV performs deterministic\nconditional creates and 90-day expanded calendar-query reads. Absence reconciliation\nis restricted to the successfully read time window. Records remain read-only on\nthe watch after creation; edits and recurring-series creation use a calendar client.\n\n`bridge operation=collection-counts` sends task count in Index, note count in Flags,\nand event count in EventSequence. Watch caches use ten keys per kind: 4480, 4490,\n4500; base+1..8 hold titles, base+9 holds the full count.\n`bridge operation=preferences` uses Flags for ripple enabled, Index for double-tap\nrequired (both default 1). `bridge operation=agent-dispatched` starts the blue\nrequest animation only after the phone submits an agent job over HTTP.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -1578,15 +1620,15 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-18T18:08:58.227136879Z"
+      "modified_at": "2026-09-20T02:16:58.266696682Z"
     },
     {
       "id": "01a091eb-4958-7731-a829-5a501e760d31",
       "slug": "reference/docs/server",
-      "version": 18,
+      "version": 19,
       "doc_type": "reference",
       "title": "docs/server.md",
-      "content": "Source: `docs/server.md`\n\n# Codex-backed agent server\n\n`codey-server` is the real self-hosted PAM endpoint.\nIt accepts a watch request over streaming HTTP or the `pam.v1` WebSocket subprotocol, runs the corresponding conversation turn through Codex app-server, validates the model's PAM one complete line at a time, and streams those lines to the phone.\n\n## Release installation\n\nSee the [one-line installer](../README.md#run-the-agent-service) for prebuilt Linux and Apple Silicon binaries.\nGo is only needed for source builds.\nPublishing a GitHub release triggers `.github/workflows/release-server.yml`, which tests the service, cross-compiles five targets and attaches binaries, `SHA256SUMS`, and `install.sh`.\nRelease asset uploads require mutable releases; repositories enforcing immutable releases need to attach assets before publishing.\n\nThe installer verifies SHA-256 checksums and installs into `~/.local/bin`.\nRelease targets are Linux x86-64, x86 (32-bit), ARMv7, ARM64, and macOS Apple Silicon.\nSet `CODEY_VERSION=vX.Y.Z` to select a specific release.\nOn Linux, the generated token is saved in `~/.config/codey/environment` (or under `$XDG_CONFIG_HOME`).\nThe service starts with the user manager, normally at login.\nNoninteractive installs do not enable a service.\n\nThe installer offers a systemd **user** unit on Linux and otherwise prints manual instructions.\nIt never uses sudo or enables lingering.\nConfigure a reverse proxy or VPN to reach the default loopback listener from the phone.\nUse `systemctl --user edit codey.service` to customize the unit.\nStop and disable it with `systemctl --user disable --now codey.service`.\n\n## Prerequisites\n\n- Go 1.24 or newer to build the binary.\n- A current Codex CLI on `PATH`.\n- A working Codex CLI login on the same operating-system account that runs the service.\n- A TLS reverse proxy, VPN, or trusted private network through which the paired phone can reach the service.\n\nBuild and start it:\n\n```sh\ngo build -o build/codey-server ./cmd/codey-server\nexport CODEY_TOKEN=\"replace-with-a-long-random-secret\"\n./build/codey-server --listen 0.0.0.0:8787\n```\n\nSet the watchapp server URL to `http://SERVER:8787` and enter the same token.\n`POST /` is also accepted, but `/v1/agent` is the stable endpoint.\n`GET /healthz` reports process health.\n\nThe server refuses a non-loopback listener when `CODEY_TOKEN` is empty.\n`--allow-unauthenticated-public` exists for tightly controlled development environments, but it is deliberately explicit.\nThe bearer token is read from an environment variable rather than a command-line value so it is not exposed in a process listing.\n\n## Private phone access with Tailscale\n\nInstall [Tailscale](https://tailscale.com/docs/how-to/quickstart) on the backend computer and phone, sign into the same tailnet, and connect the phone's Tailscale VPN.\nThe example below runs the backend in tmux and publishes the `/codey/` path over private HTTPS on port **443**.\n\n### Run the server in tmux\n\nInstall tmux with your package manager and install the agent server as described above.\nIf the installer started a systemd service, stop it with `systemctl --user stop codey.service` before running the same backend in tmux.\nCreate a session:\n\n```sh\ntmux new-session -s codey\n```\n\nInside that session, set a long random token and start the server:\n\n```sh\nexport CODEY_TOKEN=\"replace-with-a-long-random-secret\"\n~/.local/bin/codey-server --listen 127.0.0.1:8787\n```\n\nFor a source build, use `./build/codey-server` from the repository root instead.\nKeep the token for the phone settings; when replacing an installed service, you can reuse the token from `~/.config/codey/environment`.\nPress **Ctrl-b**, then **d** to detach while the server keeps running.\nUse `tmux attach-session -t codey` to return, and **Ctrl-c** to stop the server.\nTmux does not restart the backend after a crash or reboot; use the installed systemd service for automatic startup.\nSee the [tmux manual](https://man.openbsd.org/tmux) for session controls.\n\n### Serve at /codey on port 443\n\nIn another terminal on the backend computer:\n\n```sh\ncurl --fail http://127.0.0.1:8787/healthz\ntailscale serve --bg --https=443 --set-path=/codey/ http://127.0.0.1:8787\ntailscale serve status\n```\n\nUse `sudo` for Tailscale commands if required, and follow any consent link to enable HTTPS and MagicDNS.\nUse the full hostname printed by Serve and save this endpoint in codey's phone settings, together with the token:\n\n```text\nhttps://MACHINE.TAILNET.ts.net/codey\n```\n\nThis adds `/codey/` alongside an existing site at `/` on port 443.\nThe client appends API routes beneath this base URL, and Serve strips `/codey` before forwarding to the backend.\n[Serve](https://tailscale.com/docs/reference/tailscale-cli/serve) stays private to your tailnet and persists with `--bg`; leave public Funnel sharing disabled.\nTo remove this endpoint, run `tailscale serve --bg --https=443 --set-path=/codey/ off`.\n\n### Verify from the phone\n\nOpen `https://MACHINE.TAILNET.ts.net/codey/healthz` in the phone browser to check connectivity.\nThen use **Load available models** in codey settings with the token saved and make a watch request.\nRepeat over cellular with Tailscale connected.\nKeep the backend computer awake; if access fails, check the VPN, server logs, and [tailnet rules](https://tailscale.com/docs/features/access-control) for TCP port 443.\nKeep bearer authentication enabled and limit access to your intended users or devices.\nHTTPS certificates publish the hostname in certificate transparency logs; see [certificate setup](https://tailscale.com/docs/how-to/set-up-https-certificates).\n\n## Server URLs\n\nEnter a base URL such as `foo.com/bar/baz/biz`; an omitted scheme defaults to HTTPS.\nThe client uses `https://foo.com/bar/baz/biz/v1/jobs/`, `/v1/models`, `/v1/status`, and `/v1/agent` beneath the same base path.\nExisting URLs ending in `/v1/agent` are also accepted, and trailing slashes are ignored.\nHTTP, HTTPS, WS, and WSS are supported; job, model, and status calls use the corresponding HTTP scheme.\nUse the separate token field for credentials; URL credentials, queries, and fragments are rejected.\n\n## Codex configuration\n\nDefaults:\n\n```text\nmodel:  gpt-5.6-luna\neffort: xhigh\nfast:   on\n```\n\nSet them when the process starts:\n\n```sh\n./build/codey-server \\\n  --model gpt-5.6-luna \\\n  --effort xhigh\n```\n\nThe corresponding environment variables are `CODEY_MODEL` and `CODEY_EFFORT`.\nThese values are server defaults.\nPhone settings can override the model and effort for each request.\n\nThe phone settings provide model and effort selection plus web search (disabled, cached, live), filesystem access (runtime files only, read-only, workspace writes), command execution, command network access, and automatic approval review.\nPhone settings default to Luna / xhigh, fast mode, and live web search.\nCommands, user-file access, command network access, and auto-review remain off.\nOlder callers without a backend node retain disabled web search.\nMissing fast_mode defaults on.\nPermission settings do not affect local timers, alarms, dictation, phone weather, or the transport connection to Codex.\n\n`GET /v1/models` uses the same bearer authentication and returns the installed Codex `model/list` catalog, including supported reasoning efforts and server defaults.\nIt supports cross-origin requests from the static settings page using an explicit Authorization header and no cookies.\nA custom model with blank effort uses that model's advertised default; blank model and effort use server defaults.\nUnsupported selections produce an error rather than silently changing models.\nThe phone bridge preloads model choices before opening settings, including for local HTTP/WS endpoints.\nThe page also has a refresh button; browser refresh may be blocked as mixed content for HTTP endpoints.\nIn that case, save the endpoint and reopen settings to load through the phone bridge.\n\nFast mode is sent as the allowlisted `fast_mode=true|false` backend attribute.\nEach turn requests `serviceTierForTurn=fast` or `default`, so turning it off does not inherit a previous fast tier.\nFast mode changes preserve the conversation.\nCodex maps fast to priority processing; model/account availability still applies.\nExisting saved preferences are preserved when defaults change.\n\nPermission options are allowlisted PAM `backend` attributes, excluded from the model-facing document.\nThey resolve to a thread-local named Codex permission profile.\nNo user files grants only the platform's minimal runtime paths; read-only allows file reads; workspace-write additionally grants writes under `--workspace`.\nCommand execution and network access are independent.\nShells inherit only core environment variables.\nProject instruction files and memory injection are disabled.\nInherited MCP servers, plugins, and app tools are disabled because their privileges are not controlled by the local command sandbox.\n\nAuto-review off means `approvalPolicy=never` and `approvalsReviewer=user`: operations requiring additional permission are denied.\nAuto-review on means `on-request` and `auto_review`: Codex may review and approve exceptions beyond the selected baseline.\nIt is not blanket approval.\nUnexpected interactive client requests are rejected; there is no manual approval UI on the watch.\nManaged server restrictions remain in force and can reject requested settings.\n\nPermission profiles are isolated by session, workspace, and permission settings.\nChanging permissions uses a separate conversation; returning to a previous profile resumes its conversation.\nModel/effort changes keep the same conversation.\nLegacy threads without a recorded permission profile are not reused.\nEach turn inherits the resolved thread permissions; it must not re-send the thread-local profile name, which app-server otherwise resolves against global disk config.\n\nThis implementation was verified with Codex CLI 0.153.2 and its generated app-server schema.\nNamed permissions use the experimental API handshake; unsupported servers fail explicitly.\nSee the official [app-server documentation](https://learn.chatgpt.com/docs/app-server) and [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).\n\n\n## App-server transport selection\n\nEach connection attempt follows this order:\n\n1. Discover the running daemon with `codex app-server daemon version` and connect to its reported Unix socket using WebSocket-over-Unix-socket.\n   `--app-server-unix /absolute/path.sock` skips discovery.\n2. Start and retain a managed `codex app-server --stdio` child process.\n3. Connect to `--app-server-url`, which defaults to `ws://127.0.0.1:4222`.\n\nUse `CODEY_CODEX` to select another Codex executable, `CODEY_APP_SERVER_UNIX` for an explicit socket, and `CODEY_APP_SERVER_URL` for the fallback URL.\nIf a remote WebSocket app-server requires a bearer token, put it in `CODEX_APP_SERVER_TOKEN` or change the variable name with `--app-server-token-env`.\n\nEvery transport performs the required `initialize` request and `initialized` notification.\nA dropped long-lived connection is re-resolved in the same order on the next request.\nA connection attempt has a five-second per-transport timeout by default.\n\nEvery JSON protocol message sent to or received from Codex app-server is logged at `info` with `direction=to_app_server` or `direction=from_app_server`, the selected transport, and the complete raw payload.\nThis includes dictated prompts, model output deltas, thread metadata, errors, and any server requests or client responses.\nPhone endpoint bearer credentials are consumed at the HTTP/WebSocket boundary and are never forwarded in the model-facing PAM document.\n\n## Logs and rotation\n\nStart runtime debugging with:\n\n```text\n~/.codey/server.log\n```\n\nThe server mirrors its structured stderr output into that file.\nBefore a complete log record would take the active file past 10 MiB (10,485,760 bytes), it rotates the file.\nIt retains five backups: `server.log.1` is newest and `server.log.5` is oldest.\nA single record larger than 10 MiB remains intact.\nThe active log is created with mode `0600`, and a newly created `.codey` directory is private to the current user.\n\nSet `CODEY_LOG_FILE` or use `--log-file /absolute/path` to choose a different file.\nUse `--log-file -` to log only to stderr.\nThe payloads are intentionally not content-redacted, so protect the active file and every backup as sensitive conversation data.\n\nThese logs prove what crossed the Go server/Codex boundary.\nIf they show a completed, valid PAM response but the watchapp exits, collect Pebble watch logs next: that failure is downstream in the phone bridge, AppMessage delivery, or native watch process.\n\n## Conversations and streaming\n\nThe PAM `request.session` value and permission profile map to a persisted Codex thread.\nThe default state path is `~/.codey/sessions.json`; use `--state /absolute/path.json`\nto move it. Session mappings are now stored incrementally in that path plus `.db`\n(`~/.codey/sessions.json.db`), with mode `0600`, WAL journaling and synchronous\ncommits. On first open, the server imports an existing version-1 JSON snapshot in\none transaction and leaves the original file untouched. After migration, the\nSQLite database is authoritative, including deletions; restarting never imports\nthe stale JSON again. Back up the `.db` with a SQLite-consistent backup, or stop\nthe server before copying the database and any remaining `-wal`/`-shm` sidecars.\nDo not downgrade expecting the original JSON to contain newer conversations.\nHistorical mappings are retained so old job results can reopen their conversation.\nRestarting either service resumes the thread.\nIf Codex no longer has a persisted thread, the mapping is discarded and a new one is created.\n\nOnly final-answer agent-message deltas are forwarded.\nCommentary is ignored.\nOutput is limited to 128 KiB, 2,048 bytes per line, 96 PAM nodes, eight indentation levels, and 48 screen elements.\nLayouts, element kinds, bindings, patches, removals, and built-in capability commands are allowlisted before each line is flushed.\nInvalid output becomes a valid root PAM `error` instead of arbitrary bytes reaching the watch.\nA missing final `done` is supplied for an otherwise valid screen.\n\nAgent execution is unlimited by default (`--turn-timeout 0`).\nA positive duration sets an execution deadline independent of the phone notification window.\n\n## Persistent request jobs\n\nThe phone generates and saves a 30-character hexadecimal ID before submitting PAM to `POST /v1/jobs/{id}`.\nThe server persists the accepted job before replying with JSON.\nRepeating the ID and identical request returns that job; a different request using the same ID receives HTTP 409.\nAll job routes use the same bearer authentication as `/v1/agent`.\n\n- `GET /v1/jobs/{id}` returns status and a completed PAM result, if available.\n- `GET /v1/jobs/{id}?wait=45` waits once for completion, bounded to 120 seconds.\n  Disconnecting this GET never cancels the job.\n  The phone uses one wait and makes no further automatic polls after it expires.\n  Opening Notifications explicitly refreshes all ongoing jobs once; overlapping checks for the same job are coalesced.\n  This batch never opens result screens or buzzes.\n- `POST /v1/jobs/{id}/cancel` explicitly cancels the work.\n  The transitional `canceling` status becomes `canceled` after execution unwinds.\n- `POST /v1/jobs/{id}/ack` releases the server result only after the phone has cached it and the watch confirms presentation.\n  The ID/hash remain as a deduplication tombstone.\n\nJobs are stored as private JSON files beside session state, under `jobs/`.\nUnretrieved results have no expiry by default.\n`--job-retention 168h` expires terminal jobs seven days after completion, whether retrieved or not; cleanup runs every minute and during lookups/submissions.\nThe finite retention setting also bounds tombstone lifetime and therefore the duplicate-submission guarantee.\nRunning jobs are never removed by retention.\nOn restart, unfinished jobs become failed with an explicit restart message; completed results remain retrievable.\nCancellation does not roll back prior changes.\n\nWork in the same conversation is serialized.\nUp to 32 agent jobs may be active on the server, with 24 unviewed requests in the phone/watch notification list.\nRetrieved results remain cached on the phone.\nFailed/canceled entries can be dismissed.\nRestoring the original endpoint is required to check a job after changing servers, so a new server token is never sent to an old endpoint.\n\nThe streaming `/v1/agent` endpoint is used by the standalone client and demo protocol.\nThe watch uses the job routes.\nReverse proxies must route `/v1/jobs/` as well; a shorter proxy timeout only ends the completion wait, not the work.\n\n## Internet-facing deployment\n\nKeep the Go listener on `127.0.0.1` when a reverse proxy runs on the same host.\nTerminate TLS at that proxy, disable response buffering for `/v1/agent`, permit WebSocket upgrades if using WSS, and forward `Authorization`.\nThe service already sends `Cache-Control: no-store` and `X-Accel-Buffering: no`.\n\nDo not expose an unencrypted bearer token over the public internet.\nThe service is designed for one trusted operator's Codex account; it is not a multi-tenant authorization or billing boundary.\n\n## Useful flags\n\nRun `codey-server -h` for the complete set.\nCommon options include:\n\n```text\n--listen 127.0.0.1:8787\n--model gpt-5.6-luna\n--effort xhigh\n--connect-timeout 5s\n--turn-timeout 0\n--job-retention 0\n--state /absolute/path/sessions.json\n--workspace /absolute/path/empty-workspace\n--log-level debug|info|warn|error\n--log-file /absolute/path/server.log\n```\n\nThe workspace defaults to `~/.codey/workspace`. Collection data lives in\n`~/.codey/data`, job/session state in `~/.codey`, and logs in `~/.codey/server.log`.\nIt becomes the writable root only when workspace writes are selected in phone settings.\nRead-only and workspace-write modes allow reads outside that root; no-user-files mode restricts reads to minimal runtime paths.\n\n## Dashboard status\n\nThe authenticated `GET /v1/status` endpoint reads Codex app-server telemetry on demand.\n`remainingPercent` is the lowest remaining percentage across the primary and secondary windows of `rateLimitsByLimitId[\"codex\"]` from `account/rateLimits/read`.\nIt is quota remaining, not context-window capacity.\nMissing quota data is `null`, including accounts without reported limits.\n\n`activeThreads` counts loaded threads whose current status is `active`, using `thread/loaded/list` and metadata-only `thread/read` calls.\nIt covers the connected app-server instance, including its threads outside codey.\nThe state is `working` when any thread is active, `idle` otherwise, and `error` for a thread system error.\nUnavailable status/counts remain unknown.\nThe endpoint has a 15-second deadline.\n\nThe phone fetches at startup and at most once per minute using the existing watch tick; unchanged telemetry sends no additional watch packet.\nDashboard rendering keeps its existing passive minute limit.\nThe time button shows battery charge at the top left and the sleeping/thinking pictograph with active thread count at the top right.\nThe brain and quota remaining sit below the text in the Talk to codey button.\nThere is no separate dashboard status bar.\nUnknown values display dashes and a question face.\nThe pictographs are drawn directly because the watch system font does not supply emoji glyphs.\n\nProtocol reference: [Codex app-server](https://learn.chatgpt.com/docs/app-server).\n\n## Durable notes and to-dos\n\nThe collection API starts independently of Codex. Configure `--data-dir` and\n`CODEY_TOKEN`; optional `--integrations-config` enables provider management.\nSee [collection server operations](collections-server-operations.md) for OAuth,\nNextcloud setup, encryption keys, backup, restore, and recovery.\n",
+      "content": "Source: `docs/server.md`\n\n# Codex-backed agent server\n\n`codey-server` is the real self-hosted PAM endpoint.\nIt accepts a watch request over streaming HTTP or the `pam.v1` WebSocket subprotocol, runs the corresponding conversation turn through Codex app-server, validates the model's PAM one complete line at a time, and streams those lines to the phone.\n\n## Release installation\n\nSee the [one-line installer](../README.md#run-the-agent-service) for prebuilt Linux and Apple Silicon binaries.\nGo is only needed for source builds.\nPublishing a GitHub release triggers `.github/workflows/release-server.yml`, which tests the service, cross-compiles five targets and attaches binaries, `SHA256SUMS`, and `install.sh`.\nRelease asset uploads require mutable releases; repositories enforcing immutable releases need to attach assets before publishing.\n\nThe installer verifies SHA-256 checksums and installs into `~/.local/bin`.\nRelease targets are Linux x86-64, x86 (32-bit), ARMv7, ARM64, and macOS Apple Silicon.\nSet `CODEY_VERSION=vX.Y.Z` to select a specific release.\nOn Linux, the generated token is saved in `~/.config/codey/environment` (or under `$XDG_CONFIG_HOME`).\nThe service starts with the user manager, normally at login.\nNoninteractive installs do not enable a service.\n\nThe installer offers a systemd **user** unit on Linux and otherwise prints manual instructions.\nIt never uses sudo or enables lingering.\nConfigure a reverse proxy or VPN to reach the default loopback listener from the phone.\nUse `systemctl --user edit codey.service` to customize the unit.\nStop and disable it with `systemctl --user disable --now codey.service`.\n\n## Prerequisites\n\n- Go 1.24 or newer to build the binary.\n- A current Codex CLI on `PATH`.\n- A working Codex CLI login on the same operating-system account that runs the service.\n- A TLS reverse proxy, VPN, or trusted private network through which the paired phone can reach the service.\n\nBuild and start it:\n\n```sh\ngo build -o build/codey-server ./cmd/codey-server\nexport CODEY_TOKEN=\"replace-with-a-long-random-secret\"\n./build/codey-server --listen 0.0.0.0:8787\n```\n\nSet the watchapp server URL to `http://SERVER:8787` and enter the same token.\n`POST /` is also accepted, but `/v1/agent` is the stable endpoint.\n`GET /healthz` reports process health.\n\nThe server refuses a non-loopback listener when `CODEY_TOKEN` is empty.\n`--allow-unauthenticated-public` exists for tightly controlled development environments, but it is deliberately explicit.\nThe bearer token is read from an environment variable rather than a command-line value so it is not exposed in a process listing.\n\n## Private phone access with Tailscale\n\nInstall [Tailscale](https://tailscale.com/docs/how-to/quickstart) on the backend computer and phone, sign into the same tailnet, and connect the phone's Tailscale VPN.\nThe example below runs the backend in tmux and publishes the `/codey/` path over private HTTPS on port **443**.\n\n### Run the server in tmux\n\nInstall tmux with your package manager and install the agent server as described above.\nIf the installer started a systemd service, stop it with `systemctl --user stop codey.service` before running the same backend in tmux.\nCreate a session:\n\n```sh\ntmux new-session -s codey\n```\n\nInside that session, set a long random token and start the server:\n\n```sh\nexport CODEY_TOKEN=\"replace-with-a-long-random-secret\"\n~/.local/bin/codey-server --listen 127.0.0.1:8787\n```\n\nFor a source build, use `./build/codey-server` from the repository root instead.\nKeep the token for the phone settings; when replacing an installed service, you can reuse the token from `~/.config/codey/environment`.\nPress **Ctrl-b**, then **d** to detach while the server keeps running.\nUse `tmux attach-session -t codey` to return, and **Ctrl-c** to stop the server.\nTmux does not restart the backend after a crash or reboot; use the installed systemd service for automatic startup.\nSee the [tmux manual](https://man.openbsd.org/tmux) for session controls.\n\n### Serve at /codey on port 443\n\nIn another terminal on the backend computer:\n\n```sh\ncurl --fail http://127.0.0.1:8787/healthz\ntailscale serve --bg --https=443 --set-path=/codey/ http://127.0.0.1:8787\ntailscale serve status\n```\n\nUse `sudo` for Tailscale commands if required, and follow any consent link to enable HTTPS and MagicDNS.\nUse the full hostname printed by Serve and save this endpoint in codey's phone settings, together with the token:\n\n```text\nhttps://MACHINE.TAILNET.ts.net/codey\n```\n\nThis adds `/codey/` alongside an existing site at `/` on port 443.\nThe client appends API routes beneath this base URL, and Serve strips `/codey` before forwarding to the backend.\n[Serve](https://tailscale.com/docs/reference/tailscale-cli/serve) stays private to your tailnet and persists with `--bg`; leave public Funnel sharing disabled.\nTo remove this endpoint, run `tailscale serve --bg --https=443 --set-path=/codey/ off`.\n\n### Verify from the phone\n\nOpen `https://MACHINE.TAILNET.ts.net/codey/healthz` in the phone browser to check connectivity.\nThen use **Load available models** in codey settings with the token saved and make a watch request.\nRepeat over cellular with Tailscale connected.\nKeep the backend computer awake; if access fails, check the VPN, server logs, and [tailnet rules](https://tailscale.com/docs/features/access-control) for TCP port 443.\nKeep bearer authentication enabled and limit access to your intended users or devices.\nHTTPS certificates publish the hostname in certificate transparency logs; see [certificate setup](https://tailscale.com/docs/how-to/set-up-https-certificates).\n\n## Server URLs\n\nEnter a base URL such as `foo.com/bar/baz/biz`; an omitted scheme defaults to HTTPS.\nThe client uses `https://foo.com/bar/baz/biz/v1/jobs/`, `/v1/models`, `/v1/status`, and `/v1/agent` beneath the same base path.\nExisting URLs ending in `/v1/agent` are also accepted, and trailing slashes are ignored.\nHTTP, HTTPS, WS, and WSS are supported; job, model, and status calls use the corresponding HTTP scheme.\nUse the separate token field for credentials; URL credentials, queries, and fragments are rejected.\n\n## Codex configuration\n\nDefaults:\n\n```text\nmodel:  gpt-6-luna\neffort: xhigh\nfast:   on\n```\n\nSet them when the process starts:\n\n```sh\n./build/codey-server \\\n  --model gpt-6-luna \\\n  --effort xhigh\n```\n\nThe corresponding environment variables are `CODEY_MODEL` and `CODEY_EFFORT`.\nThese values are server defaults.\nPhone settings can override the model and effort for each request.\n\nThe phone settings provide model and effort selection plus web search (disabled, cached, live), filesystem access (runtime files only, read-only, workspace writes), command execution, command network access, and automatic approval review.\nPhone settings default to GPT-6 Luna / xhigh, fast mode, and live web search.\nCommands, user-file access, command network access, and auto-review remain off.\nOlder callers without a backend node retain disabled web search.\nMissing fast_mode defaults on.\nPermission settings do not affect local timers, alarms, dictation, phone weather, or the transport connection to Codex.\n\n`GET /v1/models` uses the same bearer authentication and returns the installed Codex `model/list` catalog, including supported reasoning efforts and server defaults.\nIt supports cross-origin requests from the static settings page using an explicit Authorization header and no cookies.\nA custom model with blank effort uses that model's advertised default; blank model and effort use server defaults.\nUnsupported selections produce an error rather than silently changing models.\nThe phone bridge preloads model choices before opening settings, including for local HTTP/WS endpoints.\nThe page also has a refresh button; browser refresh may be blocked as mixed content for HTTP endpoints.\nIn that case, save the endpoint and reopen settings to load through the phone bridge.\n\nFast mode is sent as the allowlisted `fast_mode=true|false` backend attribute.\nEach turn requests `serviceTierForTurn=fast` or `default`, so turning it off does not inherit a previous fast tier.\nFast mode changes preserve the conversation.\nCodex maps fast to priority processing; model/account availability still applies.\nExisting saved preferences are preserved when defaults change.\n\nPermission options are allowlisted PAM `backend` attributes, excluded from the model-facing document.\nThey resolve to a thread-local named Codex permission profile.\nNo user files grants only the platform's minimal runtime paths; read-only allows file reads; workspace-write additionally grants writes under `--workspace`.\nCommand execution and network access are independent.\nShells inherit only core environment variables.\nProject instruction files and memory injection are disabled.\nInherited MCP servers, plugins, and app tools are disabled because their privileges are not controlled by the local command sandbox.\n\nAuto-review off means `approvalPolicy=never` and `approvalsReviewer=user`: operations requiring additional permission are denied.\nAuto-review on means `on-request` and `auto_review`: Codex may review and approve exceptions beyond the selected baseline.\nIt is not blanket approval.\nUnexpected interactive client requests are rejected; there is no manual approval UI on the watch.\nManaged server restrictions remain in force and can reject requested settings.\n\nPermission profiles are isolated by session, workspace, and permission settings.\nChanging permissions uses a separate conversation; returning to a previous profile resumes its conversation.\nModel/effort changes keep the same conversation.\nLegacy threads without a recorded permission profile are not reused.\nEach turn inherits the resolved thread permissions; it must not re-send the thread-local profile name, which app-server otherwise resolves against global disk config.\n\nThis implementation was verified with Codex CLI 0.153.2 and its generated app-server schema.\nNamed permissions use the experimental API handshake; unsupported servers fail explicitly.\nSee the official [app-server documentation](https://learn.chatgpt.com/docs/app-server) and [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).\n\n\n## App-server transport selection\n\nEach connection attempt follows this order:\n\n1. Discover the running daemon with `codex app-server daemon version` and connect to its reported Unix socket using WebSocket-over-Unix-socket.\n   `--app-server-unix /absolute/path.sock` skips discovery.\n2. Start and retain a managed `codex app-server --stdio` child process.\n3. Connect to `--app-server-url`, which defaults to `ws://127.0.0.1:4222`.\n\nUse `CODEY_CODEX` to select another Codex executable, `CODEY_APP_SERVER_UNIX` for an explicit socket, and `CODEY_APP_SERVER_URL` for the fallback URL.\nIf a remote WebSocket app-server requires a bearer token, put it in `CODEX_APP_SERVER_TOKEN` or change the variable name with `--app-server-token-env`.\n\nEvery transport performs the required `initialize` request and `initialized` notification.\nA dropped long-lived connection is re-resolved in the same order on the next request.\nA connection attempt has a five-second per-transport timeout by default.\n\nEvery JSON protocol message sent to or received from Codex app-server is logged at `info` with `direction=to_app_server` or `direction=from_app_server`, the selected transport, and the complete raw payload.\nThis includes dictated prompts, model output deltas, thread metadata, errors, and any server requests or client responses.\nPhone endpoint bearer credentials are consumed at the HTTP/WebSocket boundary and are never forwarded in the model-facing PAM document.\n\n## Logs and rotation\n\nStart runtime debugging with:\n\n```text\n~/.codey/server.log\n```\n\nThe server mirrors its structured stderr output into that file.\nBefore a complete log record would take the active file past 10 MiB (10,485,760 bytes), it rotates the file.\nIt retains five backups: `server.log.1` is newest and `server.log.5` is oldest.\nA single record larger than 10 MiB remains intact.\nThe active log is created with mode `0600`, and a newly created `.codey` directory is private to the current user.\n\nSet `CODEY_LOG_FILE` or use `--log-file /absolute/path` to choose a different file.\nUse `--log-file -` to log only to stderr.\nThe payloads are intentionally not content-redacted, so protect the active file and every backup as sensitive conversation data.\n\nThese logs prove what crossed the Go server/Codex boundary.\nIf they show a completed, valid PAM response but the watchapp exits, collect Pebble watch logs next: that failure is downstream in the phone bridge, AppMessage delivery, or native watch process.\n\n## Conversations and streaming\n\nThe PAM `request.session` value and permission profile map to a persisted Codex thread.\nThe default state path is `~/.codey/sessions.json`; use `--state /absolute/path.json`\nto move it. Session mappings are now stored incrementally in that path plus `.db`\n(`~/.codey/sessions.json.db`), with mode `0600`, WAL journaling and synchronous\ncommits. On first open, the server imports an existing version-1 JSON snapshot in\none transaction and leaves the original file untouched. After migration, the\nSQLite database is authoritative, including deletions; restarting never imports\nthe stale JSON again. Back up the `.db` with a SQLite-consistent backup, or stop\nthe server before copying the database and any remaining `-wal`/`-shm` sidecars.\nDo not downgrade expecting the original JSON to contain newer conversations.\nHistorical mappings are retained so old job results can reopen their conversation.\nRestarting either service resumes the thread.\nIf Codex no longer has a persisted thread, the mapping is discarded and a new one is created.\n\nOnly final-answer agent-message deltas are forwarded.\nCommentary is ignored.\nOutput is limited to 128 KiB, 2,048 bytes per line, 96 PAM nodes, eight indentation levels, and 48 screen elements.\nLayouts, element kinds, bindings, patches, removals, and built-in capability commands are allowlisted before each line is flushed.\nInvalid output becomes a valid root PAM `error` instead of arbitrary bytes reaching the watch.\nA missing final `done` is supplied for an otherwise valid screen.\n\nAgent execution is unlimited by default (`--turn-timeout 0`).\nA positive duration sets an execution deadline independent of the phone notification window.\n\n## Persistent request jobs\n\nThe phone generates and saves a 30-character hexadecimal ID before submitting PAM to `POST /v1/jobs/{id}`.\nThe server persists the accepted job before replying with JSON.\nRepeating the ID and identical request returns that job; a different request using the same ID receives HTTP 409.\nAll job routes use the same bearer authentication as `/v1/agent`.\n\n- `GET /v1/jobs/{id}` returns status and a completed PAM result, if available.\n- `GET /v1/jobs/{id}?wait=45` waits once for completion, bounded to 120 seconds.\n  Disconnecting this GET never cancels the job.\n  The phone uses one wait and makes no further automatic polls after it expires.\n  Opening Notifications explicitly refreshes all ongoing jobs once; overlapping checks for the same job are coalesced.\n  This batch never opens result screens or buzzes.\n- `POST /v1/jobs/{id}/cancel` explicitly cancels the work.\n  The transitional `canceling` status becomes `canceled` after execution unwinds.\n- `POST /v1/jobs/{id}/ack` releases the server result only after the phone has cached it and the watch confirms presentation.\n  The ID/hash remain as a deduplication tombstone.\n\nJobs are stored as private JSON files beside session state, under `jobs/`.\nUnretrieved results have no expiry by default.\n`--job-retention 168h` expires terminal jobs seven days after completion, whether retrieved or not; cleanup runs every minute and during lookups/submissions.\nThe finite retention setting also bounds tombstone lifetime and therefore the duplicate-submission guarantee.\nRunning jobs are never removed by retention.\nOn restart, unfinished jobs become failed with an explicit restart message; completed results remain retrievable.\nCancellation does not roll back prior changes.\n\nWork in the same conversation is serialized.\nUp to 32 agent jobs may be active on the server, with 24 unviewed requests in the phone/watch notification list.\nRetrieved results remain cached on the phone.\nFailed/canceled entries can be dismissed.\nRestoring the original endpoint is required to check a job after changing servers, so a new server token is never sent to an old endpoint.\n\nThe streaming `/v1/agent` endpoint is used by the standalone client and demo protocol.\nThe watch uses the job routes.\nReverse proxies must route `/v1/jobs/` as well; a shorter proxy timeout only ends the completion wait, not the work.\n\n## Internet-facing deployment\n\nKeep the Go listener on `127.0.0.1` when a reverse proxy runs on the same host.\nTerminate TLS at that proxy, disable response buffering for `/v1/agent`, permit WebSocket upgrades if using WSS, and forward `Authorization`.\nThe service already sends `Cache-Control: no-store` and `X-Accel-Buffering: no`.\n\nDo not expose an unencrypted bearer token over the public internet.\nThe service is designed for one trusted operator's Codex account; it is not a multi-tenant authorization or billing boundary.\n\n## Useful flags\n\nRun `codey-server -h` for the complete set.\nCommon options include:\n\n```text\n--listen 127.0.0.1:8787\n--model gpt-6-luna\n--effort xhigh\n--connect-timeout 5s\n--turn-timeout 0\n--job-retention 0\n--state /absolute/path/sessions.json\n--workspace /absolute/path/empty-workspace\n--log-level debug|info|warn|error\n--log-file /absolute/path/server.log\n```\n\nThe workspace defaults to `~/.codey/workspace`. Collection data lives in\n`~/.codey/data`, job/session state in `~/.codey`, and logs in `~/.codey/server.log`.\nIt becomes the writable root only when workspace writes are selected in phone settings.\nRead-only and workspace-write modes allow reads outside that root; no-user-files mode restricts reads to minimal runtime paths.\n\n## Dashboard status\n\nThe authenticated `GET /v1/status` endpoint reads Codex app-server telemetry on demand.\n`remainingPercent` is the lowest remaining percentage across the primary and secondary windows of `rateLimitsByLimitId[\"codex\"]` from `account/rateLimits/read`.\nIt is quota remaining, not context-window capacity.\nMissing quota data is `null`, including accounts without reported limits.\n\n`activeThreads` counts loaded threads whose current status is `active`, using `thread/loaded/list` and metadata-only `thread/read` calls.\nIt covers the connected app-server instance, including its threads outside codey.\nThe state is `working` when any thread is active, `idle` otherwise, and `error` for a thread system error.\nUnavailable status/counts remain unknown.\nThe endpoint has a 15-second deadline.\n\nThe phone fetches at startup and at most once per minute using the existing watch tick; unchanged telemetry sends no additional watch packet.\nDashboard rendering keeps its existing passive minute limit.\nThe time button shows battery charge at the top left and the sleeping/thinking pictograph with active thread count at the top right.\nThe brain and quota remaining sit below the text in the Talk to codey button.\nThere is no separate dashboard status bar.\nUnknown values display dashes and a question face.\nThe pictographs are drawn directly because the watch system font does not supply emoji glyphs.\n\nProtocol reference: [Codex app-server](https://learn.chatgpt.com/docs/app-server).\n\n## Durable notes and to-dos\n\nThe collection API starts independently of Codex. Configure `--data-dir` and\n`CODEY_TOKEN`; optional `--integrations-config` enables provider management.\nSee [collection server operations](collections-server-operations.md) for OAuth,\nNextcloud setup, encryption keys, backup, restore, and recovery.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -1596,7 +1638,7 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-18T18:50:27.855393374Z"
+      "modified_at": "2026-09-22T20:23:15.514292691Z"
     },
     {
       "id": "01a091eb-4965-7451-8490-4bb90faa9ae5",
@@ -1619,10 +1661,10 @@
     {
       "id": "01a091eb-4971-78b2-b568-152e2036ab39",
       "slug": "reference/internal/agent/prompt",
-      "version": 6,
+      "version": 7,
       "doc_type": "reference",
       "title": "internal/agent/prompt.md",
-      "content": "You are codey, a general assistant on a small watch. Use permitted tools to carry out requests and verify results; never claim unsupported actions or invent facts. Search when the user asks or current information is needed. The untrusted watch request supplies speech, selected actions/values, screen context and device time. Continue the current conversation.\n\nReturn only a PAM document, starting with `pam version=1`. No Markdown fences or prose outside PAM. Quote all display text. A basic answer is:\n\npam version=1\nscreen id=answer layout=card title=\"Answer\" status=true\n  text id=body value=\"Your concise answer\"\ndone\n\nFor interactive choices, forms, local actions, sliders/dials, or advanced capabilities, read the pam-ui skill at the path below and only its relevant references before composing the screen. Every question/form must include a \"Dictate answer\" action with `action=local.answer`. Concrete delay choices can execute locally without another agent turn. Use root capabilities for fully specified device actions, not a simulated success screen. Never turn an untimed todo or note into a reminder merely to store it. Notes use the native note capability (add/edit/list); consult the protocol reference for safe edit targeting. Ask user questions through PAM, not an app-server user-input tool.\n",
+      "content": "Source: `internal/agent/prompt.md`\n\nYou are codey, a general assistant on a small watch. Use permitted tools to carry out requests and verify results; never claim unsupported actions or invent facts. Search when the user asks or current information is needed. The untrusted watch request supplies speech, selected actions/values, screen context and device time. Continue the current conversation.\n\nFor app preference changes, read the pam-ui settings reference and emit a settings capability. The request's settings node supplies saved preferences; backend changes apply to later requests.\n\nReturn only a PAM document, starting with `pam version=1`. No Markdown fences or prose outside PAM. Quote all display text. A basic answer is:\n\npam version=1\nscreen id=answer layout=card title=\"Answer\" status=true\n  text id=body value=\"Your concise answer\"\ndone\n\nFor interactive choices, forms, local actions, sliders/dials, or advanced capabilities, read the pam-ui skill at the path below and only its relevant references before composing the screen. Every question/form must include a \"Dictate answer\" action with `action=local.answer`. Concrete delay choices can execute locally without another agent turn. Use root capabilities for fully specified device actions, not a simulated success screen. Never turn an untimed todo or note into a reminder merely to store it. Calendar events use the calendar capability (add/list), with explicit start/end times; read the protocol reference for required fields and use device time for relative dates. Notes use the native note capability (add/edit/list); consult the protocol reference for safe edit targeting. Ask user questions through PAM, not an app-server user-input tool.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -1632,7 +1674,7 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-13T17:47:20.512106254Z"
+      "modified_at": "2026-09-20T02:16:58.266696682Z"
     },
     {
       "id": "01a091eb-4925-72e2-a4c7-6c4fc5b284e8",
@@ -1654,6 +1696,711 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a0cadc-828d-7b50-bd92-1e29895dd28a",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Record GPT-6 Luna deployment and large-store migration delay",
+      "created_at": "2026-09-22T20:44:04.073985399Z",
+      "changes": [
+        {
+          "document_id": "01a0cad9-62e5-70f2-9266-4a4b9776d45b",
+          "slug": "issues/bound-collection-migration-startup",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "c34e58b8ea09f42c9a680ed90bcb13d909aa1c8258b81eda745952da9efe6449",
+          "doc_type": "task",
+          "title": "Bound collection schema migration startup time"
+        },
+        {
+          "document_id": "01a091f6-6759-7d51-8645-6a6c40097e31",
+          "slug": "issues/configure-codex-backend",
+          "change_type": "modified",
+          "previous_commit_id": "01a0cac9-75f4-7552-adff-8eddccc08087",
+          "previous_version": 4,
+          "new_version": 5,
+          "hunks": [
+            {
+              "old_start": 10,
+              "old_count": 6,
+              "new_start": 10,
+              "new_count": 7,
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "- [x] KB documentation imported, code indexed, and portable backup restore verified."
+                },
+                {
+                  "op": "context",
+                  "content": "- [x] Defaults updated to Luna / xhigh / fast and live web search; fast-mode toggle maps to per-turn fast/default service tier. Saved explicit settings are preserved. Full tests and real Codex fast-mode smoke test passed; server and watch updated."
+                },
+                {
+                  "op": "context",
+                  "content": "- [x] 2026-09-22: Set new phone and server model defaults to `gpt-6-luna`; kept explicit saved selections and `CODEY_MODEL` overrides. JavaScript unit, settings integration, and focused Go tests passed."
+                },
+                {
+                  "op": "add",
+                  "content": "- [x] 2026-09-22: Full `npm test` and release watch build passed. Installed the release PBW through the connected phone; restarted `codey.service`. After the one-time collection schema migration, `/healthz` returned 200 and `/v1/models` reported `gpt-6-luna` / `xhigh`. See [[issues/bound-collection-migration-startup]] for the startup delay."
+                },
+                {
+                  "op": "context",
+                  "content": "- [ ] Publish the settings page. Push to nick1udwig/pebble-agent requires explicit user approval following automatic approval review rejection. Until publication, the hosted settings page retains its previous controls."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Implementation detail: turn/start must inherit the thread-local resolved permission"
+                }
+              ]
+            }
+          ],
+          "content_hash": "59711034560bd399532e04093aed0be9914340e3d8601c603ed96926578ca149",
+          "previous_hash": "91e657082f809d557f03e7ed79e3440454fd5b07230ee53bc29aed83e35cabd3",
+          "doc_type": "task",
+          "title": "Configure Codex models and permissions from phone settings"
+        }
+      ]
+    },
+    {
+      "id": "01a0cac9-75f4-7552-adff-8eddccc08087",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Update GPT-6 Luna model defaults and documentation",
+      "created_at": "2026-09-22T20:23:15.514292691Z",
+      "changes": [
+        {
+          "document_id": "01a091f6-6759-7d51-8645-6a6c40097e31",
+          "slug": "issues/configure-codex-backend",
+          "change_type": "modified",
+          "previous_commit_id": "01a09244-46b2-7733-894f-4d21571bf957",
+          "previous_version": 3,
+          "new_version": 4,
+          "hunks": [
+            {
+              "old_start": 9,
+              "old_count": 6,
+              "new_start": 9,
+              "new_count": 7,
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "- [x] Running tmux server updated while preserving its environment; watch installed."
+                },
+                {
+                  "op": "context",
+                  "content": "- [x] KB documentation imported, code indexed, and portable backup restore verified."
+                },
+                {
+                  "op": "context",
+                  "content": "- [x] Defaults updated to Luna / xhigh / fast and live web search; fast-mode toggle maps to per-turn fast/default service tier. Saved explicit settings are preserved. Full tests and real Codex fast-mode smoke test passed; server and watch updated."
+                },
+                {
+                  "op": "add",
+                  "content": "- [x] 2026-09-22: Set new phone and server model defaults to `gpt-6-luna`; kept explicit saved selections and `CODEY_MODEL` overrides. JavaScript unit, settings integration, and focused Go tests passed."
+                },
+                {
+                  "op": "context",
+                  "content": "- [ ] Publish the settings page. Push to nick1udwig/pebble-agent requires explicit user approval following automatic approval review rejection. Until publication, the hosted settings page retains its previous controls."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Implementation detail: turn/start must inherit the thread-local resolved permission"
+                }
+              ]
+            }
+          ],
+          "content_hash": "91e657082f809d557f03e7ed79e3440454fd5b07230ee53bc29aed83e35cabd3",
+          "previous_hash": "e1ccd3c3aea2693747e0bac33833de9a3b5f231efe60d17b24beb0c89963d9cd",
+          "doc_type": "task",
+          "title": "Configure Codex models and permissions from phone settings"
+        },
+        {
+          "document_id": "01a091eb-493e-7da2-a8aa-cf6e205ef385",
+          "slug": "reference/docs/backend",
+          "change_type": "modified",
+          "previous_commit_id": "01a09be1-7c80-74a1-a40c-82d1b7878077",
+          "previous_version": 4,
+          "new_version": 5,
+          "hunks": [
+            {
+              "old_start": 86,
+              "old_count": 7,
+              "new_start": 86,
+              "new_count": 7,
+              "context": "## Codex settings",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "The Go backend accepts an optional request child such as:"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "```pam"
+                },
+                {
+                  "op": "delete",
+                  "content": "  backend model=gpt-5.6-luna effort=xhigh fast_mode=true web_search=live file_access=none network_access=false shell_access=false auto_review=false"
+                },
+                {
+                  "op": "add",
+                  "content": "  backend model=gpt-6-luna effort=xhigh fast_mode=true web_search=live file_access=none network_access=false shell_access=false auto_review=false"
+                },
+                {
+                  "op": "context",
+                  "content": "```"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "These are configuration attributes, not model instructions. The Go parser validates"
+                }
+              ]
+            }
+          ],
+          "content_hash": "a41ff5690478220d35f59b5230395495369516aa8ff00f3ae38a6f991debf42b",
+          "previous_hash": "8d047603ce74b8d5cb3a2952a81853a667856961fe1c7f4745359f3ebc002326",
+          "doc_type": "reference",
+          "title": "docs/backend.md"
+        },
+        {
+          "document_id": "01a091eb-4958-7731-a829-5a501e760d31",
+          "slug": "reference/docs/server",
+          "change_type": "modified",
+          "previous_commit_id": "01a0b5db-12b5-7bc0-96bd-19e7354e5206",
+          "previous_version": 18,
+          "new_version": 19,
+          "hunks": [
+            {
+              "old_start": 121,
+              "old_count": 7,
+              "new_start": 121,
+              "new_count": 7,
+              "context": "## Codex configuration",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "Defaults:"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "```text"
+                },
+                {
+                  "op": "delete",
+                  "content": "model:  gpt-5.6-luna"
+                },
+                {
+                  "op": "add",
+                  "content": "model:  gpt-6-luna"
+                },
+                {
+                  "op": "context",
+                  "content": "effort: xhigh"
+                },
+                {
+                  "op": "context",
+                  "content": "fast:   on"
+                },
+                {
+                  "op": "context",
+                  "content": "```"
+                }
+              ]
+            },
+            {
+              "old_start": 130,
+              "old_count": 7,
+              "new_start": 130,
+              "new_count": 7,
+              "context": "## Codex configuration",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "```sh"
+                },
+                {
+                  "op": "context",
+                  "content": "./build/codey-server \\"
+                },
+                {
+                  "op": "delete",
+                  "content": "  --model gpt-5.6-luna \\"
+                },
+                {
+                  "op": "add",
+                  "content": "  --model gpt-6-luna \\"
+                },
+                {
+                  "op": "context",
+                  "content": "  --effort xhigh"
+                },
+                {
+                  "op": "context",
+                  "content": "```"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                }
+              ]
+            },
+            {
+              "old_start": 139,
+              "old_count": 7,
+              "new_start": 139,
+              "new_count": 7,
+              "context": "## Codex configuration",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "Phone settings can override the model and effort for each request."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "The phone settings provide model and effort selection plus web search (disabled, cached, live), filesystem access (runtime files only, read-only, workspace writes), command execution, command network access, and automatic approval review."
+                },
+                {
+                  "op": "delete",
+                  "content": "Phone settings default to Luna / xhigh, fast mode, and live web search."
+                },
+                {
+                  "op": "add",
+                  "content": "Phone settings default to GPT-6 Luna / xhigh, fast mode, and live web search."
+                },
+                {
+                  "op": "context",
+                  "content": "Commands, user-file access, command network access, and auto-review remain off."
+                },
+                {
+                  "op": "context",
+                  "content": "Older callers without a backend node retain disabled web search."
+                },
+                {
+                  "op": "context",
+                  "content": "Missing fast_mode defaults on."
+                }
+              ]
+            },
+            {
+              "old_start": 303,
+              "old_count": 7,
+              "new_start": 303,
+              "new_count": 7,
+              "context": "## Useful flags",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "```text"
+                },
+                {
+                  "op": "context",
+                  "content": "--listen 127.0.0.1:8787"
+                },
+                {
+                  "op": "delete",
+                  "content": "--model gpt-5.6-luna"
+                },
+                {
+                  "op": "add",
+                  "content": "--model gpt-6-luna"
+                },
+                {
+                  "op": "context",
+                  "content": "--effort xhigh"
+                },
+                {
+                  "op": "context",
+                  "content": "--connect-timeout 5s"
+                },
+                {
+                  "op": "context",
+                  "content": "--turn-timeout 0"
+                }
+              ]
+            }
+          ],
+          "content_hash": "b24f7210efa74753337f40b1079be75d9ea4cb1b3152f99962154033e61a8c32",
+          "previous_hash": "77c7ac36d5026a5e5e5245ee0501e11dcaa21d56406f4d48424053d008756d37",
+          "doc_type": "reference",
+          "title": "docs/server.md"
+        }
+      ]
+    },
+    {
+      "id": "01a0bc9a-37b9-7c20-9692-1bb99e69d8b9",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Add PAM settings capability and agent guidance [[issues/pam-settings]]",
+      "created_at": "2026-09-20T02:16:58.266696682Z",
+      "changes": [
+        {
+          "document_id": "01a0bc94-4883-7680-b359-be02f4c5a492",
+          "slug": "issues/pam-settings",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "f32cdc92a8b40dec5a3f1ed3b4fcbb927fb3b08069449052953d971ba366c8d6",
+          "doc_type": "task",
+          "title": "Change preferences through PAM and expose settings guidance to the agent"
+        },
+        {
+          "document_id": "01a091eb-494b-70e2-a1ae-cedae4248f70",
+          "slug": "reference/docs/protocol",
+          "change_type": "modified",
+          "previous_commit_id": "01a0b5b5-150f-7d13-8c6a-be32f91c60e6",
+          "previous_version": 19,
+          "new_version": 20,
+          "hunks": [
+            {
+              "old_start": 92,
+              "old_count": 6,
+              "new_start": 92,
+              "new_count": 32,
+              "context": "### `capability`",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Invokes a registered phone-side or watch-side module. See [Capabilities](#capabilities)."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "#### Settings"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "```pam"
+                },
+                {
+                  "op": "add",
+                  "content": "pam version=1"
+                },
+                {
+                  "op": "add",
+                  "content": "capability type=settings command=set key=double_tap value=false"
+                },
+                {
+                  "op": "add",
+                  "content": "capability type=settings command=set key=effort value=high"
+                },
+                {
+                  "op": "add",
+                  "content": "done"
+                },
+                {
+                  "op": "add",
+                  "content": "```"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "The phone persists each update on result arrival, sends watch preferences, and"
+                },
+                {
+                  "op": "add",
+                  "content": "refreshes weather for units changes. Completed updates have durable job receipts"
+                },
+                {
+                  "op": "add",
+                  "content": "and are not reapplied when the result is opened; the phone renders the saved-value"
+                },
+                {
+                  "op": "add",
+                  "content": "confirmation. Failed saves remain retryable. Multiple lines are separate updates."
+                },
+                {
+                  "op": "add",
+                  "content": "Backend changes apply on subsequent requests, subject to server restrictions."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Supported keys and values are defined in the agent's"
+                },
+                {
+                  "op": "add",
+                  "content": "[settings reference](../internal/agent/skills/pam-ui/references/settings.md)."
+                },
+                {
+                  "op": "add",
+                  "content": "Only `type`, `command`, `key`, `value`, and optional `id` are accepted. Credentials,"
+                },
+                {
+                  "op": "add",
+                  "content": "endpoint, sync setup, and tool/approval permissions remain in phone settings."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Requests may include a `settings` child of `request` containing the eight editable"
+                },
+                {
+                  "op": "add",
+                  "content": "preferences using the same keys. It is preserved in the model-facing request;"
+                },
+                {
+                  "op": "add",
+                  "content": "authentication and backend policy nodes are still excluded. Old clients may omit"
+                },
+                {
+                  "op": "add",
+                  "content": "it. Values describe saved preferences at submission time, not effective backend"
+                },
+                {
+                  "op": "add",
+                  "content": "configuration. Empty model/effort overrides are represented as `default`."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "## Layouts"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "- `text` — long prose, explanations, and logs; scrolls by default."
+                }
+              ]
+            }
+          ],
+          "content_hash": "49a8a70693e2c18fa98e2b6433c92a9616412caaefff3d0eb4d0db31f6c88f51",
+          "previous_hash": "26bf6033b5a232d3b8c01e96656e27a20bdbf45bb40fc082d55d48c6578d317e",
+          "doc_type": "reference",
+          "title": "docs/protocol.md"
+        },
+        {
+          "document_id": "01a09bc6-8200-7a03-932c-76782a4a3e2c",
+          "slug": "reference/docs/user-guide",
+          "change_type": "modified",
+          "previous_commit_id": "01a0b537-b292-7f40-bdc3-f37d9cf81190",
+          "previous_version": 13,
+          "new_version": 14,
+          "hunks": [
+            {
+              "old_start": 185,
+              "old_count": 6,
+              "new_start": 185,
+              "new_count": 12,
+              "context": "## Voice settings and calendar shortcuts",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "to cached,” and “set model to default.” Codey shows the saved value. Credentials"
+                },
+                {
+                  "op": "context",
+                  "content": "and backend account setup remain in phone settings."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "You can also ask the agent conversationally to change these preferences, including"
+                },
+                {
+                  "op": "add",
+                  "content": "in a follow-up answer. It can change multiple preferences in one response. Changes"
+                },
+                {
+                  "op": "add",
+                  "content": "are saved when the result arrives; open the result to see the saved value. Model,"
+                },
+                {
+                  "op": "add",
+                  "content": "effort, fast mode, and search changes apply to subsequent requests. File, network,"
+                },
+                {
+                  "op": "add",
+                  "content": "shell, and approval permissions still require phone settings."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "“Calendar: Lunch tomorrow at noon for an hour” and “make an event: Lunch"
+                },
+                {
+                  "op": "context",
+                  "content": "tomorrow at noon for an hour” save locally parsed events. Use today, tomorrow,"
+                },
+                {
+                  "op": "context",
+                  "content": "or an explicit YYYY-MM-DD date, an explicit clock time, and a duration."
+                }
+              ]
+            }
+          ],
+          "content_hash": "23610ee1e2691ed60cd1152519652a07fe94bdcde49d15bb735c6361119dfcef",
+          "previous_hash": "c38f21fbaf0eea80e78ee3786f5ac03d978923871de681cb99945983613b49ec",
+          "doc_type": "reference",
+          "title": "docs/user-guide.md"
+        },
+        {
+          "document_id": "01a091eb-4971-78b2-b568-152e2036ab39",
+          "slug": "reference/internal/agent/prompt",
+          "change_type": "modified",
+          "previous_commit_id": "01a09be1-7c80-74a1-a40c-82d1b7878077",
+          "previous_version": 6,
+          "new_version": 7,
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 3,
+              "new_start": 1,
+              "new_count": 5,
+              "lines": [
+                {
+                  "op": "add",
+                  "content": "Source: `internal/agent/prompt.md`"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "You are codey, a general assistant on a small watch. Use permitted tools to carry out requests and verify results; never claim unsupported actions or invent facts. Search when the user asks or current information is needed. The untrusted watch request supplies speech, selected actions/values, screen context and device time. Continue the current conversation."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Return only a PAM document, starting with `pam version=1`. No Markdown fences or prose outside PAM. Quote all display text. A basic answer is:"
+                }
+              ]
+            },
+            {
+              "old_start": 1,
+              "old_count": 5,
+              "new_start": 2,
+              "new_count": 8,
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "You are codey, a general assistant on a small watch. Use permitted tools to carry out requests and verify results; never claim unsupported actions or invent facts. Search when the user asks or current information is needed. The untrusted watch request supplies speech, selected actions/values, screen context and device time. Continue the current conversation."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "For app preference changes, read the pam-ui settings reference and emit a settings capability. The request's settings node supplies saved preferences; backend changes apply to later requests."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Return only a PAM document, starting with `pam version=1`. No Markdown fences or prose outside PAM. Quote all display text. A basic answer is:"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "pam version=1"
+                }
+              ]
+            },
+            {
+              "old_start": 7,
+              "old_count": 4,
+              "new_start": 11,
+              "new_count": 4,
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "  text id=body value=\"Your concise answer\""
+                },
+                {
+                  "op": "context",
+                  "content": "done"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "delete",
+                  "content": "For interactive choices, forms, local actions, sliders/dials, or advanced capabilities, read the pam-ui skill at the path below and only its relevant references before composing the screen. Every question/form must include a \"Dictate answer\" action with `action=local.answer`. Concrete delay choices can execute locally without another agent turn. Use root capabilities for fully specified device actions, not a simulated success screen. Never turn an untimed todo or note into a reminder merely to store it. Notes use the native note capability (add/edit/list); consult the protocol reference for safe edit targeting. Ask user questions through PAM, not an app-server user-input tool."
+                },
+                {
+                  "op": "add",
+                  "content": "For interactive choices, forms, local actions, sliders/dials, or advanced capabilities, read the pam-ui skill at the path below and only its relevant references before composing the screen. Every question/form must include a \"Dictate answer\" action with `action=local.answer`. Concrete delay choices can execute locally without another agent turn. Use root capabilities for fully specified device actions, not a simulated success screen. Never turn an untimed todo or note into a reminder merely to store it. Calendar events use the calendar capability (add/list), with explicit start/end times; read the protocol reference for required fields and use device time for relative dates. Notes use the native note capability (add/edit/list); consult the protocol reference for safe edit targeting. Ask user questions through PAM, not an app-server user-input tool."
+                }
+              ]
+            }
+          ],
+          "content_hash": "e47748d7f86e23c784cebe01d16955d871060ed2b44621a332aac2139e9a9601",
+          "previous_hash": "d5a86f998b416cebc33de177c3566405c8590810b8d55dc0d164b999147bae11",
+          "doc_type": "reference",
+          "title": "internal/agent/prompt.md"
+        }
+      ]
+    },
     {
       "id": "01a0b7f6-d376-7033-84c3-18f89db1c425",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
