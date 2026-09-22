@@ -55,6 +55,7 @@ func New(config Config) *Server {
 		server.mux.Handle("/integrations/", config.Integrations)
 	}
 	server.mux.HandleFunc("/healthz", server.health)
+	server.mux.HandleFunc("/v1/capabilities", server.capabilities)
 	server.mux.HandleFunc("/v1/jobs/", server.job)
 	server.mux.HandleFunc("/v1/models", server.models)
 	server.mux.HandleFunc("/v1/status", server.status)
@@ -65,6 +66,21 @@ func New(config Config) *Server {
 
 func (server *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	server.mux.ServeHTTP(response, request)
+}
+
+func (server *Server) capabilities(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Cache-Control", "no-store")
+	if request.Method != http.MethodGet {
+		response.Header().Set("Allow", "GET")
+		http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !server.authorized(headerToken(request), "") {
+		http.Error(response, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	response.Header().Set("Content-Type", "application/json")
+	_, _ = io.WriteString(response, `{"protocol_version":1,"features":["request.settings"]}`+"\n")
 }
 
 func (server *Server) root(response http.ResponseWriter, request *http.Request) {

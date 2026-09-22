@@ -9,6 +9,7 @@ var Capabilities = require("../common/capabilities");
 var Weather = require("../common/weather");
 var DashboardStatus = require("../common/dashboard-status");
 var LocalDictation = require("../common/local-dictation");
+var ServerFeatures = require("../common/server-features");
 
 var Key = WatchProtocol.Key;
 var settings = Settings.load();
@@ -20,6 +21,7 @@ var watchReady = false;
 var failedDeliveries = {};
 var sessionId = loadSessionId();
 var commandSequence = loadCommandSequence();
+var serverFeatures = new ServerFeatures.ServerFeatures(typeof XMLHttpRequest !== "undefined" ? XMLHttpRequest : null);
 var collectionController = require("./collection-controller")({
  storage:localStorage, XMLHttpRequest:typeof XMLHttpRequest!=="undefined"?XMLHttpRequest:null,
  settings:function(){return settings;}, enqueue:function(message){watchQueue.enqueue(message);},
@@ -388,7 +390,7 @@ function requestAgent(input) {
     pipeline.finishAnswer();
     return;
   }
-  try { jobPresentation.submit({
+  var agentRequest = {
     id: requestId,
     session: sessionId,
     endpoint: settings.endpoint,
@@ -411,8 +413,15 @@ function requestAgent(input) {
       now: Math.floor(now.getTime() / 1000),
       utc_offset_minutes: -now.getTimezoneOffset()
     }
-  }); }
-  catch(error) { jobPresentation.send({id:"pending",title:input.text || "Agent request",status:"failed",error:error.message},false); }
+  };
+  serverFeatures.get(agentRequest.endpoint, agentRequest.token, function(supportsSettings) {
+    if (settings.endpoint !== agentRequest.endpoint || settings.token !== agentRequest.token) {
+      sendStatus("Server settings changed. Try the request again.", "error", requestId);
+      return;
+    }
+    try { jobPresentation.submit(ServerFeatures.prepare(agentRequest, supportsSettings)); }
+    catch(error) { jobPresentation.send({id:"pending",title:input.text || "Agent request",status:"failed",error:error.message},false); }
+  });
 
 }
 
@@ -440,6 +449,7 @@ function handleWatchMessage(event) {
     watchReady = true;
     lastWeatherMessage = "";
     lastDashboardStatus="";dashboardStatus.last=null;dashboardStatus.refresh();
+    serverFeatures.get(settings.endpoint, settings.token, function() {});
     jobPresentation.ready();
     sendConnection();
     refreshWeather();

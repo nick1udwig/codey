@@ -59,6 +59,17 @@ Client.prototype.request = function(method, path, body, done, recovery) {
     xhr.setRequestHeader("Content-Type", "application/json");
     xhr.onload = function() {
       var v;
+      if (xhr.status === 404 && path === "/v1/sync/info") {
+        var unsupported = new Error("Collections require a newer codey-server. Upgrade the server to use Notes, To Do, and Calendar.");
+        unsupported.code = "unsupported_server";
+        unsupported.status = 404;
+        finish(unsupported);
+        return;
+      }
+      if (xhr.status === 404 && path === "/v1/integration-setup-sessions") {
+        finish(new Error("Sync setup requires a newer codey-server."));
+        return;
+      }
       try {
         v = JSON.parse(xhr.responseText);
       } catch (_) {
@@ -150,7 +161,7 @@ Client.prototype.collection = function(kind) {
   var c = list.filter(function(c) {
     return c.kind === kind;
   })[0];
-  if (!c) throw new Error("Connect collection server first.");
+  if (!c) throw new Error(kind === "event" ? "Calendar requires a newer codey-server." : "This collection is unavailable on this server.");
   return c;
 };
 

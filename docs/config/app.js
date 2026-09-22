@@ -109,6 +109,11 @@
       var option = document.createElement("option"); option.value = model.model;
       option.textContent = model.displayName || model.model; list.appendChild(option);
     });
+    if (extraFields.codexModel.value === defaults.codexModel &&
+        !catalog.models.some(function(model) { return model.model === defaults.codexModel; })) {
+      extraFields.codexModel.value = "";
+      extraFields.codexEffort.value = "";
+    }
     updateEfforts();
     modelStatus.textContent = "Server default: " + catalog.defaultModel + " / " + catalog.defaultEffort + ". Select a model or leave blank.";
   }

@@ -1,7 +1,21 @@
 {
   "version": 1,
-  "created_at": "2026-09-22T20:52:29.111605830+00:00",
+  "created_at": "2026-09-22T21:19:37.741401883+00:00",
   "documents": [
+    {
+      "id": "01a0cafa-2f1d-77d1-a542-cb82bccbe101",
+      "slug": "issues/watch-server-version-compat/keep-v0-2-watch-requests-compatible-with-v0-1-code",
+      "version": 3,
+      "doc_type": "task",
+      "title": "Keep v0.2 watch requests compatible with v0.1 codey-server",
+      "content": "## Context\nThe v0.2 phone bridge sends a new PAM settings child on every agent job. A pre-settings v0.1 server rejects this unknown node, and the v0.2 default model may be absent from the older model catalog.\n\n## Acceptance criteria\n- An older server still accepts agent jobs and local watch controls remain available.\n- The phone sends settings only when the server advertises support; uncertain discovery uses a conservative request.\n- The current app default model and effort fall back to the older server defaults; explicit older model choices remain usable.\n- Missing collection routes or a missing Calendar collection produce clear upgrade messages.\n- Focused compatibility tests and the full repository suite pass.\n\n## Completion evidence\nThe server now advertises support for the request settings node. The phone probes once per endpoint and credential, omits that node for older servers, and falls back to server model defaults when the newer app default is selected. Missing collection API and Calendar support report upgrade messages. `npm test`, the follow-up 14-test integration run, and `npm run build:watch` pass. The actual published v0.1.0 binary was unavailable locally; compatibility was checked against the pre-settings parser source and a simulated legacy endpoint.\n",
+      "frontmatter": {
+        "status": "completed",
+        "priority": "medium"
+      },
+      "created_at": "2026-09-22T21:17:38.111192828Z",
+      "modified_at": "2026-09-22T21:19:37.466206477Z"
+    },
     {
       "id": "01a0cad9-62e5-70f2-9266-4a4b9776d45b",
       "slug": "issues/bound-collection-migration-startup",
@@ -1625,10 +1639,10 @@
     {
       "id": "01a091eb-4958-7731-a829-5a501e760d31",
       "slug": "reference/docs/server",
-      "version": 19,
+      "version": 21,
       "doc_type": "reference",
       "title": "docs/server.md",
-      "content": "Source: `docs/server.md`\n\n# Codex-backed agent server\n\n`codey-server` is the real self-hosted PAM endpoint.\nIt accepts a watch request over streaming HTTP or the `pam.v1` WebSocket subprotocol, runs the corresponding conversation turn through Codex app-server, validates the model's PAM one complete line at a time, and streams those lines to the phone.\n\n## Release installation\n\nSee the [one-line installer](../README.md#run-the-agent-service) for prebuilt Linux and Apple Silicon binaries.\nGo is only needed for source builds.\nPublishing a GitHub release triggers `.github/workflows/release-server.yml`, which tests the service, cross-compiles five targets and attaches binaries, `SHA256SUMS`, and `install.sh`.\nRelease asset uploads require mutable releases; repositories enforcing immutable releases need to attach assets before publishing.\n\nThe installer verifies SHA-256 checksums and installs into `~/.local/bin`.\nRelease targets are Linux x86-64, x86 (32-bit), ARMv7, ARM64, and macOS Apple Silicon.\nSet `CODEY_VERSION=vX.Y.Z` to select a specific release.\nOn Linux, the generated token is saved in `~/.config/codey/environment` (or under `$XDG_CONFIG_HOME`).\nThe service starts with the user manager, normally at login.\nNoninteractive installs do not enable a service.\n\nThe installer offers a systemd **user** unit on Linux and otherwise prints manual instructions.\nIt never uses sudo or enables lingering.\nConfigure a reverse proxy or VPN to reach the default loopback listener from the phone.\nUse `systemctl --user edit codey.service` to customize the unit.\nStop and disable it with `systemctl --user disable --now codey.service`.\n\n## Prerequisites\n\n- Go 1.24 or newer to build the binary.\n- A current Codex CLI on `PATH`.\n- A working Codex CLI login on the same operating-system account that runs the service.\n- A TLS reverse proxy, VPN, or trusted private network through which the paired phone can reach the service.\n\nBuild and start it:\n\n```sh\ngo build -o build/codey-server ./cmd/codey-server\nexport CODEY_TOKEN=\"replace-with-a-long-random-secret\"\n./build/codey-server --listen 0.0.0.0:8787\n```\n\nSet the watchapp server URL to `http://SERVER:8787` and enter the same token.\n`POST /` is also accepted, but `/v1/agent` is the stable endpoint.\n`GET /healthz` reports process health.\n\nThe server refuses a non-loopback listener when `CODEY_TOKEN` is empty.\n`--allow-unauthenticated-public` exists for tightly controlled development environments, but it is deliberately explicit.\nThe bearer token is read from an environment variable rather than a command-line value so it is not exposed in a process listing.\n\n## Private phone access with Tailscale\n\nInstall [Tailscale](https://tailscale.com/docs/how-to/quickstart) on the backend computer and phone, sign into the same tailnet, and connect the phone's Tailscale VPN.\nThe example below runs the backend in tmux and publishes the `/codey/` path over private HTTPS on port **443**.\n\n### Run the server in tmux\n\nInstall tmux with your package manager and install the agent server as described above.\nIf the installer started a systemd service, stop it with `systemctl --user stop codey.service` before running the same backend in tmux.\nCreate a session:\n\n```sh\ntmux new-session -s codey\n```\n\nInside that session, set a long random token and start the server:\n\n```sh\nexport CODEY_TOKEN=\"replace-with-a-long-random-secret\"\n~/.local/bin/codey-server --listen 127.0.0.1:8787\n```\n\nFor a source build, use `./build/codey-server` from the repository root instead.\nKeep the token for the phone settings; when replacing an installed service, you can reuse the token from `~/.config/codey/environment`.\nPress **Ctrl-b**, then **d** to detach while the server keeps running.\nUse `tmux attach-session -t codey` to return, and **Ctrl-c** to stop the server.\nTmux does not restart the backend after a crash or reboot; use the installed systemd service for automatic startup.\nSee the [tmux manual](https://man.openbsd.org/tmux) for session controls.\n\n### Serve at /codey on port 443\n\nIn another terminal on the backend computer:\n\n```sh\ncurl --fail http://127.0.0.1:8787/healthz\ntailscale serve --bg --https=443 --set-path=/codey/ http://127.0.0.1:8787\ntailscale serve status\n```\n\nUse `sudo` for Tailscale commands if required, and follow any consent link to enable HTTPS and MagicDNS.\nUse the full hostname printed by Serve and save this endpoint in codey's phone settings, together with the token:\n\n```text\nhttps://MACHINE.TAILNET.ts.net/codey\n```\n\nThis adds `/codey/` alongside an existing site at `/` on port 443.\nThe client appends API routes beneath this base URL, and Serve strips `/codey` before forwarding to the backend.\n[Serve](https://tailscale.com/docs/reference/tailscale-cli/serve) stays private to your tailnet and persists with `--bg`; leave public Funnel sharing disabled.\nTo remove this endpoint, run `tailscale serve --bg --https=443 --set-path=/codey/ off`.\n\n### Verify from the phone\n\nOpen `https://MACHINE.TAILNET.ts.net/codey/healthz` in the phone browser to check connectivity.\nThen use **Load available models** in codey settings with the token saved and make a watch request.\nRepeat over cellular with Tailscale connected.\nKeep the backend computer awake; if access fails, check the VPN, server logs, and [tailnet rules](https://tailscale.com/docs/features/access-control) for TCP port 443.\nKeep bearer authentication enabled and limit access to your intended users or devices.\nHTTPS certificates publish the hostname in certificate transparency logs; see [certificate setup](https://tailscale.com/docs/how-to/set-up-https-certificates).\n\n## Server URLs\n\nEnter a base URL such as `foo.com/bar/baz/biz`; an omitted scheme defaults to HTTPS.\nThe client uses `https://foo.com/bar/baz/biz/v1/jobs/`, `/v1/models`, `/v1/status`, and `/v1/agent` beneath the same base path.\nExisting URLs ending in `/v1/agent` are also accepted, and trailing slashes are ignored.\nHTTP, HTTPS, WS, and WSS are supported; job, model, and status calls use the corresponding HTTP scheme.\nUse the separate token field for credentials; URL credentials, queries, and fragments are rejected.\n\n## Codex configuration\n\nDefaults:\n\n```text\nmodel:  gpt-6-luna\neffort: xhigh\nfast:   on\n```\n\nSet them when the process starts:\n\n```sh\n./build/codey-server \\\n  --model gpt-6-luna \\\n  --effort xhigh\n```\n\nThe corresponding environment variables are `CODEY_MODEL` and `CODEY_EFFORT`.\nThese values are server defaults.\nPhone settings can override the model and effort for each request.\n\nThe phone settings provide model and effort selection plus web search (disabled, cached, live), filesystem access (runtime files only, read-only, workspace writes), command execution, command network access, and automatic approval review.\nPhone settings default to GPT-6 Luna / xhigh, fast mode, and live web search.\nCommands, user-file access, command network access, and auto-review remain off.\nOlder callers without a backend node retain disabled web search.\nMissing fast_mode defaults on.\nPermission settings do not affect local timers, alarms, dictation, phone weather, or the transport connection to Codex.\n\n`GET /v1/models` uses the same bearer authentication and returns the installed Codex `model/list` catalog, including supported reasoning efforts and server defaults.\nIt supports cross-origin requests from the static settings page using an explicit Authorization header and no cookies.\nA custom model with blank effort uses that model's advertised default; blank model and effort use server defaults.\nUnsupported selections produce an error rather than silently changing models.\nThe phone bridge preloads model choices before opening settings, including for local HTTP/WS endpoints.\nThe page also has a refresh button; browser refresh may be blocked as mixed content for HTTP endpoints.\nIn that case, save the endpoint and reopen settings to load through the phone bridge.\n\nFast mode is sent as the allowlisted `fast_mode=true|false` backend attribute.\nEach turn requests `serviceTierForTurn=fast` or `default`, so turning it off does not inherit a previous fast tier.\nFast mode changes preserve the conversation.\nCodex maps fast to priority processing; model/account availability still applies.\nExisting saved preferences are preserved when defaults change.\n\nPermission options are allowlisted PAM `backend` attributes, excluded from the model-facing document.\nThey resolve to a thread-local named Codex permission profile.\nNo user files grants only the platform's minimal runtime paths; read-only allows file reads; workspace-write additionally grants writes under `--workspace`.\nCommand execution and network access are independent.\nShells inherit only core environment variables.\nProject instruction files and memory injection are disabled.\nInherited MCP servers, plugins, and app tools are disabled because their privileges are not controlled by the local command sandbox.\n\nAuto-review off means `approvalPolicy=never` and `approvalsReviewer=user`: operations requiring additional permission are denied.\nAuto-review on means `on-request` and `auto_review`: Codex may review and approve exceptions beyond the selected baseline.\nIt is not blanket approval.\nUnexpected interactive client requests are rejected; there is no manual approval UI on the watch.\nManaged server restrictions remain in force and can reject requested settings.\n\nPermission profiles are isolated by session, workspace, and permission settings.\nChanging permissions uses a separate conversation; returning to a previous profile resumes its conversation.\nModel/effort changes keep the same conversation.\nLegacy threads without a recorded permission profile are not reused.\nEach turn inherits the resolved thread permissions; it must not re-send the thread-local profile name, which app-server otherwise resolves against global disk config.\n\nThis implementation was verified with Codex CLI 0.153.2 and its generated app-server schema.\nNamed permissions use the experimental API handshake; unsupported servers fail explicitly.\nSee the official [app-server documentation](https://learn.chatgpt.com/docs/app-server) and [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).\n\n\n## App-server transport selection\n\nEach connection attempt follows this order:\n\n1. Discover the running daemon with `codex app-server daemon version` and connect to its reported Unix socket using WebSocket-over-Unix-socket.\n   `--app-server-unix /absolute/path.sock` skips discovery.\n2. Start and retain a managed `codex app-server --stdio` child process.\n3. Connect to `--app-server-url`, which defaults to `ws://127.0.0.1:4222`.\n\nUse `CODEY_CODEX` to select another Codex executable, `CODEY_APP_SERVER_UNIX` for an explicit socket, and `CODEY_APP_SERVER_URL` for the fallback URL.\nIf a remote WebSocket app-server requires a bearer token, put it in `CODEX_APP_SERVER_TOKEN` or change the variable name with `--app-server-token-env`.\n\nEvery transport performs the required `initialize` request and `initialized` notification.\nA dropped long-lived connection is re-resolved in the same order on the next request.\nA connection attempt has a five-second per-transport timeout by default.\n\nEvery JSON protocol message sent to or received from Codex app-server is logged at `info` with `direction=to_app_server` or `direction=from_app_server`, the selected transport, and the complete raw payload.\nThis includes dictated prompts, model output deltas, thread metadata, errors, and any server requests or client responses.\nPhone endpoint bearer credentials are consumed at the HTTP/WebSocket boundary and are never forwarded in the model-facing PAM document.\n\n## Logs and rotation\n\nStart runtime debugging with:\n\n```text\n~/.codey/server.log\n```\n\nThe server mirrors its structured stderr output into that file.\nBefore a complete log record would take the active file past 10 MiB (10,485,760 bytes), it rotates the file.\nIt retains five backups: `server.log.1` is newest and `server.log.5` is oldest.\nA single record larger than 10 MiB remains intact.\nThe active log is created with mode `0600`, and a newly created `.codey` directory is private to the current user.\n\nSet `CODEY_LOG_FILE` or use `--log-file /absolute/path` to choose a different file.\nUse `--log-file -` to log only to stderr.\nThe payloads are intentionally not content-redacted, so protect the active file and every backup as sensitive conversation data.\n\nThese logs prove what crossed the Go server/Codex boundary.\nIf they show a completed, valid PAM response but the watchapp exits, collect Pebble watch logs next: that failure is downstream in the phone bridge, AppMessage delivery, or native watch process.\n\n## Conversations and streaming\n\nThe PAM `request.session` value and permission profile map to a persisted Codex thread.\nThe default state path is `~/.codey/sessions.json`; use `--state /absolute/path.json`\nto move it. Session mappings are now stored incrementally in that path plus `.db`\n(`~/.codey/sessions.json.db`), with mode `0600`, WAL journaling and synchronous\ncommits. On first open, the server imports an existing version-1 JSON snapshot in\none transaction and leaves the original file untouched. After migration, the\nSQLite database is authoritative, including deletions; restarting never imports\nthe stale JSON again. Back up the `.db` with a SQLite-consistent backup, or stop\nthe server before copying the database and any remaining `-wal`/`-shm` sidecars.\nDo not downgrade expecting the original JSON to contain newer conversations.\nHistorical mappings are retained so old job results can reopen their conversation.\nRestarting either service resumes the thread.\nIf Codex no longer has a persisted thread, the mapping is discarded and a new one is created.\n\nOnly final-answer agent-message deltas are forwarded.\nCommentary is ignored.\nOutput is limited to 128 KiB, 2,048 bytes per line, 96 PAM nodes, eight indentation levels, and 48 screen elements.\nLayouts, element kinds, bindings, patches, removals, and built-in capability commands are allowlisted before each line is flushed.\nInvalid output becomes a valid root PAM `error` instead of arbitrary bytes reaching the watch.\nA missing final `done` is supplied for an otherwise valid screen.\n\nAgent execution is unlimited by default (`--turn-timeout 0`).\nA positive duration sets an execution deadline independent of the phone notification window.\n\n## Persistent request jobs\n\nThe phone generates and saves a 30-character hexadecimal ID before submitting PAM to `POST /v1/jobs/{id}`.\nThe server persists the accepted job before replying with JSON.\nRepeating the ID and identical request returns that job; a different request using the same ID receives HTTP 409.\nAll job routes use the same bearer authentication as `/v1/agent`.\n\n- `GET /v1/jobs/{id}` returns status and a completed PAM result, if available.\n- `GET /v1/jobs/{id}?wait=45` waits once for completion, bounded to 120 seconds.\n  Disconnecting this GET never cancels the job.\n  The phone uses one wait and makes no further automatic polls after it expires.\n  Opening Notifications explicitly refreshes all ongoing jobs once; overlapping checks for the same job are coalesced.\n  This batch never opens result screens or buzzes.\n- `POST /v1/jobs/{id}/cancel` explicitly cancels the work.\n  The transitional `canceling` status becomes `canceled` after execution unwinds.\n- `POST /v1/jobs/{id}/ack` releases the server result only after the phone has cached it and the watch confirms presentation.\n  The ID/hash remain as a deduplication tombstone.\n\nJobs are stored as private JSON files beside session state, under `jobs/`.\nUnretrieved results have no expiry by default.\n`--job-retention 168h` expires terminal jobs seven days after completion, whether retrieved or not; cleanup runs every minute and during lookups/submissions.\nThe finite retention setting also bounds tombstone lifetime and therefore the duplicate-submission guarantee.\nRunning jobs are never removed by retention.\nOn restart, unfinished jobs become failed with an explicit restart message; completed results remain retrievable.\nCancellation does not roll back prior changes.\n\nWork in the same conversation is serialized.\nUp to 32 agent jobs may be active on the server, with 24 unviewed requests in the phone/watch notification list.\nRetrieved results remain cached on the phone.\nFailed/canceled entries can be dismissed.\nRestoring the original endpoint is required to check a job after changing servers, so a new server token is never sent to an old endpoint.\n\nThe streaming `/v1/agent` endpoint is used by the standalone client and demo protocol.\nThe watch uses the job routes.\nReverse proxies must route `/v1/jobs/` as well; a shorter proxy timeout only ends the completion wait, not the work.\n\n## Internet-facing deployment\n\nKeep the Go listener on `127.0.0.1` when a reverse proxy runs on the same host.\nTerminate TLS at that proxy, disable response buffering for `/v1/agent`, permit WebSocket upgrades if using WSS, and forward `Authorization`.\nThe service already sends `Cache-Control: no-store` and `X-Accel-Buffering: no`.\n\nDo not expose an unencrypted bearer token over the public internet.\nThe service is designed for one trusted operator's Codex account; it is not a multi-tenant authorization or billing boundary.\n\n## Useful flags\n\nRun `codey-server -h` for the complete set.\nCommon options include:\n\n```text\n--listen 127.0.0.1:8787\n--model gpt-6-luna\n--effort xhigh\n--connect-timeout 5s\n--turn-timeout 0\n--job-retention 0\n--state /absolute/path/sessions.json\n--workspace /absolute/path/empty-workspace\n--log-level debug|info|warn|error\n--log-file /absolute/path/server.log\n```\n\nThe workspace defaults to `~/.codey/workspace`. Collection data lives in\n`~/.codey/data`, job/session state in `~/.codey`, and logs in `~/.codey/server.log`.\nIt becomes the writable root only when workspace writes are selected in phone settings.\nRead-only and workspace-write modes allow reads outside that root; no-user-files mode restricts reads to minimal runtime paths.\n\n## Dashboard status\n\nThe authenticated `GET /v1/status` endpoint reads Codex app-server telemetry on demand.\n`remainingPercent` is the lowest remaining percentage across the primary and secondary windows of `rateLimitsByLimitId[\"codex\"]` from `account/rateLimits/read`.\nIt is quota remaining, not context-window capacity.\nMissing quota data is `null`, including accounts without reported limits.\n\n`activeThreads` counts loaded threads whose current status is `active`, using `thread/loaded/list` and metadata-only `thread/read` calls.\nIt covers the connected app-server instance, including its threads outside codey.\nThe state is `working` when any thread is active, `idle` otherwise, and `error` for a thread system error.\nUnavailable status/counts remain unknown.\nThe endpoint has a 15-second deadline.\n\nThe phone fetches at startup and at most once per minute using the existing watch tick; unchanged telemetry sends no additional watch packet.\nDashboard rendering keeps its existing passive minute limit.\nThe time button shows battery charge at the top left and the sleeping/thinking pictograph with active thread count at the top right.\nThe brain and quota remaining sit below the text in the Talk to codey button.\nThere is no separate dashboard status bar.\nUnknown values display dashes and a question face.\nThe pictographs are drawn directly because the watch system font does not supply emoji glyphs.\n\nProtocol reference: [Codex app-server](https://learn.chatgpt.com/docs/app-server).\n\n## Durable notes and to-dos\n\nThe collection API starts independently of Codex. Configure `--data-dir` and\n`CODEY_TOKEN`; optional `--integrations-config` enables provider management.\nSee [collection server operations](collections-server-operations.md) for OAuth,\nNextcloud setup, encryption keys, backup, restore, and recovery.\n",
+      "content": "Source: `docs/server.md`\n\n# Codex-backed agent server\n\n`codey-server` is the real self-hosted PAM endpoint.\nIt accepts a watch request over streaming HTTP or the `pam.v1` WebSocket subprotocol, runs the corresponding conversation turn through Codex app-server, validates the model's PAM one complete line at a time, and streams those lines to the phone.\n\n## Release installation\n\nSee the [one-line installer](../README.md#run-the-agent-service) for prebuilt Linux and Apple Silicon binaries.\nGo is only needed for source builds.\nPublishing a GitHub release triggers `.github/workflows/release-server.yml`, which tests the service, cross-compiles five targets and attaches binaries, `SHA256SUMS`, and `install.sh`.\nRelease asset uploads require mutable releases; repositories enforcing immutable releases need to attach assets before publishing.\n\nThe installer verifies SHA-256 checksums and installs into `~/.local/bin`.\nRelease targets are Linux x86-64, x86 (32-bit), ARMv7, ARM64, and macOS Apple Silicon.\nSet `CODEY_VERSION=vX.Y.Z` to select a specific release.\nOn Linux, the generated token is saved in `~/.config/codey/environment` (or under `$XDG_CONFIG_HOME`).\nThe service starts with the user manager, normally at login.\nNoninteractive installs do not enable a service.\n\nThe installer offers a systemd **user** unit on Linux and otherwise prints manual instructions.\nIt never uses sudo or enables lingering.\nConfigure a reverse proxy or VPN to reach the default loopback listener from the phone.\nUse `systemctl --user edit codey.service` to customize the unit.\nStop and disable it with `systemctl --user disable --now codey.service`.\n\n## Prerequisites\n\n- Go 1.24 or newer to build the binary.\n- A current Codex CLI on `PATH`.\n- A working Codex CLI login on the same operating-system account that runs the service.\n- A TLS reverse proxy, VPN, or trusted private network through which the paired phone can reach the service.\n\nBuild and start it:\n\n```sh\ngo build -o build/codey-server ./cmd/codey-server\nexport CODEY_TOKEN=\"replace-with-a-long-random-secret\"\n./build/codey-server --listen 0.0.0.0:8787\n```\n\nSet the watchapp server URL to `http://SERVER:8787` and enter the same token.\n`POST /` is also accepted, but `/v1/agent` is the stable endpoint.\n`GET /healthz` reports process health.\n\nThe server refuses a non-loopback listener when `CODEY_TOKEN` is empty.\n`--allow-unauthenticated-public` exists for tightly controlled development environments, but it is deliberately explicit.\nThe bearer token is read from an environment variable rather than a command-line value so it is not exposed in a process listing.\n\n## Private phone access with Tailscale\n\nInstall [Tailscale](https://tailscale.com/docs/how-to/quickstart) on the backend computer and phone, sign into the same tailnet, and connect the phone's Tailscale VPN.\nThe example below runs the backend in tmux and publishes the `/codey/` path over private HTTPS on port **443**.\n\n### Run the server in tmux\n\nInstall tmux with your package manager and install the agent server as described above.\nIf the installer started a systemd service, stop it with `systemctl --user stop codey.service` before running the same backend in tmux.\nCreate a session:\n\n```sh\ntmux new-session -s codey\n```\n\nInside that session, set a long random token and start the server:\n\n```sh\nexport CODEY_TOKEN=\"replace-with-a-long-random-secret\"\n~/.local/bin/codey-server --listen 127.0.0.1:8787\n```\n\nFor a source build, use `./build/codey-server` from the repository root instead.\nKeep the token for the phone settings; when replacing an installed service, you can reuse the token from `~/.config/codey/environment`.\nPress **Ctrl-b**, then **d** to detach while the server keeps running.\nUse `tmux attach-session -t codey` to return, and **Ctrl-c** to stop the server.\nTmux does not restart the backend after a crash or reboot; use the installed systemd service for automatic startup.\nSee the [tmux manual](https://man.openbsd.org/tmux) for session controls.\n\n### Serve at /codey on port 443\n\nIn another terminal on the backend computer:\n\n```sh\ncurl --fail http://127.0.0.1:8787/healthz\ntailscale serve --bg --https=443 --set-path=/codey/ http://127.0.0.1:8787\ntailscale serve status\n```\n\nUse `sudo` for Tailscale commands if required, and follow any consent link to enable HTTPS and MagicDNS.\nUse the full hostname printed by Serve and save this endpoint in codey's phone settings, together with the token:\n\n```text\nhttps://MACHINE.TAILNET.ts.net/codey\n```\n\nThis adds `/codey/` alongside an existing site at `/` on port 443.\nThe client appends API routes beneath this base URL, and Serve strips `/codey` before forwarding to the backend.\n[Serve](https://tailscale.com/docs/reference/tailscale-cli/serve) stays private to your tailnet and persists with `--bg`; leave public Funnel sharing disabled.\nTo remove this endpoint, run `tailscale serve --bg --https=443 --set-path=/codey/ off`.\n\n### Verify from the phone\n\nOpen `https://MACHINE.TAILNET.ts.net/codey/healthz` in the phone browser to check connectivity.\nThen use **Load available models** in codey settings with the token saved and make a watch request.\nRepeat over cellular with Tailscale connected.\nKeep the backend computer awake; if access fails, check the VPN, server logs, and [tailnet rules](https://tailscale.com/docs/features/access-control) for TCP port 443.\nKeep bearer authentication enabled and limit access to your intended users or devices.\nHTTPS certificates publish the hostname in certificate transparency logs; see [certificate setup](https://tailscale.com/docs/how-to/set-up-https-certificates).\n\n## Server URLs\n\nEnter a base URL such as `foo.com/bar/baz/biz`; an omitted scheme defaults to HTTPS.\nThe client uses `https://foo.com/bar/baz/biz/v1/jobs/`, `/v1/models`, `/v1/status`, and `/v1/agent` beneath the same base path.\nExisting URLs ending in `/v1/agent` are also accepted, and trailing slashes are ignored.\nHTTP, HTTPS, WS, and WSS are supported; job, model, and status calls use the corresponding HTTP scheme.\nUse the separate token field for credentials; URL credentials, queries, and fragments are rejected.\n\n## Older server compatibility\n\nThe v0.2 phone bridge checks authenticated `GET /v1/capabilities` before its first\nagent request. The current server returns `{\"protocol_version\":1,\"features\":[\"request.settings\"]}`.\nAn older server without this route returns 404; the bridge then omits the newer\nPAM `settings` request node and uses that server's default model and effort when\nthe app still has its v0.2 defaults selected. Explicitly selected older models\ncontinue to use the existing model and effort overrides. A failed check also\nuses the conservative request format and is retried on a later request.\n\nAgent jobs and local watch controls continue through their existing routes.\nIf an older server lacks collection sync, opening Notes, To Do, or Calendar\nshows an upgrade message. A server with Notes and To Do but no Calendar\ncollection reports that Calendar needs a newer server. A missing status route leaves dashboard telemetry\nunknown. To use agent-driven preference changes and collection sync, upgrade\n`codey-server` to a version that supports those features.\n\n## Codex configuration\n\nDefaults:\n\n```text\nmodel:  gpt-6-luna\neffort: xhigh\nfast:   on\n```\n\nSet them when the process starts:\n\n```sh\n./build/codey-server \\\n  --model gpt-6-luna \\\n  --effort xhigh\n```\n\nThe corresponding environment variables are `CODEY_MODEL` and `CODEY_EFFORT`.\nThese values are server defaults.\nPhone settings can override the model and effort for each request.\n\nThe phone settings provide model and effort selection plus web search (disabled, cached, live), filesystem access (runtime files only, read-only, workspace writes), command execution, command network access, and automatic approval review.\nPhone settings default to GPT-6 Luna / xhigh, fast mode, and live web search.\nCommands, user-file access, command network access, and auto-review remain off.\nOlder callers without a backend node retain disabled web search.\nMissing fast_mode defaults on.\nPermission settings do not affect local timers, alarms, dictation, phone weather, or the transport connection to Codex.\n\n`GET /v1/models` uses the same bearer authentication and returns the installed Codex `model/list` catalog, including supported reasoning efforts and server defaults.\nIt supports cross-origin requests from the static settings page using an explicit Authorization header and no cookies.\nA custom model with blank effort uses that model's advertised default; blank model and effort use server defaults.\nUnsupported selections produce an error rather than silently changing models.\nThe phone bridge preloads model choices before opening settings, including for local HTTP/WS endpoints.\nThe page also has a refresh button; browser refresh may be blocked as mixed content for HTTP endpoints.\nIn that case, save the endpoint and reopen settings to load through the phone bridge.\n\nFast mode is sent as the allowlisted `fast_mode=true|false` backend attribute.\nEach turn requests `serviceTierForTurn=fast` or `default`, so turning it off does not inherit a previous fast tier.\nFast mode changes preserve the conversation.\nCodex maps fast to priority processing; model/account availability still applies.\nExisting saved preferences are preserved when defaults change.\n\nPermission options are allowlisted PAM `backend` attributes, excluded from the model-facing document.\nThey resolve to a thread-local named Codex permission profile.\nNo user files grants only the platform's minimal runtime paths; read-only allows file reads; workspace-write additionally grants writes under `--workspace`.\nCommand execution and network access are independent.\nShells inherit only core environment variables.\nProject instruction files and memory injection are disabled.\nInherited MCP servers, plugins, and app tools are disabled because their privileges are not controlled by the local command sandbox.\n\nAuto-review off means `approvalPolicy=never` and `approvalsReviewer=user`: operations requiring additional permission are denied.\nAuto-review on means `on-request` and `auto_review`: Codex may review and approve exceptions beyond the selected baseline.\nIt is not blanket approval.\nUnexpected interactive client requests are rejected; there is no manual approval UI on the watch.\nManaged server restrictions remain in force and can reject requested settings.\n\nPermission profiles are isolated by session, workspace, and permission settings.\nChanging permissions uses a separate conversation; returning to a previous profile resumes its conversation.\nModel/effort changes keep the same conversation.\nLegacy threads without a recorded permission profile are not reused.\nEach turn inherits the resolved thread permissions; it must not re-send the thread-local profile name, which app-server otherwise resolves against global disk config.\n\nThis implementation was verified with Codex CLI 0.153.2 and its generated app-server schema.\nNamed permissions use the experimental API handshake; unsupported servers fail explicitly.\nSee the official [app-server documentation](https://learn.chatgpt.com/docs/app-server) and [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).\n\n\n## App-server transport selection\n\nEach connection attempt follows this order:\n\n1. Discover the running daemon with `codex app-server daemon version` and connect to its reported Unix socket using WebSocket-over-Unix-socket.\n   `--app-server-unix /absolute/path.sock` skips discovery.\n2. Start and retain a managed `codex app-server --stdio` child process.\n3. Connect to `--app-server-url`, which defaults to `ws://127.0.0.1:4222`.\n\nUse `CODEY_CODEX` to select another Codex executable, `CODEY_APP_SERVER_UNIX` for an explicit socket, and `CODEY_APP_SERVER_URL` for the fallback URL.\nIf a remote WebSocket app-server requires a bearer token, put it in `CODEX_APP_SERVER_TOKEN` or change the variable name with `--app-server-token-env`.\n\nEvery transport performs the required `initialize` request and `initialized` notification.\nA dropped long-lived connection is re-resolved in the same order on the next request.\nA connection attempt has a five-second per-transport timeout by default.\n\nEvery JSON protocol message sent to or received from Codex app-server is logged at `info` with `direction=to_app_server` or `direction=from_app_server`, the selected transport, and the complete raw payload.\nThis includes dictated prompts, model output deltas, thread metadata, errors, and any server requests or client responses.\nPhone endpoint bearer credentials are consumed at the HTTP/WebSocket boundary and are never forwarded in the model-facing PAM document.\n\n## Logs and rotation\n\nStart runtime debugging with:\n\n```text\n~/.codey/server.log\n```\n\nThe server mirrors its structured stderr output into that file.\nBefore a complete log record would take the active file past 10 MiB (10,485,760 bytes), it rotates the file.\nIt retains five backups: `server.log.1` is newest and `server.log.5` is oldest.\nA single record larger than 10 MiB remains intact.\nThe active log is created with mode `0600`, and a newly created `.codey` directory is private to the current user.\n\nSet `CODEY_LOG_FILE` or use `--log-file /absolute/path` to choose a different file.\nUse `--log-file -` to log only to stderr.\nThe payloads are intentionally not content-redacted, so protect the active file and every backup as sensitive conversation data.\n\nThese logs prove what crossed the Go server/Codex boundary.\nIf they show a completed, valid PAM response but the watchapp exits, collect Pebble watch logs next: that failure is downstream in the phone bridge, AppMessage delivery, or native watch process.\n\n## Conversations and streaming\n\nThe PAM `request.session` value and permission profile map to a persisted Codex thread.\nThe default state path is `~/.codey/sessions.json`; use `--state /absolute/path.json`\nto move it. Session mappings are now stored incrementally in that path plus `.db`\n(`~/.codey/sessions.json.db`), with mode `0600`, WAL journaling and synchronous\ncommits. On first open, the server imports an existing version-1 JSON snapshot in\none transaction and leaves the original file untouched. After migration, the\nSQLite database is authoritative, including deletions; restarting never imports\nthe stale JSON again. Back up the `.db` with a SQLite-consistent backup, or stop\nthe server before copying the database and any remaining `-wal`/`-shm` sidecars.\nDo not downgrade expecting the original JSON to contain newer conversations.\nHistorical mappings are retained so old job results can reopen their conversation.\nRestarting either service resumes the thread.\nIf Codex no longer has a persisted thread, the mapping is discarded and a new one is created.\n\nOnly final-answer agent-message deltas are forwarded.\nCommentary is ignored.\nOutput is limited to 128 KiB, 2,048 bytes per line, 96 PAM nodes, eight indentation levels, and 48 screen elements.\nLayouts, element kinds, bindings, patches, removals, and built-in capability commands are allowlisted before each line is flushed.\nInvalid output becomes a valid root PAM `error` instead of arbitrary bytes reaching the watch.\nA missing final `done` is supplied for an otherwise valid screen.\n\nAgent execution is unlimited by default (`--turn-timeout 0`).\nA positive duration sets an execution deadline independent of the phone notification window.\n\n## Persistent request jobs\n\nThe phone generates and saves a 30-character hexadecimal ID before submitting PAM to `POST /v1/jobs/{id}`.\nThe server persists the accepted job before replying with JSON.\nRepeating the ID and identical request returns that job; a different request using the same ID receives HTTP 409.\nAll job routes use the same bearer authentication as `/v1/agent`.\n\n- `GET /v1/jobs/{id}` returns status and a completed PAM result, if available.\n- `GET /v1/jobs/{id}?wait=45` waits once for completion, bounded to 120 seconds.\n  Disconnecting this GET never cancels the job.\n  The phone uses one wait and makes no further automatic polls after it expires.\n  Opening Notifications explicitly refreshes all ongoing jobs once; overlapping checks for the same job are coalesced.\n  This batch never opens result screens or buzzes.\n- `POST /v1/jobs/{id}/cancel` explicitly cancels the work.\n  The transitional `canceling` status becomes `canceled` after execution unwinds.\n- `POST /v1/jobs/{id}/ack` releases the server result only after the phone has cached it and the watch confirms presentation.\n  The ID/hash remain as a deduplication tombstone.\n\nJobs are stored as private JSON files beside session state, under `jobs/`.\nUnretrieved results have no expiry by default.\n`--job-retention 168h` expires terminal jobs seven days after completion, whether retrieved or not; cleanup runs every minute and during lookups/submissions.\nThe finite retention setting also bounds tombstone lifetime and therefore the duplicate-submission guarantee.\nRunning jobs are never removed by retention.\nOn restart, unfinished jobs become failed with an explicit restart message; completed results remain retrievable.\nCancellation does not roll back prior changes.\n\nWork in the same conversation is serialized.\nUp to 32 agent jobs may be active on the server, with 24 unviewed requests in the phone/watch notification list.\nRetrieved results remain cached on the phone.\nFailed/canceled entries can be dismissed.\nRestoring the original endpoint is required to check a job after changing servers, so a new server token is never sent to an old endpoint.\n\nThe streaming `/v1/agent` endpoint is used by the standalone client and demo protocol.\nThe watch uses the job routes.\nReverse proxies must route `/v1/jobs/` as well; a shorter proxy timeout only ends the completion wait, not the work.\n\n## Internet-facing deployment\n\nKeep the Go listener on `127.0.0.1` when a reverse proxy runs on the same host.\nTerminate TLS at that proxy, disable response buffering for `/v1/agent`, permit WebSocket upgrades if using WSS, and forward `Authorization`.\nThe service already sends `Cache-Control: no-store` and `X-Accel-Buffering: no`.\n\nDo not expose an unencrypted bearer token over the public internet.\nThe service is designed for one trusted operator's Codex account; it is not a multi-tenant authorization or billing boundary.\n\n## Useful flags\n\nRun `codey-server -h` for the complete set.\nCommon options include:\n\n```text\n--listen 127.0.0.1:8787\n--model gpt-6-luna\n--effort xhigh\n--connect-timeout 5s\n--turn-timeout 0\n--job-retention 0\n--state /absolute/path/sessions.json\n--workspace /absolute/path/empty-workspace\n--log-level debug|info|warn|error\n--log-file /absolute/path/server.log\n```\n\nThe workspace defaults to `~/.codey/workspace`. Collection data lives in\n`~/.codey/data`, job/session state in `~/.codey`, and logs in `~/.codey/server.log`.\nIt becomes the writable root only when workspace writes are selected in phone settings.\nRead-only and workspace-write modes allow reads outside that root; no-user-files mode restricts reads to minimal runtime paths.\n\n## Dashboard status\n\nThe authenticated `GET /v1/status` endpoint reads Codex app-server telemetry on demand.\n`remainingPercent` is the lowest remaining percentage across the primary and secondary windows of `rateLimitsByLimitId[\"codex\"]` from `account/rateLimits/read`.\nIt is quota remaining, not context-window capacity.\nMissing quota data is `null`, including accounts without reported limits.\n\n`activeThreads` counts loaded threads whose current status is `active`, using `thread/loaded/list` and metadata-only `thread/read` calls.\nIt covers the connected app-server instance, including its threads outside codey.\nThe state is `working` when any thread is active, `idle` otherwise, and `error` for a thread system error.\nUnavailable status/counts remain unknown.\nThe endpoint has a 15-second deadline.\n\nThe phone fetches at startup and at most once per minute using the existing watch tick; unchanged telemetry sends no additional watch packet.\nDashboard rendering keeps its existing passive minute limit.\nThe time button shows battery charge at the top left and the sleeping/thinking pictograph with active thread count at the top right.\nThe brain and quota remaining sit below the text in the Talk to codey button.\nThere is no separate dashboard status bar.\nUnknown values display dashes and a question face.\nThe pictographs are drawn directly because the watch system font does not supply emoji glyphs.\n\nProtocol reference: [Codex app-server](https://learn.chatgpt.com/docs/app-server).\n\n## Durable notes and to-dos\n\nThe collection API starts independently of Codex. Configure `--data-dir` and\n`CODEY_TOKEN`; optional `--integrations-config` enables provider management.\nSee [collection server operations](collections-server-operations.md) for OAuth,\nNextcloud setup, encryption keys, backup, restore, and recovery.\n",
       "frontmatter": {
         "status": "draft",
         "priority": "medium",
@@ -1638,7 +1652,7 @@
         ]
       },
       "created_at": "2026-09-11T19:22:18.632213499Z",
-      "modified_at": "2026-09-22T20:23:15.514292691Z"
+      "modified_at": "2026-09-22T21:19:37.466206477Z"
     },
     {
       "id": "01a091eb-4965-7451-8490-4bb90faa9ae5",
@@ -1696,6 +1710,337 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a0cafd-10a1-7c83-8a4b-adf726278c03",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Clarify older server Calendar availability",
+      "created_at": "2026-09-22T21:19:37.466206477Z",
+      "changes": [
+        {
+          "document_id": "01a0cafa-2f1d-77d1-a542-cb82bccbe101",
+          "slug": "issues/watch-server-version-compat/keep-v0-2-watch-requests-compatible-with-v0-1-code",
+          "change_type": "modified",
+          "previous_commit_id": "01a0cafc-73aa-7f13-b6f4-cec0072b815c",
+          "previous_version": 2,
+          "new_version": 3,
+          "hunks": [
+            {
+              "old_start": 5,
+              "old_count": 7,
+              "new_start": 5,
+              "new_count": 7,
+              "context": "## Acceptance criteria",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "- An older server still accepts agent jobs and local watch controls remain available."
+                },
+                {
+                  "op": "context",
+                  "content": "- The phone sends settings only when the server advertises support; uncertain discovery uses a conservative request."
+                },
+                {
+                  "op": "context",
+                  "content": "- The current app default model and effort fall back to the older server defaults; explicit older model choices remain usable."
+                },
+                {
+                  "op": "delete",
+                  "content": "- Missing collection routes produce a clear upgrade message."
+                },
+                {
+                  "op": "add",
+                  "content": "- Missing collection routes or a missing Calendar collection produce clear upgrade messages."
+                },
+                {
+                  "op": "context",
+                  "content": "- Focused compatibility tests and the full repository suite pass."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "## Completion evidence"
+                }
+              ]
+            },
+            {
+              "old_start": 9,
+              "old_count": 4,
+              "new_start": 9,
+              "new_count": 4,
+              "context": "## Completion evidence",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "- Focused compatibility tests and the full repository suite pass."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "## Completion evidence"
+                },
+                {
+                  "op": "delete",
+                  "content": "The server now advertises support for the request settings node. The phone probes once per endpoint and credential, omits that node for older servers, and falls back to server model defaults when the newer app default is selected. A missing collection API reports an upgrade message. `npm test`, the follow-up 14-test integration run, and `npm run build:watch` pass. The actual published v0.1.0 binary was unavailable locally; compatibility was checked against the pre-settings parser source and a simulated legacy endpoint."
+                },
+                {
+                  "op": "add",
+                  "content": "The server now advertises support for the request settings node. The phone probes once per endpoint and credential, omits that node for older servers, and falls back to server model defaults when the newer app default is selected. Missing collection API and Calendar support report upgrade messages. `npm test`, the follow-up 14-test integration run, and `npm run build:watch` pass. The actual published v0.1.0 binary was unavailable locally; compatibility was checked against the pre-settings parser source and a simulated legacy endpoint."
+                }
+              ]
+            }
+          ],
+          "content_hash": "ff67a311ef7c3967dacc051c1a12336aa8f30e5554bc78187e513ce15f369f75",
+          "previous_hash": "4599ffb19d1d56c7765f54392a456083fec496d1b6f4deefdb58da4dac54038d",
+          "doc_type": "task",
+          "title": "Keep v0.2 watch requests compatible with v0.1 codey-server"
+        },
+        {
+          "document_id": "01a091eb-4958-7731-a829-5a501e760d31",
+          "slug": "reference/docs/server",
+          "change_type": "modified",
+          "previous_commit_id": "01a0cafb-3e5f-73d2-97d0-65cd1c766906",
+          "previous_version": 20,
+          "new_version": 21,
+          "hunks": [
+            {
+              "old_start": 128,
+              "old_count": 7,
+              "new_start": 128,
+              "new_count": 8,
+              "context": "## Older server compatibility",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Agent jobs and local watch controls continue through their existing routes."
+                },
+                {
+                  "op": "context",
+                  "content": "If an older server lacks collection sync, opening Notes, To Do, or Calendar"
+                },
+                {
+                  "op": "delete",
+                  "content": "shows an upgrade message. A missing status route leaves dashboard telemetry"
+                },
+                {
+                  "op": "add",
+                  "content": "shows an upgrade message. A server with Notes and To Do but no Calendar"
+                },
+                {
+                  "op": "add",
+                  "content": "collection reports that Calendar needs a newer server. A missing status route leaves dashboard telemetry"
+                },
+                {
+                  "op": "context",
+                  "content": "unknown. To use agent-driven preference changes and collection sync, upgrade"
+                },
+                {
+                  "op": "context",
+                  "content": "`codey-server` to a version that supports those features."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                }
+              ]
+            }
+          ],
+          "content_hash": "ea10a8aa5e2a5ddd666ef9cfdafdef26a641a1dcf90c6571a8cf25171c4c0100",
+          "previous_hash": "dcb13e039cbe2f3ed5b1cb8c49e9180253b60901b13b2644739a6c1cd685e7ee",
+          "doc_type": "reference",
+          "title": "docs/server.md"
+        }
+      ]
+    },
+    {
+      "id": "01a0cafc-73aa-7f13-b6f4-cec0072b815c",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Record watch and server compatibility fallback",
+      "created_at": "2026-09-22T21:18:57.432665092Z",
+      "changes": [
+        {
+          "document_id": "01a0cafa-2f1d-77d1-a542-cb82bccbe101",
+          "slug": "issues/watch-server-version-compat/keep-v0-2-watch-requests-compatible-with-v0-1-code",
+          "change_type": "modified",
+          "previous_commit_id": "01a0cafb-3e5f-73d2-97d0-65cd1c766906",
+          "previous_version": 1,
+          "new_version": 2,
+          "hunks": [
+            {
+              "old_start": 9,
+              "old_count": 4,
+              "new_start": 9,
+              "new_count": 4,
+              "context": "## Completion evidence",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "- Focused compatibility tests and the full repository suite pass."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "## Completion evidence"
+                },
+                {
+                  "op": "delete",
+                  "content": "The server now advertises support for the request settings node. The phone probes once per endpoint and credential, omits that node for older servers, and falls back to server model defaults when the newer app default is selected. A missing collection API reports an upgrade message. `npm test`, the follow-up 14-test integration run, and `npm run build:watch` pass. The actual published v0.1.0 binary was unavailable locally, so the regression uses the pre-settings parser and a simulated legacy endpoint."
+                },
+                {
+                  "op": "add",
+                  "content": "The server now advertises support for the request settings node. The phone probes once per endpoint and credential, omits that node for older servers, and falls back to server model defaults when the newer app default is selected. A missing collection API reports an upgrade message. `npm test`, the follow-up 14-test integration run, and `npm run build:watch` pass. The actual published v0.1.0 binary was unavailable locally; compatibility was checked against the pre-settings parser source and a simulated legacy endpoint."
+                }
+              ]
+            }
+          ],
+          "content_hash": "4599ffb19d1d56c7765f54392a456083fec496d1b6f4deefdb58da4dac54038d",
+          "previous_hash": "3279cf6f4e9f40244265f004d0dfa29a45b809719f9a298fd4eb48018d51fd92",
+          "doc_type": "task",
+          "title": "Keep v0.2 watch requests compatible with v0.1 codey-server"
+        }
+      ]
+    },
+    {
+      "id": "01a0cafb-3e5f-73d2-97d0-65cd1c766906",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Record watch and server compatibility fallback",
+      "created_at": "2026-09-22T21:17:38.111192828Z",
+      "changes": [
+        {
+          "document_id": "01a0cafa-2f1d-77d1-a542-cb82bccbe101",
+          "slug": "issues/watch-server-version-compat/keep-v0-2-watch-requests-compatible-with-v0-1-code",
+          "change_type": "created",
+          "previous_version": null,
+          "new_version": 1,
+          "content_hash": "3279cf6f4e9f40244265f004d0dfa29a45b809719f9a298fd4eb48018d51fd92",
+          "doc_type": "task",
+          "title": "Keep v0.2 watch requests compatible with v0.1 codey-server"
+        },
+        {
+          "document_id": "01a091eb-4958-7731-a829-5a501e760d31",
+          "slug": "reference/docs/server",
+          "change_type": "modified",
+          "previous_commit_id": "01a0cac9-75f4-7552-adff-8eddccc08087",
+          "previous_version": 19,
+          "new_version": 20,
+          "hunks": [
+            {
+              "old_start": 116,
+              "old_count": 6,
+              "new_start": 116,
+              "new_count": 22,
+              "context": "## Server URLs",
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "HTTP, HTTPS, WS, and WSS are supported; job, model, and status calls use the corresponding HTTP scheme."
+                },
+                {
+                  "op": "context",
+                  "content": "Use the separate token field for credentials; URL credentials, queries, and fragments are rejected."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "## Older server compatibility"
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "The v0.2 phone bridge checks authenticated `GET /v1/capabilities` before its first"
+                },
+                {
+                  "op": "add",
+                  "content": "agent request. The current server returns `{\"protocol_version\":1,\"features\":[\"request.settings\"]}`."
+                },
+                {
+                  "op": "add",
+                  "content": "An older server without this route returns 404; the bridge then omits the newer"
+                },
+                {
+                  "op": "add",
+                  "content": "PAM `settings` request node and uses that server's default model and effort when"
+                },
+                {
+                  "op": "add",
+                  "content": "the app still has its v0.2 defaults selected. Explicitly selected older models"
+                },
+                {
+                  "op": "add",
+                  "content": "continue to use the existing model and effort overrides. A failed check also"
+                },
+                {
+                  "op": "add",
+                  "content": "uses the conservative request format and is retried on a later request."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Agent jobs and local watch controls continue through their existing routes."
+                },
+                {
+                  "op": "add",
+                  "content": "If an older server lacks collection sync, opening Notes, To Do, or Calendar"
+                },
+                {
+                  "op": "add",
+                  "content": "shows an upgrade message. A missing status route leaves dashboard telemetry"
+                },
+                {
+                  "op": "add",
+                  "content": "unknown. To use agent-driven preference changes and collection sync, upgrade"
+                },
+                {
+                  "op": "add",
+                  "content": "`codey-server` to a version that supports those features."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "## Codex configuration"
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Defaults:"
+                }
+              ]
+            }
+          ],
+          "content_hash": "dcb13e039cbe2f3ed5b1cb8c49e9180253b60901b13b2644739a6c1cd685e7ee",
+          "previous_hash": "b24f7210efa74753337f40b1079be75d9ea4cb1b3152f99962154033e61a8c32",
+          "doc_type": "reference",
+          "title": "docs/server.md"
+        }
+      ]
+    },
     {
       "id": "01a0cae4-28a9-7ae1-8373-0d3b242a55fe",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",

@@ -68,6 +68,32 @@ func TestHTTPAgentAuthenticationAndPAMResponse(t *testing.T) {
 	}
 }
 
+func TestCapabilitiesAdvertiseSupportedRequestNodes(t *testing.T) {
+	server := New(Config{Token: "secret"})
+	for _, tc := range []struct {
+		method string
+		token  string
+		status int
+	}{
+		{http.MethodGet, "", http.StatusUnauthorized},
+		{http.MethodPost, "secret", http.StatusMethodNotAllowed},
+		{http.MethodGet, "secret", http.StatusOK},
+	} {
+		request := httptest.NewRequest(tc.method, "/v1/capabilities", nil)
+		if tc.token != "" {
+			request.Header.Set("Authorization", "Bearer "+tc.token)
+		}
+		recorder := httptest.NewRecorder()
+		server.ServeHTTP(recorder, request)
+		if recorder.Code != tc.status {
+			t.Fatalf("%s status=%d", tc.method, recorder.Code)
+		}
+		if tc.status == http.StatusOK && !strings.Contains(recorder.Body.String(), `"request.settings"`) {
+			t.Fatalf("missing feature: %s", recorder.Body.String())
+		}
+	}
+}
+
 func TestHTTPAgentRejectsMalformedPAMBeforeCallingResponder(t *testing.T) {
 	responder := &responderStub{}
 	request := httptest.NewRequest(http.MethodPost, "/v1/agent", strings.NewReader("not pam\n"))

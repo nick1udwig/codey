@@ -24,6 +24,22 @@ function input(seq){return {ingress:"watch:bridge_a:"+seq,collection_id:"col_not
  var x=requests[0];x.status=200;x.responseText=JSON.stringify({protocol_version:1,server_instance_id:"old",store_epoch:"e"});x.onload();
  assert.match(error.message,/settings changed/);assert.strictEqual(client.journal.data.scope,null);assert.strictEqual(requests.length,1);
 })();
+(function olderServerExplainsMissingCollectionAPI(){
+ var request;
+ function XHR(){request=this;}
+ XHR.prototype.open=function(){};XHR.prototype.setRequestHeader=function(){};XHR.prototype.send=function(){};
+ var client=new Client({storage:storage(),base:function(){return "https://server.test";},token:function(){return "secret";},XMLHttpRequest:XHR});
+ var failure;client.connect(function(e){failure=e;});
+ request.status=404;request.responseText="404 page not found";request.onload();
+ assert.strictEqual(failure.code,"unsupported_server");
+ assert.match(failure.message,/newer codey-server/);
+ assert.strictEqual(client.journal.data.scope,null);
+})();
+(function olderCollectionServerExplainsMissingCalendar(){
+ var client=new Client({storage:storage()});
+ client.collections=[{id:"col_task",kind:"task"},{id:"col_note",kind:"note"}];
+ assert.throws(function(){client.collection("event");},/Calendar requires a newer codey-server/);
+})();
 (function batchReceiptsAreAtomicAndSkipNoops(){
  var f=enrolled(),results=[];
  for(var i=0;i<20;i++){

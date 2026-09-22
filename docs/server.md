@@ -114,6 +114,23 @@ Existing URLs ending in `/v1/agent` are also accepted, and trailing slashes are 
 HTTP, HTTPS, WS, and WSS are supported; job, model, and status calls use the corresponding HTTP scheme.
 Use the separate token field for credentials; URL credentials, queries, and fragments are rejected.
 
+## Older server compatibility
+
+The v0.2 phone bridge checks authenticated `GET /v1/capabilities` before its first
+agent request. The current server returns `{"protocol_version":1,"features":["request.settings"]}`.
+An older server without this route returns 404; the bridge then omits the newer
+PAM `settings` request node and uses that server's default model and effort when
+the app still has its v0.2 defaults selected. Explicitly selected older models
+continue to use the existing model and effort overrides. A failed check also
+uses the conservative request format and is retried on a later request.
+
+Agent jobs and local watch controls continue through their existing routes.
+If an older server lacks collection sync, opening Notes, To Do, or Calendar
+shows an upgrade message. A server with Notes and To Do but no Calendar
+collection reports that Calendar needs a newer server. A missing status route leaves dashboard telemetry
+unknown. To use agent-driven preference changes and collection sync, upgrade
+`codey-server` to a version that supports those features.
+
 ## Codex configuration
 
 Defaults:

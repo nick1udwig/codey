@@ -348,6 +348,27 @@ test("model discovery uses bearer auth and ignores stale endpoint responses", ()
   assert.match(h.elements["model-status"].textContent, /this endpoint/);
 });
 
+test("settings choose the older server default when the new app default is unavailable", () => {
+  let xhr, saved;
+  function XHR() { xhr = this; }
+  XHR.prototype.open = function() {};
+  XHR.prototype.setRequestHeader = function() {};
+  XHR.prototype.send = function() {};
+  const h = runConfig("#" + encodeURIComponent(JSON.stringify({ endpoint: "https://older.test" })),
+    { submit(value) { saved = value; } }, XHR);
+  h.elements["load-models"].handlers.click();
+  xhr.status = 200;
+  xhr.responseText = JSON.stringify({ defaultModel: "older-model", defaultEffort: "high", models: [
+    { model: "older-model", supportedReasoningEfforts: [{ reasoningEffort: "high", description: "Thorough" }] }
+  ] });
+  xhr.onload();
+  assert.equal(h.elements["codex-model"].value, "");
+  assert.equal(h.elements["codex-effort"].value, "");
+  h.submit({ preventDefault() {} });
+  assert.equal(saved.codexModel, "");
+  assert.equal(saved.codexEffort, "");
+});
+
 test("settings browser resolves nested bases and blocks invalid URLs before sending tokens", () => {
   const requests = [];
   function XHR() { this.headers = {}; requests.push(this); }

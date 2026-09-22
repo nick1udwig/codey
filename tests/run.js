@@ -10,6 +10,7 @@ var Capabilities = require("../src/common/capabilities");
 var Weather = require("../src/common/weather");
 var Writer = require("../src/common/writer");
 var LocalDictation = require("../src/common/local-dictation");
+var ServerFeatures = require("../src/common/server-features");
 
 var tests = [];
 
@@ -921,6 +922,16 @@ function loadPkjsHarness(options) {
         this.send = function() {};
         return;
       }
+      if (/\/v1\/capabilities$/.test(url)) {
+        this.setRequestHeader = function() {};
+        this.send = function() {
+          this.status = options.legacyServer ? 404 : 200;
+          this.responseText = options.legacyServer ? "404 page not found" :
+            JSON.stringify({ protocol_version: 1, features: ["request.settings"] });
+          if (this.onload) { this.onload(); }
+        };
+        return;
+      }
       var xhr = new options.XMLHttpRequest();
       xhr.open(method, url, async);
       var self = this;
@@ -1711,6 +1722,54 @@ test("backend preferences persist and reach Codex separately from dictated text"
     assert.deepStrictEqual(Object.assign({}, backend.attrs), { model: "test-model", effort: "high", fast_mode: "true", web_search: "live", file_access: "workspace-write", network_access: "true", shell_access: "true", auto_review: "true" });
     jobReply(h, xhr, "pam version=1\nscreen id=answer layout=card\ndone\n");
   } finally { h.cleanup(); }
+});
+
+test("older servers receive a PAM request without new settings or model defaults", function() {
+  var xhr;
+  function XHR() { xhr = this; }
+  XHR.prototype.open = function(method, url) { this.url = url; };
+  XHR.prototype.setRequestHeader = function() {};
+  XHR.prototype.send = function(body) { this.body = body; };
+  var storage = {};
+  storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test", codexModel: "gpt-6-luna", codexEffort: "xhigh" });
+  var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: XHR, legacyServer: true });
+  try {
+    h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "explain gravity" } });
+    var nodes = parse(xhr.body);
+    assert.strictEqual(nodes.some(function(n) { return n.kind === "settings"; }), false);
+    var backend = nodes.filter(function(n) { return n.kind === "backend"; })[0];
+    assert.strictEqual(backend.attrs.model, "");
+    assert.strictEqual(backend.attrs.effort, "");
+    assert.strictEqual(nodes.filter(function(n) { return n.kind === "input"; })[0].attrs.text, "explain gravity");
+  } finally { h.cleanup(); }
+});
+
+test("server feature checks share in-flight requests and keep endpoint credentials separate", function() {
+  var requests = [];
+  function XHR() { this.headers = {}; requests.push(this); }
+  XHR.prototype.open = function(method, url) { this.url = url; };
+  XHR.prototype.setRequestHeader = function(name, value) { this.headers[name] = value; };
+  XHR.prototype.send = function() {};
+  var features = new ServerFeatures.ServerFeatures(XHR), answers = [];
+  features.get("https://agent.test", "one", function(value) { answers.push(value); });
+  features.get("https://agent.test", "one", function(value) { answers.push(value); });
+  assert.strictEqual(requests.length, 1);
+  assert.strictEqual(requests[0].url, "https://agent.test/v1/capabilities");
+  assert.strictEqual(requests[0].headers.Authorization, "Bearer one");
+  requests[0].status = 404; requests[0].responseText = "404 page not found"; requests[0].onload();
+  assert.deepStrictEqual(answers, [false, false]);
+  features.get("https://agent.test", "one", function(value) { answers.push(value); });
+  assert.strictEqual(requests.length, 1);
+  features.get("https://agent.test", "two", function(value) { answers.push(value); });
+  assert.strictEqual(requests.length, 2);
+  requests[1].status = 200;
+  requests[1].responseText = JSON.stringify({protocol_version:1,features:["request.settings"]});
+  requests[1].onload();
+  assert.deepStrictEqual(answers, [false, false, false, true]);
+  var selected = ServerFeatures.prepare({backend:{model:"older-model",effort:"high"},settings:{units:"metric"}}, false);
+  assert.strictEqual(selected.backend.model, "older-model");
+  assert.strictEqual(selected.backend.effort, "high");
+  assert.strictEqual(selected.settings, undefined);
 });
 
 test("phone configuration fetches model choices before opening HTTPS settings", function() {
