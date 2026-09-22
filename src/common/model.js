@@ -1,5 +1,7 @@
 "use strict";
 
+var Settings = require("./settings");
+
 var LAYOUTS = {
   text: true,
   list: true,
@@ -130,6 +132,10 @@ ScreenModel.prototype.accept = function(node) {
     if (!node.attrs.type || !node.attrs.command) {
       this._fail("capability requires type and command", node);
       return;
+    }
+    if (node.attrs.type === "settings") {
+      try { Settings.parseCapability(node.attrs); }
+      catch (error) { this._fail(error.message, node); return; }
     }
     this._emit("capability", node);
     this.activeScreen = null;

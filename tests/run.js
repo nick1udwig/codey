@@ -1519,6 +1519,109 @@ test("dictated settings persist locally and send updated watch preferences", fun
   } finally {h.cleanup();}
 });
 
+test("PAM settings validate values and expose only editable preferences", function() {
+  var updated = Settings.normalize({ token: "secret", shellAccess: true });
+  [
+    ["double_tap", "false", "doubleTap", false],
+    ["tap_animation", "false", "tapAnimation", false],
+    ["answer_vibrate", "false", "answerVibrate", false],
+    ["fast_mode", "false", "fastMode", false],
+    ["units", "imperial", "units", "imperial"],
+    ["model", "vendor/Model:1", "codexModel", "vendor/Model:1"],
+    ["model", "default", "codexModel", ""],
+    ["effort", "default", "codexEffort", ""],
+    ["effort", "ultra", "codexEffort", "ultra"],
+    ["web_search", "disabled", "webSearch", "disabled"]
+  ].forEach(function(row) {
+    var preference = Settings.parseCapability({type:"settings", command:"set", key:row[0], value:row[1]});
+    assert.strictEqual(preference.patch[row[2]], row[3]);
+    Object.assign(updated, preference.patch);
+  });
+  var visible = Settings.agentPreferences(updated);
+  assert.equal(Object.keys(visible).length, 8);
+  assert.equal(visible.model, "default");
+  assert.equal(visible.double_tap, "false");
+  assert.ok(!JSON.stringify(visible).includes("secret"));
+  assert.equal(visible.shell_access, undefined);
+  [
+    {key:"double_tap", value:"off"}, {key:"units", value:"bananas"},
+    {key:"effort", value:"extreme"}, {key:"web_search", value:"true"},
+    {key:"model", value:""}, {key:"model", value:"bad model"},
+    {key:"model", value:"a".repeat(129)}, {key:"token", value:"secret"},
+    {key:"shell_access", value:"true"}, {key:"auto_review", value:"true"},
+    {key:"__proto__", value:"true"}, {key:"double_tap"}, {value:"true"},
+    {key:"double_tap", value:"false", shell_access:"true"},
+    {command:"toggle", key:"double_tap", value:"true"}
+  ].forEach(function(attrs) {
+    assert.throws(function() { Settings.parseCapability(Object.assign({type:"settings",command:"set"},attrs)); });
+  });
+});
+
+test("PAM settings apply on job arrival, reach future requests, and never replay on opening", function() {
+  var requests = [], storage = {};
+  function XHR() { requests.push(this); }
+  XHR.prototype.open = function(method, url) { this.method=method; this.url=url; };
+  XHR.prototype.setRequestHeader = function() {};
+  XHR.prototype.send = function(body) { this.body=body; };
+  storage[Settings.STORAGE_KEY] = JSON.stringify({endpoint:"https://agent.test",token:"secret",shellAccess:true});
+  var h = loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
+  var id;
+  try {
+    h.handlers.appmessage({payload:{0:"input",2:"dictate-answer",8:"Make double tap optional and use high effort"}});
+    var snapshot = parse(requests[0].body).filter(function(n){return n.kind==="settings";})[0].attrs;
+    assert.equal(snapshot.double_tap,"true"); assert.equal(snapshot.token,undefined);
+    id = jobReply(h, requests[0], 'pam version=1\ncapability type=settings command=set key=double_tap value=false\ncapability type=settings command=set key=effort value=high\ncapability type=settings command=set key=model value=default\ndone\n', "done", false);
+    var saved = Settings.load();
+    assert.equal(saved.doubleTap,false); assert.equal(saved.codexEffort,"high"); assert.equal(saved.codexModel,"");
+    assert.equal(saved.token,"secret"); assert.equal(saved.shellAccess,true);
+    assert.ok(h.sent.some(function(m){return m[0]==="bridge" && m[2]==="preferences" && m[12]===0;}));
+    var job = JSON.parse(storage["pebble-agent.jobs.v1"])[0];
+    assert.deepStrictEqual(job.executed,{0:true,1:true,2:true});
+    h.handlers.appmessage({payload:{0:"input",2:"dictate-answer",8:"What is set now?"}});
+    var nodes = parse(requests[1].body);
+    assert.equal(nodes.filter(function(n){return n.kind==="backend";})[0].attrs.effort,"high");
+    assert.equal(nodes.filter(function(n){return n.kind==="settings";})[0].attrs.model,"default");
+    h.handlers.appmessage({payload:{0:"input",2:"dictation",8:"turn on double tap"}});
+  } finally { h.cleanup(); }
+  h = loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
+  try {
+    h.handlers.appmessage({payload:{0:"capability_event",2:"job",4:id,9:"check"}});
+    assert.equal(Settings.load().doubleTap,true);
+    assert.ok(h.sent.some(function(m){return m[8]==="Saved · Double tap: false";}));
+  } finally { h.cleanup(); }
+});
+
+test("PAM settings failures leave preferences intact and retry without claiming success", function() {
+  var requests = [], storage = {};
+  function XHR() { requests.push(this); }
+  XHR.prototype.open = function() {};
+  XHR.prototype.setRequestHeader = function() {};
+  XHR.prototype.send = function() {};
+  storage[Settings.STORAGE_KEY] = JSON.stringify({endpoint:"https://agent.test"});
+  var h = loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
+  try {
+    h.handlers.appmessage({payload:{0:"input",2:"dictate-answer",8:"Change settings"}});
+    var setItem = global.localStorage.setItem;
+    global.localStorage.setItem = function(key,value) {
+      if(key===Settings.STORAGE_KEY) throw new Error("disk full");
+      setItem(key,value);
+    };
+    var id = jobReply(h,requests[0],'pam version=1\ncapability type=settings command=set key=double_tap value=false\ndone\n',"done",false);
+    assert.equal(Settings.load().doubleTap,true);
+    assert.ok(h.sent.some(function(m){return /disk full/.test(m[8]);}));
+    assert.ok(!h.sent.some(function(m){return /^Saved/.test(m[8]);}));
+    assert.ok(!JSON.parse(storage["pebble-agent.jobs.v1"])[0].executed);
+    global.localStorage.setItem = setItem;
+    h.handlers.appmessage({payload:{0:"capability_event",2:"job",4:id,9:"check"}});
+    assert.equal(Settings.load().doubleTap,false);
+    assert.ok(h.sent.some(function(m){return m[8]==="Saved · Double tap: false";}));
+    h.handlers.appmessage({payload:{0:"input",2:"dictate-answer",8:"Invalid setting"}});
+    // Complete-result validation must reject even an earlier valid update.
+    jobReply(h,requests[requests.length-1],'pam version=1\ncapability type=settings command=set key=double_tap value=true\ncapability type=settings command=set key=token value=bad\ndone\n',"done",false);
+    assert.equal(Settings.load().doubleTap,false);
+  } finally { h.cleanup(); }
+});
+
 test("Local dictation bypasses Codex and gives concurrent timers distinct delivery IDs", function() {
   var requests = 0;
   function FakeXHR() { requests += 1; }

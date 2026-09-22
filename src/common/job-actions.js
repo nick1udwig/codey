@@ -12,7 +12,10 @@ function inspect(source) {
     var a=op.node.attrs, current=index++;
     var local=/^(timer|alarm|reminder|stopwatch)$/.test(a.type) && !/^(show|list)$/.test(a.command);
     var collection=/^(todo|note|calendar)$/.test(a.type) && a.command==="add";
-    if(local||collection)actions.push({attrs:a,index:current});else other=true;
+    var settings=a.type==="settings" && a.command==="set";
+    if(local||collection||settings)actions.push({attrs:a,index:current});else other=true;
+    // Keep the result available so opening it can show the saved preference.
+    if(settings)other=true;
   }});
   var parser=new Pam.Parser({requireHeader:true,maxDepth:8,maxLineLength:2048,onNode:function(n){model.accept(n);},onError:function(){failed=true;}});
   parser.push(source);parser.finish();

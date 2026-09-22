@@ -60,6 +60,12 @@ module.exports = function(options) {
         done(new Error("Reconnect the original server to apply this action."));
         return;
       }
+      if (action.attrs.type === "settings") {
+        try { options.applySetting(action.attrs); }
+        catch (error) { done(error); return; }
+        done();
+        return;
+      }
       var attrs = Object.assign({}, action.attrs, {
         show: "false"
       });

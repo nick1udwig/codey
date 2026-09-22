@@ -37,6 +37,9 @@ function buildRequest(request) {
   if (request.backend) {
     output += line("backend", request.backend, 1);
   }
+  if (request.settings) {
+    output += line("settings", request.settings, 1);
+  }
   if (request.token && /^wss?:/i.test(request.endpoint || "")) {
     output += line("auth", { bearer: request.token }, 1);
   }

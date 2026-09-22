@@ -196,6 +196,16 @@ function capabilityContext(requestId, complete, isFailed, job, commandIndex) {
     settings: settings,
     summary: saveWeather,
     phoneNote: function(attrs) { collectionController.command(attrs,requestId,complete,job,commandIndex); },
+    changeSetting: function(attrs) {
+      if (requestId !== activeRequestId || (isFailed && isFailed())) { return; }
+      applySetting(attrs);
+      if (job) {
+        job.executed = job.executed || {};
+        job.executed[commandIndex] = true;
+        try { jobPresentation.save(); }
+        catch (error) { delete job.executed[commandIndex]; throw error; }
+      }
+    },
     sendWatchCapability: function(operation) {
       if (requestId !== activeRequestId || (isFailed && isFailed())) { return; }
       // Assign once before queueing; retries retain the same ID, while new
@@ -233,6 +243,32 @@ var capabilityRegistry = Capabilities.installBuiltins(
 capabilityRegistry.register("calendar", function(attrs, context) { attrs.type="calendar"; context.phoneNote(attrs); });
 capabilityRegistry.register("note", function(attrs, context) { attrs.type="note"; context.phoneNote(attrs); });
 capabilityRegistry.register("todo", function(attrs, context) { attrs.type="todo"; context.phoneNote(attrs); });
+capabilityRegistry.register("settings", function(attrs, context) {
+  try {
+    context.changeSetting(attrs);
+    context.renderPam(settingsConfirmation(Settings.parseCapability(attrs).label));
+  } catch (error) { context.error("Could not save settings: " + error.message); }
+});
+
+function savePreference(preference) {
+  var updated = Settings.normalize(settings);
+  Object.keys(preference.patch).forEach(function(key) { updated[key] = preference.patch[key]; });
+  settings = Settings.save(updated);
+  sendPreferences();
+  if (preference.patch.units !== undefined) {
+    localStorage.setItem(weatherCacheKey, "null");
+    refreshWeather();
+  }
+}
+
+function applySetting(attrs) {
+  savePreference(Settings.parseCapability(attrs));
+}
+
+function settingsConfirmation(label) {
+  return "pam version=1\nscreen id=settings layout=card title=\"Settings\"\n  text id=saved " +
+    Pam.formatAttributes({value:"Saved · " + label}) + "\ndone\n";
+}
 
 function createPipeline(requestId, job) {
   var capabilityIndex = 0;
@@ -264,7 +300,13 @@ function createPipeline(requestId, job) {
       }
       if (operation.type === "capability") {
         sawRenderable = true;
-        if (job && job.executed && job.executed[capabilityIndex]) { capabilityIndex++; return; }
+        if (job && job.executed && job.executed[capabilityIndex]) {
+          if (operation.node.attrs.type === "settings") {
+            capabilityContext(requestId).renderPam(settingsConfirmation(Settings.parseCapability(operation.node.attrs).label));
+          }
+          capabilityIndex++;
+          return;
+        }
         pendingCapabilities += 1;
         var completed = false;
         if (!capabilityRegistry.handle(operation, capabilityContext(requestId, function(success) {
@@ -330,13 +372,9 @@ function requestAgent(input) {
     sendAnswerNotification(requestId, "begin");
     jobPresentation.send({id:"pending"}, false, "remove");
     try {
-      var updated=Settings.normalize(settings);
-      Object.keys(preference.patch).forEach(function(key){updated[key]=preference.patch[key];});
-      settings=Settings.save(updated);
-      sendPreferences();
-      if(preference.patch.units!==undefined){localStorage.setItem(weatherCacheKey,"null");refreshWeather();}
+      savePreference(preference);
       var confirmation=createPipeline(requestId);
-      confirmation.parser.push("pam version=1\nscreen id=settings layout=card title=Settings\n  text id=saved "+Pam.formatAttributes({value:"Saved · "+preference.label})+"\ndone\n");
+      confirmation.parser.push(settingsConfirmation(preference.label));
       confirmation.parser.finish();confirmation.finishAnswer();
     } catch(error) { sendStatus("Could not save settings: "+error.message,"error",requestId); }
     return;
@@ -357,6 +395,7 @@ function requestAgent(input) {
     token: settings.token,
     timeoutSeconds: settings.timeoutSeconds,
     input: input,
+    settings: Settings.agentPreferences(settings),
     context: { screen: currentScreen.id, layout: currentScreen.layout, selected: currentScreen.selected },
     backend: {
       model: settings.codexModel, effort: settings.codexEffort, fast_mode: String(settings.fastMode),
@@ -381,7 +420,7 @@ function requestAgent(input) {
 var jobPresentation = require("./job-coordinator")({
  storage:localStorage, XMLHttpRequest:typeof XMLHttpRequest!=="undefined"?XMLHttpRequest:null,
  settings:function(){return settings;},enqueue:function(message){watchQueue.enqueue(message);},
- nextCommandId:nextCommandId,collectionCommand:collectionController.command,
+ nextCommandId:nextCommandId,collectionCommand:collectionController.command,applySetting:applySetting,
  beginRequest:function(){activeRequestId=nextRequestId();delete failedDeliveries[activeRequestId];return activeRequestId;},
  isCurrent:function(id){return id===activeRequestId;},deliveryFailed:function(id){return failedDeliveries[id];},
  resumeSession:function(id){sessionId=id;localStorage.setItem("pebble-agent.session.v1",id);},

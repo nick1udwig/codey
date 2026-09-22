@@ -183,6 +183,12 @@ Say “turn off double tap,” “turn on ripple,” “turn off answer vibratio
 to cached,” and “set model to default.” Codey shows the saved value. Credentials
 and backend account setup remain in phone settings.
 
+You can also ask the agent conversationally to change these preferences, including
+in a follow-up answer. It can change multiple preferences in one response. Changes
+are saved when the result arrives; open the result to see the saved value. Model,
+effort, fast mode, and search changes apply to subsequent requests. File, network,
+shell, and approval permissions still require phone settings.
+
 “Calendar: Lunch tomorrow at noon for an hour” and “make an event: Lunch
 tomorrow at noon for an hour” save locally parsed events. Use today, tomorrow,
 or an explicit YYYY-MM-DD date, an explicit clock time, and a duration.

@@ -131,7 +131,48 @@ function parseDictation(input) {
   return {patch:patch,label:label};
 }
 
+// PAM exposes the same preferences as voice shortcuts, never credentials or
+// tool permissions. Names deliberately match the backend request vocabulary.
+var PAM_SETTINGS = {
+  double_tap: ["doubleTap", "Double tap", ["true", "false"]],
+  tap_animation: ["tapAnimation", "Ripple", ["true", "false"]],
+  answer_vibrate: ["answerVibrate", "Answer vibration", ["true", "false"]],
+  fast_mode: ["fastMode", "Fast mode", ["true", "false"]],
+  units: ["units", "Weather units", ["auto", "metric", "imperial"]],
+  model: ["codexModel", "Model"],
+  effort: ["codexEffort", "Reasoning effort", ["default", "low", "medium", "high", "xhigh", "max", "ultra"]],
+  web_search: ["webSearch", "Web search", ["disabled", "cached", "live"]]
+};
+
+function parseCapability(attrs) {
+  if (attrs.type !== "settings" || attrs.command !== "set") { throw new Error("Unsupported settings command"); }
+  if (Object.keys(attrs).some(function(key) { return ["type", "command", "key", "value", "id"].indexOf(key) < 0; })) {
+    throw new Error("Unsupported settings attribute");
+  }
+  var spec = Object.prototype.hasOwnProperty.call(PAM_SETTINGS, attrs.key) && PAM_SETTINGS[attrs.key];
+  if (!spec) { throw new Error("Unsupported setting"); }
+  var value = attrs.value;
+  if (typeof value !== "string" || (spec[2] ? spec[2].indexOf(value) < 0 : !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,127}$/.test(value))) {
+    throw new Error("Invalid value for " + spec[1]);
+  }
+  var patch = {};
+  patch[spec[0]] = value === "default" && (attrs.key === "model" || attrs.key === "effort") ? "" :
+    spec[2] && spec[2][0] === "true" ? value === "true" : value;
+  return { patch: patch, label: spec[1] + ": " + value };
+}
+
+function agentPreferences(settings) {
+  var result = {};
+  Object.keys(PAM_SETTINGS).forEach(function(key) {
+    var value = settings[PAM_SETTINGS[key][0]];
+    result[key] = value === "" && (key === "model" || key === "effort") ? "default" : String(value);
+  });
+  return result;
+}
+
 module.exports = {
+  parseCapability: parseCapability,
+  agentPreferences: agentPreferences,
   parseDictation: parseDictation,
   STORAGE_KEY: STORAGE_KEY,
   CONFIG_URL: CONFIG_URL,
