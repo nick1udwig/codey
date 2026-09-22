@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "created_at": "2026-09-22T20:44:06.746291969+00:00",
+  "created_at": "2026-09-22T20:52:29.111605830+00:00",
   "documents": [
     {
       "id": "01a0cad9-62e5-70f2-9266-4a4b9776d45b",
@@ -27,10 +27,10 @@
     {
       "id": "01a0bc94-4883-7680-b359-be02f4c5a492",
       "slug": "issues/pam-settings",
-      "version": 1,
+      "version": 2,
       "doc_type": "task",
       "title": "Change preferences through PAM and expose settings guidance to the agent",
-      "content": "Context: voice shortcuts previously intercepted settings locally; agent-produced PAM could not change preferences. Related: [[issues/dictated-settings]].\n\nAcceptance and results:\n- [x] Add validated `capability type=settings command=set key=... value=...` for the eight existing voice-editable preferences.\n- [x] Persist updates on result arrival, update watch preferences and weather units, and forward backend preferences on later requests. Keep credentials, endpoint, sync setup, and tool/approval permissions in phone settings.\n- [x] Record job execution receipts, show saved-value confirmations, and avoid reapplying completed changes on reopening after restart. Surface storage failures and allow retries.\n- [x] Include an allowlisted settings snapshot in model-facing requests, preserving authentication redaction and old-client compatibility.\n- [x] Document syntax, allowed values, default resets, timing, and limitations in the embedded pam-ui settings reference; load it in the no-file-tools fallback.\n- [x] Refresh affected documentation snapshots and code index.\n\nCompletion evidence (2026-09-19): 106 JavaScript tests pass both from source and from the Pebble SDK bundle, collection tests and native sanitizer tests pass, 13 integration tests pass, `go test ./...` passes, skill validation passes, and `pebble build` succeeds for Emery/Gabbro. The sandbox initially blocked loopback sockets and SDK state writes; required checks passed with scoped escalation. No emulator was used and nothing was deployed.\n\nTests cover settings validation, current preference snapshots, background saves, later backend requests, preserved credentials/permissions, storage failure/retry, receipt replay after restart, Go request/output validation, and skill example validity.\n",
+      "content": "Context: voice shortcuts previously intercepted settings locally; agent-produced PAM could not change preferences. Related: [[issues/dictated-settings]].\n\nAcceptance and results:\n- [x] Add validated `capability type=settings command=set key=... value=...` for the eight existing voice-editable preferences.\n- [x] Persist updates on result arrival, update watch preferences and weather units, and forward backend preferences on later requests. Keep credentials, endpoint, sync setup, and tool/approval permissions in phone settings.\n- [x] Record job execution receipts, show saved-value confirmations, and avoid reapplying completed changes on reopening after restart. Surface storage failures and allow retries.\n- [x] Include an allowlisted settings snapshot in model-facing requests, preserving authentication redaction and old-client compatibility.\n- [x] Document syntax, allowed values, default resets, timing, and limitations in the embedded pam-ui settings reference; load it in the no-file-tools fallback.\n- [x] Refresh affected documentation snapshots and code index.\n\nCompletion evidence (2026-09-19): 106 JavaScript tests pass both from source and from the Pebble SDK bundle, collection tests and native sanitizer tests pass, 13 integration tests pass, `go test ./...` passes, skill validation passes, and `pebble build` succeeds for Emery/Gabbro. The sandbox initially blocked loopback sockets and SDK state writes; required checks passed with scoped escalation. No emulator was used and nothing was deployed.\n\nTests cover settings validation, current preference snapshots, background saves, later backend requests, preserved credentials/permissions, storage failure/retry, receipt replay after restart, Go request/output validation, and skill example validity.\n\nDeployment evidence (2026-09-22): Source commits `bb87847` and `6b8748f` are on `master` at `dec06c0`. The release PBW installed through the connected phone, the restarted `codey.service` returned HTTP 200, and the settings-page deployment workflow passed. Full `npm test` and the release bundle's JavaScript tests passed before deployment.\n",
       "frontmatter": {
         "status": "completed",
         "priority": "medium",
@@ -39,7 +39,7 @@
         ]
       },
       "created_at": "2026-09-20T02:16:58.266696682Z",
-      "modified_at": "2026-09-20T02:16:58.266696682Z"
+      "modified_at": "2026-09-22T20:52:25.345660708Z"
     },
     {
       "id": "01a0b7f6-c493-7eb0-a9d2-bb2933305e93",
@@ -1477,12 +1477,12 @@
     {
       "id": "01a091f6-6759-7d51-8645-6a6c40097e31",
       "slug": "issues/configure-codex-backend",
-      "version": 5,
+      "version": 6,
       "doc_type": "task",
       "title": "Configure Codex models and permissions from phone settings",
-      "content": "Implementation: git commit `885b444`.\n\n- [x] Model and effort selection using the installed Codex model/list catalog.\n- [x] Web search, filesystem, command, network, and auto-review options.\n- [x] Validated backend attributes kept out of model input; isolated permission profiles.\n- [x] 57 JavaScript tests, native scheduler tests, 6 integration tests, all Go tests passed.\n- [x] Emery/Gabbro builds and phone-sized browser layout checked.\n- [x] Real Codex greeting smoke test and authenticated model discovery passed.\n- [x] Running tmux server updated while preserving its environment; watch installed.\n- [x] KB documentation imported, code indexed, and portable backup restore verified.\n- [x] Defaults updated to Luna / xhigh / fast and live web search; fast-mode toggle maps to per-turn fast/default service tier. Saved explicit settings are preserved. Full tests and real Codex fast-mode smoke test passed; server and watch updated.\n- [x] 2026-09-22: Set new phone and server model defaults to `gpt-6-luna`; kept explicit saved selections and `CODEY_MODEL` overrides. JavaScript unit, settings integration, and focused Go tests passed.\n- [x] 2026-09-22: Full `npm test` and release watch build passed. Installed the release PBW through the connected phone; restarted `codey.service`. After the one-time collection schema migration, `/healthz` returned 200 and `/v1/models` reported `gpt-6-luna` / `xhigh`. See [[issues/bound-collection-migration-startup]] for the startup delay.\n- [ ] Publish the settings page. Push to nick1udwig/pebble-agent requires explicit user approval following automatic approval review rejection. Until publication, the hosted settings page retains its previous controls.\n\nImplementation detail: turn/start must inherit the thread-local resolved permission\nprofile. Sending its name again attempts to resolve against global config and fails.\nPermission changes therefore use separate threads; model/effort changes reuse them.\n",
+      "content": "Implementation: git commit `885b444`.\n\n- [x] Model and effort selection using the installed Codex model/list catalog.\n- [x] Web search, filesystem, command, network, and auto-review options.\n- [x] Validated backend attributes kept out of model input; isolated permission profiles.\n- [x] 57 JavaScript tests, native scheduler tests, 6 integration tests, all Go tests passed.\n- [x] Emery/Gabbro builds and phone-sized browser layout checked.\n- [x] Real Codex greeting smoke test and authenticated model discovery passed.\n- [x] Running tmux server updated while preserving its environment; watch installed.\n- [x] KB documentation imported, code indexed, and portable backup restore verified.\n- [x] Defaults updated to Luna / xhigh / fast and live web search; fast-mode toggle maps to per-turn fast/default service tier. Saved explicit settings are preserved. Full tests and real Codex fast-mode smoke test passed; server and watch updated.\n- [x] 2026-09-22: Set new phone and server model defaults to `gpt-6-luna`; kept explicit saved selections and `CODEY_MODEL` overrides. JavaScript unit, settings integration, and focused Go tests passed.\n- [x] 2026-09-22: Full `npm test` and release watch build passed. Installed the release PBW through the connected phone; restarted `codey.service`. After the one-time collection schema migration, `/healthz` returned 200 and `/v1/models` reported `gpt-6-luna` / `xhigh`. See [[issues/bound-collection-migration-startup]] for the startup delay.\n- [x] Published the settings page on 2026-09-22 after the user's explicit push request. The GitHub Pages workflow [run 35782803453](https://github.com/nick1udwig/codey/actions/runs/35782803453) passed both build and deploy jobs. The hosted `/config/app.js` returned HTTP 200 and contains `gpt-6-luna`.\n\nLatest model-default source commit: `e7d6053`; KB backup commit: `dec06c0`.\n\nImplementation detail: turn/start must inherit the thread-local resolved permission\nprofile. Sending its name again attempts to resolve against global config and fails.\nPermission changes therefore use separate threads; model/effort changes reuse them.\n",
       "frontmatter": {
-        "status": "active",
+        "status": "completed",
         "priority": "medium",
         "tags": [
           "issue",
@@ -1494,7 +1494,7 @@
         ]
       },
       "created_at": "2026-09-11T19:36:42.120639199Z",
-      "modified_at": "2026-09-22T20:44:04.073985399Z"
+      "modified_at": "2026-09-22T20:52:25.345660708Z"
     },
     {
       "id": "01a091eb-498b-73f3-9b2f-bf1076dcc440",
@@ -1696,6 +1696,125 @@
     }
   ],
   "commits": [
+    {
+      "id": "01a0cae4-28a9-7ae1-8373-0d3b242a55fe",
+      "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
+      "message": "Record published settings page and deployed PAM preferences",
+      "created_at": "2026-09-22T20:52:25.345660708Z",
+      "changes": [
+        {
+          "document_id": "01a091f6-6759-7d51-8645-6a6c40097e31",
+          "slug": "issues/configure-codex-backend",
+          "change_type": "modified",
+          "previous_commit_id": "01a0cadc-828d-7b50-bd92-1e29895dd28a",
+          "previous_version": 5,
+          "new_version": 6,
+          "hunks": [
+            {
+              "old_start": 11,
+              "old_count": 7,
+              "new_start": 11,
+              "new_count": 9,
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "- [x] Defaults updated to Luna / xhigh / fast and live web search; fast-mode toggle maps to per-turn fast/default service tier. Saved explicit settings are preserved. Full tests and real Codex fast-mode smoke test passed; server and watch updated."
+                },
+                {
+                  "op": "context",
+                  "content": "- [x] 2026-09-22: Set new phone and server model defaults to `gpt-6-luna`; kept explicit saved selections and `CODEY_MODEL` overrides. JavaScript unit, settings integration, and focused Go tests passed."
+                },
+                {
+                  "op": "context",
+                  "content": "- [x] 2026-09-22: Full `npm test` and release watch build passed. Installed the release PBW through the connected phone; restarted `codey.service`. After the one-time collection schema migration, `/healthz` returned 200 and `/v1/models` reported `gpt-6-luna` / `xhigh`. See [[issues/bound-collection-migration-startup]] for the startup delay."
+                },
+                {
+                  "op": "delete",
+                  "content": "- [ ] Publish the settings page. Push to nick1udwig/pebble-agent requires explicit user approval following automatic approval review rejection. Until publication, the hosted settings page retains its previous controls."
+                },
+                {
+                  "op": "add",
+                  "content": "- [x] Published the settings page on 2026-09-22 after the user's explicit push request. The GitHub Pages workflow [run 35782803453](https://github.com/nick1udwig/codey/actions/runs/35782803453) passed both build and deploy jobs. The hosted `/config/app.js` returned HTTP 200 and contains `gpt-6-luna`."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Latest model-default source commit: `e7d6053`; KB backup commit: `dec06c0`."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Implementation detail: turn/start must inherit the thread-local resolved permission"
+                },
+                {
+                  "op": "context",
+                  "content": "profile. Sending its name again attempts to resolve against global config and fails."
+                }
+              ]
+            }
+          ],
+          "metadata_changes": [
+            {
+              "field": "status",
+              "old_value": "active",
+              "new_value": "completed"
+            }
+          ],
+          "content_hash": "3ac1f11854396f40f68c6d7d03b6e78aa852a51b7d89b612b83e60b8209f4d75",
+          "previous_hash": "59711034560bd399532e04093aed0be9914340e3d8601c603ed96926578ca149",
+          "doc_type": "task",
+          "title": "Configure Codex models and permissions from phone settings"
+        },
+        {
+          "document_id": "01a0bc94-4883-7680-b359-be02f4c5a492",
+          "slug": "issues/pam-settings",
+          "change_type": "modified",
+          "previous_commit_id": "01a0bc9a-37b9-7c20-9692-1bb99e69d8b9",
+          "previous_version": 1,
+          "new_version": 2,
+          "hunks": [
+            {
+              "old_start": 11,
+              "old_count": 3,
+              "new_start": 11,
+              "new_count": 5,
+              "lines": [
+                {
+                  "op": "context",
+                  "content": "Completion evidence (2026-09-19): 106 JavaScript tests pass both from source and from the Pebble SDK bundle, collection tests and native sanitizer tests pass, 13 integration tests pass, `go test ./...` passes, skill validation passes, and `pebble build` succeeds for Emery/Gabbro. The sandbox initially blocked loopback sockets and SDK state writes; required checks passed with scoped escalation. No emulator was used and nothing was deployed."
+                },
+                {
+                  "op": "context",
+                  "content": ""
+                },
+                {
+                  "op": "context",
+                  "content": "Tests cover settings validation, current preference snapshots, background saves, later backend requests, preserved credentials/permissions, storage failure/retry, receipt replay after restart, Go request/output validation, and skill example validity."
+                },
+                {
+                  "op": "add",
+                  "content": ""
+                },
+                {
+                  "op": "add",
+                  "content": "Deployment evidence (2026-09-22): Source commits `bb87847` and `6b8748f` are on `master` at `dec06c0`. The release PBW installed through the connected phone, the restarted `codey.service` returned HTTP 200, and the settings-page deployment workflow passed. Full `npm test` and the release bundle's JavaScript tests passed before deployment."
+                }
+              ]
+            }
+          ],
+          "content_hash": "943322d23be861f1b7b6d743202e17d6344059983d3c7aed885616d25ae138d0",
+          "previous_hash": "f32cdc92a8b40dec5a3f1ed3b4fcbb927fb3b08069449052953d971ba366c8d6",
+          "doc_type": "task",
+          "title": "Change preferences through PAM and expose settings guidance to the agent"
+        }
+      ]
+    },
     {
       "id": "01a0cadc-828d-7b50-bd92-1e29895dd28a",
       "author": "Nick Ludwig <nick.b.ludwig@gmail.com>",
