@@ -215,7 +215,7 @@ test("configuration page hydrates state and closes with normalized form values",
     units: "metric",
     locationLabel: "Current location",
     timeoutSeconds: 90,
-    codexModel: "gpt-5.6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
+    codexModel: "gpt-6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
     networkAccess: false, shellAccess: false, autoReview: false, answerVibrate: true, tapAnimation: true, doubleTap: true
   });
 });
@@ -278,7 +278,7 @@ test("configuration page recovers from a bad hash and supports the native bridge
   assert.equal(harness.elements.endpoint.value, "");
   assert.equal(harness.elements.units.value, "auto");
   assert.equal(harness.elements.timeout.value, "45");
-  assert.equal(harness.elements["codex-model"].value, "gpt-5.6-luna");
+  assert.equal(harness.elements["codex-model"].value, "gpt-6-luna");
   assert.equal(harness.elements["codex-effort"].value, "xhigh");
   assert.equal(harness.elements["fast-mode"].checked, true);
   assert.equal(harness.elements["answer-vibrate"].checked, true);

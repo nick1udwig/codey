@@ -1586,7 +1586,7 @@ test("Local commands work with no configured endpoint", function() {
 test("backend preferences persist and reach Codex separately from dictated text", function() {
   var normalized = Settings.normalize({ codexModel: "test-model", codexEffort: "high", webSearch: "live", fileAccess: "workspace-write", shellAccess: true, networkAccess: true, autoReview: true });
   assert.strictEqual(normalized.autoReview, true);
-  assert.strictEqual(Settings.normalize({}).codexModel, "gpt-5.6-luna");
+  assert.strictEqual(Settings.normalize({}).codexModel, "gpt-6-luna");
   assert.strictEqual(Settings.normalize({}).codexEffort, "xhigh");
   assert.strictEqual(Settings.normalize({}).fastMode, true);
   assert.strictEqual(Settings.normalize({}).webSearch, "live");

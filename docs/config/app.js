@@ -10,7 +10,7 @@
     units: "auto",
     locationLabel: "Current location",
     timeoutSeconds: 45,
-    codexModel: "gpt-5.6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
+    codexModel: "gpt-6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
     networkAccess: false, shellAccess: false, autoReview: false, answerVibrate: true, tapAnimation: true, doubleTap:true
   };
   var form = document.getElementById("settings");

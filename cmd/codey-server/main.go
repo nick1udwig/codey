@@ -84,7 +84,7 @@ func run(arguments []string) error {
 	flags.StringVar(&config.backup, "collections-backup", "", "write a consistent collections backup and exit")
 	flags.BoolVar(&config.restoreEpoch, "collections-restored", false, "rotate store epoch and pause providers after restoring a backup, then exit")
 	flags.StringVar(&config.listen, "listen", environment("CODEY_LISTEN", "127.0.0.1:8787"), "HTTP listen address")
-	flags.StringVar(&config.model, "model", environment("CODEY_MODEL", "gpt-5.6-luna"), "Codex model")
+	flags.StringVar(&config.model, "model", environment("CODEY_MODEL", "gpt-6-luna"), "Codex model")
 	flags.StringVar(&config.effort, "effort", environment("CODEY_EFFORT", "xhigh"), "reasoning effort")
 	flags.StringVar(&config.codexCommand, "codex", environment("CODEY_CODEX", "codex"), "Codex CLI command")
 	flags.StringVar(&config.appServerUnix, "app-server-unix", environment("CODEY_APP_SERVER_UNIX", ""), "explicit Codex daemon Unix socket")

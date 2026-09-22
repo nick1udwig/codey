@@ -155,7 +155,7 @@ func TestAgentStreamsFinalPAMAndKeepsConversationThread(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
-	agent := New(client, store, Config{Model: "gpt-5.6-luna", Effort: "xhigh", Workspace: t.TempDir(), Timeout: 3 * time.Second})
+	agent := New(client, store, Config{Workspace: t.TempDir(), Timeout: 3 * time.Second})
 	request := testRequest(t, "watch-session")
 	for turn := 0; turn < 2; turn++ {
 		var output bytes.Buffer
@@ -186,7 +186,7 @@ func TestAgentStreamsFinalPAMAndKeepsConversationThread(t *testing.T) {
 		t.Fatalf("turn params count %d", len(server.turnParams))
 	}
 	params := server.turnParams[0]
-	if params["model"] != "gpt-5.6-luna" || params["effort"] != "xhigh" || params["approvalPolicy"] != "never" {
+	if params["model"] != "gpt-6-luna" || params["effort"] != "xhigh" || params["approvalPolicy"] != "never" {
 		t.Fatalf("unexpected model policy: %#v", params)
 	}
 	if server.threadParams[0]["permissions"] != "pebble" || params["approvalsReviewer"] != "user" {

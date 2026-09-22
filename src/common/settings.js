@@ -15,7 +15,7 @@ var DEFAULTS = Object.freeze({
   units: "auto",
   locationLabel: "Current location",
   timeoutSeconds: 45,
-  codexModel: "gpt-5.6-luna",
+  codexModel: "gpt-6-luna",
   codexEffort: "xhigh",
   webSearch: "live",
   fastMode: true,

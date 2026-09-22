@@ -119,7 +119,7 @@ Use the separate token field for credentials; URL credentials, queries, and frag
 Defaults:
 
 ```text
-model:  gpt-5.6-luna
+model:  gpt-6-luna
 effort: xhigh
 fast:   on
 ```
@@ -128,7 +128,7 @@ Set them when the process starts:
 
 ```sh
 ./build/codey-server \
-  --model gpt-5.6-luna \
+  --model gpt-6-luna \
   --effort xhigh
 ```
 
@@ -137,7 +137,7 @@ These values are server defaults.
 Phone settings can override the model and effort for each request.
 
 The phone settings provide model and effort selection plus web search (disabled, cached, live), filesystem access (runtime files only, read-only, workspace writes), command execution, command network access, and automatic approval review.
-Phone settings default to Luna / xhigh, fast mode, and live web search.
+Phone settings default to GPT-6 Luna / xhigh, fast mode, and live web search.
 Commands, user-file access, command network access, and auto-review remain off.
 Older callers without a backend node retain disabled web search.
 Missing fast_mode defaults on.
@@ -301,7 +301,7 @@ Common options include:
 
 ```text
 --listen 127.0.0.1:8787
---model gpt-5.6-luna
+--model gpt-6-luna
 --effort xhigh
 --connect-timeout 5s
 --turn-timeout 0

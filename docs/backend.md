@@ -86,7 +86,7 @@ The included `examples/server.mjs` is a deterministic transport fixture, not a p
 The Go backend accepts an optional request child such as:
 
 ```pam
-  backend model=gpt-5.6-luna effort=xhigh fast_mode=true web_search=live file_access=none network_access=false shell_access=false auto_review=false
+  backend model=gpt-6-luna effort=xhigh fast_mode=true web_search=live file_access=none network_access=false shell_access=false auto_review=false
 ```
 
 These are configuration attributes, not model instructions. The Go parser validates

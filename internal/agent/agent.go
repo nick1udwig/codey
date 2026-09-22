@@ -48,7 +48,7 @@ type Agent struct {
 
 func New(client *appserver.Client, store *state.Store, config Config) *Agent {
 	if config.Model == "" {
-		config.Model = "gpt-5.6-luna"
+		config.Model = "gpt-6-luna"
 	}
 	if config.Effort == "" {
 		config.Effort = "xhigh"
