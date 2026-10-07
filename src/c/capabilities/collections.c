@@ -71,6 +71,10 @@ static void dashboard(AgentCapabilities *host, void *context, bool refresh) {
   char count[16];
   collection_preview_count(c->kind, count, sizeof(count));
   agent_capability_patch_value(agent_capabilities_ui(host), "todos", count);
+  char title[72];
+  collection_preview_first(c->kind, title, sizeof(title));
+  agent_capability_patch_value(agent_capabilities_ui(host), "collection-preview",
+      title[0] ? title : "Open your list");
 }
 bool agent_collections_install(AgentCapabilities *host) {
   for (unsigned i = 0; i < sizeof(collections) / sizeof(collections[0]); i++) {

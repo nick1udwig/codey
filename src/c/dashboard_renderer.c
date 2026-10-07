@@ -1,360 +1,317 @@
 #include "dashboard_renderer.h"
+#include "dashboard_layout.h"
 #include "agent_protocol.h"
-#include "../../resources/images/pixel-font-5x7.h"
 #include <string.h>
 #include <stdlib.h>
 #define AGENT_MIN(a,b) ((a)<(b)?(a):(b))
 #define AGENT_MAX(a,b) ((a)>(b)?(a):(b))
+#define PAPER PBL_IF_COLOR_ELSE(GColorPastelYellow, GColorWhite)
+#define ACCENT PBL_IF_COLOR_ELSE(GColorFolly, GColorWhite)
 
-static GRect prv_dashboard_bounds(int16_t width,int16_t height) {
+static GFont prv_font(DashboardFonts *fonts, DashboardFont font) {
 #if defined(PBL_ROUND)
-  // A centered inscribed square keeps every corner within the circular glass.
-  int16_t side = AGENT_MIN(width, height) * 69 / 100;
-  return GRect((width - side) / 2, (height - side) / 2, side, side);
+  static const uint32_t resources[] = {RESOURCE_ID_FONT_DASH_TIME_56,
+    RESOURCE_ID_FONT_DASH_TEMPERATURE_38, RESOURCE_ID_FONT_DASH_SMALL_12,
+    RESOURCE_ID_FONT_DASH_DATE_12, RESOURCE_ID_FONT_DASH_PREVIEW_18,
+    RESOURCE_ID_FONT_DASH_LABEL_16, RESOURCE_ID_FONT_DASH_COUNT_24};
 #else
-  return GRect(4, 4, width - 8, height - 8);
+  static const uint32_t resources[] = {RESOURCE_ID_FONT_DASH_TIME_60,
+    RESOURCE_ID_FONT_DASH_TEMPERATURE_44, RESOURCE_ID_FONT_DASH_SMALL_14,
+    RESOURCE_ID_FONT_DASH_DATE_11, RESOURCE_ID_FONT_DASH_PREVIEW_21,
+    RESOURCE_ID_FONT_DASH_LABEL_19, RESOURCE_ID_FONT_DASH_COUNT_28};
 #endif
+  if (!fonts->slots[font]) fonts->slots[font] = fonts_load_custom_font(resource_get_handle(resources[font]));
+  return fonts->slots[font];
 }
 
-GRect dashboard_frame(int16_t width,int16_t height, const char *id) {
-  GRect board = prv_dashboard_bounds(width,height);
-  int16_t gap = 3, left = (board.size.w - gap) * 53 / 100;
-  int16_t right = board.size.w - left - gap, x = board.origin.x, y = board.origin.y;
-  int16_t calendar = (board.size.h - gap) * 66 / 100;
-  int16_t notifications = board.size.h * 44 / 100;
-  int16_t talk = board.size.h * 36 / 100 + gap;
-  if (strcmp(id, "calendar") == 0) { return GRect(x, y, left, calendar); }
-  if (strcmp(id, "weather") == 0) { return GRect(x, y + calendar + gap, left, board.size.h - calendar - gap); }
-  x += left + gap;
-  if (strcmp(id, "dashboard-summary") == 0) { return GRect(x, y, right, notifications); }
-  y += notifications + gap;
-  if (strcmp(id, "dictate") == 0) { return GRect(x, y, right, talk); }
-  y += talk + gap;
-  if (strcmp(id, "todos") == 0) { return GRect(x, y, right, board.origin.y + board.size.h - y); }
-  return GRectZero;
+GRect dashboard_frame(int16_t width, int16_t height, const char *id) {
+  return dashboard_layout_frame(dashboard_bounds(width, height, PBL_IF_ROUND_ELSE(true, false)), id);
 }
 
-static void prv_draw_text(GContext *ctx, const char *text, GFont font, GRect frame,
-                          GTextAlignment alignment, GColor color, GTextOverflowMode overflow) {
+static void prv_text(DashboardFonts *fonts, GContext *ctx, const char *text,
+                     DashboardFont font, GRect frame, GColor color, GTextAlignment alignment) {
+  graphics_context_set_compositing_mode(ctx, GCompOpAssign);
   graphics_context_set_text_color(ctx, color);
-  graphics_draw_text(ctx, text ? text : "", font, frame, overflow, alignment, NULL);
+  graphics_draw_text(ctx, text, prv_font(fonts, font), frame,
+      GTextOverflowModeTrailingEllipsis, alignment, NULL);
 }
 
-static void prv_pixel_panel(GContext *ctx, GRect f, GColor color) {
+static void prv_glyph(GContext *ctx, const char *pixels, int columns, int rows,
+                      int x, int y, int scale, GColor color) {
   graphics_context_set_fill_color(ctx, color);
-  graphics_fill_rect(ctx, GRect(f.origin.x + 4, f.origin.y, f.size.w - 8, f.size.h), 0, GCornerNone);
-  graphics_fill_rect(ctx, GRect(f.origin.x + 2, f.origin.y + 2, f.size.w - 4, f.size.h - 4), 0, GCornerNone);
-  graphics_fill_rect(ctx, GRect(f.origin.x, f.origin.y + 4, f.size.w, f.size.h - 8), 0, GCornerNone);
+  for (int row = 0; row < rows; ++row)
+    for (int col = 0; col < columns; ++col)
+      if (pixels[row * columns + col] == '#')
+        graphics_fill_rect(ctx, GRect(x + col * scale, y + row * scale, scale, scale), 0, GCornerNone);
 }
 
-static void prv_dashboard_card(GContext *ctx, GRect frame, bool blue, bool selected) {
-  GColor accent = PBL_IF_COLOR_ELSE(GColorVividCerulean, GColorWhite);
-  prv_pixel_panel(ctx, frame, selected ? accent : GColorLightGray);
-  prv_pixel_panel(ctx, grect_inset(frame, GEdgeInsets(2)), blue ? PBL_IF_COLOR_ELSE(GColorBlue, GColorBlack) : GColorWhite);
-  if (selected) {
-    graphics_context_set_stroke_color(ctx, blue ? GColorWhite : GColorBlack);
-    graphics_context_set_stroke_width(ctx, 1);
-    graphics_draw_rect(ctx, grect_inset(frame, GEdgeInsets(3)));
-  }
-}
+static const char SUN[] = "....#...." ".#.....#." "...###..." "..#####.." "#.#####.#" "..#####.." "...###..." ".#.....#." "....#....";
+static const char TIMER[] = "...###..." "....#...." "..#####.." ".#.....#." "#...#...#" "#...##..#" "#.......#" ".#.....#." "..#####..";
+static const char BRAIN[] = "..##.##.." ".#..#..#." "#.#.#.#.#" "#...#...#" "#.#.#.#.#" ".#..#..#." "..##.##.." "....#....";
+static const char BOX[] = "#######" "#.....#" "#....##" "#...#.#" "##.#..#" "#.#...#" "#######";
+static const char NOTE[] = "#####.." "#...##." "#...###" "#.....#" "#.###.#" "#.....#" "#.###.#" "#.....#" "#######";
+static const char CHECK[] = "........#" ".......##" "#.....##." "##...##.." ".##.##..." "..###...." "...#.....";
+static const char ROBOT[] = "...#####..." "..#######.." ".###.#.###." ".###.#.###." ".#########." "###########" ".#########.";
+static const char BELL[] = "....#...." "...###..." "..#####.." "..#...#.." "..#...#.." ".##...##." ".#######." "...###...";
 
-static void prv_pixel_text(GContext *ctx, const char *text, int16_t x, int16_t y,
-                           int sx, int sy, GColor color) {
-  graphics_context_set_fill_color(ctx, color);
-  for (; *text; ++text, x += 6 * sx) {
-    char letter = *text >= 'a' && *text <= 'z' ? *text - 'a' + 'A' : *text;
-    const char *glyph = strchr(DASH_PIXEL_FONT_CHARS, letter);
-    if (!glyph) { continue; }
-    const uint8_t *rows = DASH_PIXEL_FONT_5X7[glyph - DASH_PIXEL_FONT_CHARS];
-    for (int row = 0; row < 7; ++row) {
-      for (int column = 0; column < 5; ++column) {
-        if (rows[row] & (1 << (4 - column))) {
-          graphics_fill_rect(ctx, GRect(x + column * sx, y + row * sy, sx, sy), 0, GCornerNone);
-        }
-      }
-    }
-  }
-}
-
-static void prv_dashboard_icon(const DashboardView *ui, GContext *ctx, DashboardIcon icon, int16_t x, int16_t y) {
-  if (!ui->dashboard_icons[icon]) { return; }
-  graphics_context_set_compositing_mode(ctx, GCompOpSet);
-  int size = icon >= DashboardSleep ? 20 : 24;
-  graphics_draw_bitmap_in_rect(ctx, ui->dashboard_icons[icon], GRect(x, y, size, size));
-}
-
-static void prv_weather_icon(const DashboardView *ui, GContext *ctx, const char *icon, int16_t x, int16_t y) {
-  bool moon = strcmp(icon, "moon") == 0 || strcmp(icon, "night-cloud") == 0;
-  bool sun = strcmp(icon, "sun") == 0 || strcmp(icon, "partly-cloudy") == 0;
-  bool cloud = strcmp(icon, "sun") != 0 && strcmp(icon, "moon") != 0;
-  graphics_context_set_fill_color(ctx, GColorBlack);
-  graphics_context_set_stroke_color(ctx, GColorBlack);
-  if (strcmp(icon, "unknown") == 0 || !icon[0]) { prv_dashboard_icon(ui, ctx, DashboardWeather, x, y); return; }
+static void prv_weather_icon(GContext *ctx, const char *icon, int x, int y) {
+  if (!strcmp(icon, "sun")) { prv_glyph(ctx, SUN, 9, 9, x, y, 2, ACCENT); return; }
+  bool moon = !strcmp(icon, "moon") || !strcmp(icon, "night-cloud");
+  bool sun = !strcmp(icon, "partly-cloudy");
+  graphics_context_set_fill_color(ctx, ACCENT);
+  graphics_context_set_stroke_color(ctx, ACCENT);
   if (moon) {
-    graphics_fill_circle(ctx, GPoint(x + 10, y + 9), 8);
-    graphics_context_set_fill_color(ctx, GColorWhite);
-    graphics_fill_circle(ctx, GPoint(x + 14, y + 5), 7);
-    graphics_context_set_fill_color(ctx, GColorBlack);
-  } else if (sun) {
-    graphics_fill_circle(ctx, GPoint(x + 11, y + 10), 5);
-    for (int i = 0; i < 8; ++i) {
-      int angle = i * TRIG_MAX_ANGLE / 8;
-      int dx = sin_lookup(angle), dy = cos_lookup(angle);
-      graphics_draw_line(ctx, GPoint(x + 11 + dx * 8 / TRIG_MAX_RATIO, y + 10 + dy * 8 / TRIG_MAX_RATIO),
-                         GPoint(x + 11 + dx * 11 / TRIG_MAX_RATIO, y + 10 + dy * 11 / TRIG_MAX_RATIO));
+    graphics_fill_circle(ctx, GPoint(x + 8, y + 8), 8);
+    graphics_context_set_fill_color(ctx, PAPER);
+    graphics_fill_circle(ctx, GPoint(x + 12, y + 4), 7);
+  } else if (sun) prv_glyph(ctx, SUN, 9, 9, x, y, 2, ACCENT);
+  if (!strcmp(icon, "moon")) return;
+  if (!icon[0] || !strcmp(icon, "unknown")) {
+    graphics_context_set_stroke_color(ctx, GColorBlack);
+    graphics_draw_circle(ctx, GPoint(x + 9, y + 9), 7);
+    graphics_draw_line(ctx, GPoint(x + 9, y + 5), GPoint(x + 9, y + 10));
+    graphics_draw_pixel(ctx, GPoint(x + 9, y + 13));
+    return;
+  }
+  graphics_context_set_fill_color(ctx, ACCENT);
+  graphics_fill_circle(ctx, GPoint(x + 5, y + 12), 4);
+  graphics_fill_circle(ctx, GPoint(x + 11, y + 10), 6);
+  graphics_fill_circle(ctx, GPoint(x + 16, y + 13), 4);
+  graphics_fill_rect(ctx, GRect(x + 3, y + 12, 16, 5), 0, GCornerNone);
+  if (!strcmp(icon, "rain") || !strcmp(icon, "snow")) {
+    for (int i = 0; i < 3; ++i) {
+      int px = x + 4 + i * 6;
+      graphics_draw_line(ctx, GPoint(px, y + 20), GPoint(px - 2, y + 24));
+      if (!strcmp(icon, "snow")) graphics_draw_line(ctx, GPoint(px - 2, y + 20), GPoint(px, y + 24));
     }
-  }
-  if (cloud) {
-    graphics_fill_circle(ctx, GPoint(x + 7, y + 15), 5);
-    graphics_fill_circle(ctx, GPoint(x + 14, y + 12), 7);
-    graphics_fill_circle(ctx, GPoint(x + 20, y + 16), 4);
-    graphics_fill_rect(ctx, GRect(x + 5, y + 15, 17, 5), 0, GCornerNone);
-    if (strcmp(icon, "rain") == 0 || strcmp(icon, "snow") == 0) {
-      for (int i = 0; i < 3; ++i) {
-        int px = x + 6 + i * 7;
-        graphics_draw_line(ctx, GPoint(px, y + 23), GPoint(px - 2, y + 27));
-        if (strcmp(icon, "snow") == 0) { graphics_draw_line(ctx, GPoint(px - 2, y + 23), GPoint(px, y + 27)); }
-      }
-    } else if (strcmp(icon, "storm") == 0) {
-      graphics_draw_line(ctx, GPoint(x + 14, y + 21), GPoint(x + 10, y + 25));
-      graphics_draw_line(ctx, GPoint(x + 10, y + 25), GPoint(x + 15, y + 25));
-      graphics_draw_line(ctx, GPoint(x + 15, y + 25), GPoint(x + 11, y + 29));
-    }
+  } else if (!strcmp(icon, "storm")) {
+    graphics_draw_line(ctx, GPoint(x + 12, y + 18), GPoint(x + 8, y + 22));
+    graphics_draw_line(ctx, GPoint(x + 8, y + 22), GPoint(x + 13, y + 22));
+    graphics_draw_line(ctx, GPoint(x + 13, y + 22), GPoint(x + 9, y + 26));
   }
 }
-
-// Use native font proportions. Width (including two three-digit values and
-// the percent sign) determines the largest font that fits this telemetry row.
-static GFont prv_dashboard_metric_font(GRect b) {
-  const char *keys[] = { FONT_KEY_GOTHIC_28_BOLD, FONT_KEY_GOTHIC_24_BOLD,
-                         FONT_KEY_GOTHIC_18_BOLD, FONT_KEY_GOTHIC_14_BOLD };
-  int available_height = (b.size.h - 42) / 2 - 12;
-  for (unsigned i = 0; i < sizeof(keys) / sizeof(keys[0]); ++i) {
-    GFont font = fonts_get_system_font(keys[i]);
-    GSize digits = graphics_text_layout_get_content_size("100", font, GRect(0,0,200,60),
-        GTextOverflowModeWordWrap, GTextAlignmentLeft);
-    GSize percent = graphics_text_layout_get_content_size("%", font, GRect(0,0,200,60),
-        GTextOverflowModeWordWrap, GTextAlignmentLeft);
-    if (2 * digits.w + percent.w + 8 <= b.size.w - 42 &&
-        digits.h <= available_height) { return font; }
-  }
-  return fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
-}
-
-// Small hand-drawn pictographs avoid relying on missing emoji font glyphs.
-static void prv_dashboard_battery(GContext *ctx,GRect b) {
-  int x=b.origin.x+5,y=b.origin.y+7;
-  graphics_context_set_stroke_color(ctx,GColorBlack);graphics_context_set_fill_color(ctx,GColorBlack);
-  BatteryChargeState battery=battery_state_service_peek();
-  graphics_draw_rect(ctx,GRect(x,y+4,11,7));graphics_fill_rect(ctx,GRect(x+11,y+6,2,3),0,GCornerNone);
-  graphics_fill_rect(ctx,GRect(x+2,y+6,7*battery.charge_percent/100,3),0,GCornerNone);
-  char text[16];snprintf(text,sizeof(text),"%d",battery.charge_percent);
-  GFont font = prv_dashboard_metric_font(b);
-  prv_draw_text(ctx,text,font,GRect(x+15,b.origin.y+5,(b.size.w-42)/2,30),
-                GTextAlignmentLeft,GColorBlack,GTextOverflowModeTrailingEllipsis);
-}
-
-static void prv_dashboard_quota(const DashboardView *ui,GContext *ctx,GRect b) {
-  int x=b.origin.x+b.size.w-19,y=b.origin.y+7;
-  char text[16];
-  // Scalloped brain silhouette and short folds remain readable at 14 pixels.
-  graphics_context_set_fill_color(ctx,PBL_IF_COLOR_ELSE(GColorMelon,GColorWhite));
-  graphics_fill_circle(ctx,GPoint(x+4,y+4),3);
-  graphics_fill_circle(ctx,GPoint(x+10,y+4),3);
-  graphics_fill_circle(ctx,GPoint(x+3,y+8),3);
-  graphics_fill_circle(ctx,GPoint(x+11,y+8),3);
-  graphics_fill_circle(ctx,GPoint(x+5,y+10),3);
-  graphics_fill_circle(ctx,GPoint(x+9,y+10),3);
-  graphics_context_set_stroke_color(ctx,GColorBlack);
-  graphics_draw_line(ctx,GPoint(x+7,y+2),GPoint(x+7,y+12));
-  graphics_draw_line(ctx,GPoint(x+2,y+6),GPoint(x+4,y+7));
-  graphics_draw_line(ctx,GPoint(x+10,y+7),GPoint(x+12,y+6));
-  if(ui->codex_remaining<0)snprintf(text,sizeof(text),"--");else snprintf(text,sizeof(text),"%d",ui->codex_remaining);
-  GFont font = prv_dashboard_metric_font(b);
-  int width = (b.size.w-42)/2;
-  prv_draw_text(ctx,text,font,GRect(x-3-width,b.origin.y+5,width,30),
-                GTextAlignmentRight,GColorBlack,GTextOverflowModeTrailingEllipsis);
-  prv_draw_text(ctx,"%",font,GRect(b.origin.x+20,b.origin.y+5,b.size.w-42,30),
-                GTextAlignmentCenter,GColorBlack,GTextOverflowModeTrailingEllipsis);
-}
-
-// Select the artwork from the active-thread count, including notification marks.
-static DashboardIcon prv_codey_icon(const DashboardView *ui) {
-  return ui->codex_active > 0 ? DashboardThink : DashboardSleep;
-}
-
 static void prv_dashboard_codey(const DashboardView *ui, GContext *ctx, GRect frame) {
-  bool working = ui->codex_active > 0;
 #if defined(PBL_ROUND)
-  uint32_t resource = working ? RESOURCE_ID_DASH_CODEY_THINK_GABBRO : RESOURCE_ID_DASH_CODEY_SLEEP_GABBRO;
+  uint32_t resource = ui->codex_active > 0 ? RESOURCE_ID_DASH_CODEY_THINK_GABBRO : RESOURCE_ID_DASH_CODEY_SLEEP_GABBRO;
 #else
-  uint32_t resource = working ? RESOURCE_ID_DASH_CODEY_THINK_EMERY : RESOURCE_ID_DASH_CODEY_SLEEP_EMERY;
+  uint32_t resource = ui->codex_active > 0 ? RESOURCE_ID_DASH_CODEY_THINK_EMERY : RESOURCE_ID_DASH_CODEY_SLEEP_EMERY;
 #endif
-  if (ui->request_frame) {
-    GBitmap *bitmap=artwork_cache_get(ui->artwork,resource);
-    if (bitmap) {
-      GRect bounds=gbitmap_get_bounds(bitmap);
-      GRect target=GRect(frame.origin.x+(frame.size.w-bounds.size.w)/2,
-                        frame.origin.y+(frame.size.h-bounds.size.h)/2,bounds.size.w,bounds.size.h);
-      graphics_context_set_compositing_mode(ctx,GCompOpSet);
-      graphics_draw_bitmap_in_rect(ctx,bitmap,target);
-      return;
-    }
-  }
-  // Native 4-bit PBI resources: 12-byte header, padded rows, then 16 colors.
-  // Stream one row at a time to keep the full-button artwork off the tight heap.
-  ResHandle handle = resource_get_handle(resource);
-  uint16_t header[6];
-  if (resource_load_byte_range(handle, 0, (uint8_t *)header, sizeof(header)) != sizeof(header)) { return; }
-  int stride = header[0], width = header[4], height = header[5];
-  GColor palette[16];
-  if (resource_load_byte_range(handle, 12 + stride * height, (uint8_t *)palette, sizeof(palette)) != sizeof(palette)) { return; }
-  GBitmap *row = gbitmap_create_blank_with_palette(GSize(width, 1), GBitmapFormat4BitPalette, palette, false);
-  if (!row) { return; }
-  if (gbitmap_get_bytes_per_row(row) != stride) { gbitmap_destroy(row); return; }
-  int x = frame.origin.x + (frame.size.w - width) / 2;
-  int y = frame.origin.y + (frame.size.h - height) / 2;
+  // Keep one cached compact 5b pose.
+  GBitmap *bitmap = artwork_cache_get(ui->artwork, resource);
+  if (!bitmap) return;
+  GRect bounds = gbitmap_get_bounds(bitmap);
   graphics_context_set_compositing_mode(ctx, GCompOpSet);
-  for (int line = 0; line < height; ++line) {
-    if (resource_load_byte_range(handle, 12 + line * stride, gbitmap_get_data(row), stride) != (size_t)stride) { break; }
-    graphics_draw_bitmap_in_rect(ctx, row, GRect(x, y + line, width, 1));
-  }
-  gbitmap_destroy(row);
+  graphics_draw_bitmap_in_rect(ctx, bitmap,
+      GRect(frame.origin.x + (frame.size.w - bounds.size.w) / 2,
+            frame.origin.y + (frame.size.h - bounds.size.h) / 2, bounds.size.w, bounds.size.h));
 }
 
-// Use the larger font only when the complete line fits on one row.
-static GFont prv_dashboard_label_font(const char *text, int width) {
-  GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
-  GSize size = graphics_text_layout_get_content_size(text, font, GRect(0,0,width,40),
-      GTextOverflowModeWordWrap, GTextAlignmentCenter);
-  return size.h <= 22 ? font : fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
+void dashboard_draw_calendar(DashboardFonts *fonts, GContext *ctx, GRect f) {
+  time_t now = time(NULL);
+  struct tm *local = localtime(&now);
+  char clock[12] = "--:--", date[24] = "", battery[8];
+#if !defined(PBL_ROUND)
+  char weekday[8] = "";
+#endif
+  if (local) {
+    strftime(clock, sizeof(clock), clock_is_24h_style() ? "%H:%M" : "%I:%M", local);
+    if (!clock_is_24h_style() && clock[0] == '0') memmove(clock, clock + 1, strlen(clock));
+    char prefix[16];
+    strftime(prefix, sizeof(prefix), PBL_IF_ROUND_ELSE("%a, %b", "%b"), local);
+    snprintf(date, sizeof(date), PBL_IF_ROUND_ELSE("%s %d", "%s%d"), prefix, local->tm_mday);
+#if !defined(PBL_ROUND)
+    strftime(weekday, sizeof(weekday), "%a", local);
+#endif
+  }
+  int x = f.origin.x, y = f.origin.y, w = f.size.w;
+  // Paint the compact header after the large clock's overlapping line box.
+  int clock_height = PBL_IF_ROUND_ELSE(56, 60);
+  int header_y = y + 1;
+  prv_text(fonts, ctx, clock, DashboardFontTime, GRect(x + 4, y + f.size.h - clock_height, w - 4, clock_height), GColorBlack, GTextAlignmentLeft);
+  BatteryChargeState charge = battery_state_service_peek();
+  snprintf(battery, sizeof(battery), "%d", charge.charge_percent);
+  int bx = x + w - 43;
+  graphics_context_set_stroke_color(ctx, GColorBlack);
+  graphics_context_set_fill_color(ctx, GColorBlack);
+  graphics_draw_rect(ctx, GRect(bx, header_y + 8, 12, 7));
+  graphics_fill_rect(ctx, GRect(bx + 12, header_y + 10, 2, 3), 0, GCornerNone);
+  graphics_fill_rect(ctx, GRect(bx + 2, header_y + 10, 8 * charge.charge_percent / 100, 3), 0, GCornerNone);
+  prv_text(fonts, ctx, battery, DashboardFontSmall, GRect(bx + 17, header_y, 22, 22), GColorBlack, GTextAlignmentLeft);
+  // Emery's compact date stays within the left tile, clear of the top strip
+  // that can lose the month/day on the SDK emulator's subsequent redraws.
+  prv_text(fonts, ctx, date, DashboardFontDate,
+      GRect(x + PBL_IF_ROUND_ELSE(8, 4), header_y, PBL_IF_ROUND_ELSE(bx - x - 10, 28), 22), GColorBlack, GTextAlignmentLeft);
+#if !defined(PBL_ROUND)
+  prv_text(fonts, ctx, weekday, DashboardFontDate, GRect(x + 4, y + 17, 28, 14), GColorBlack, GTextAlignmentLeft);
+#endif
+}
+
+static void prv_weather(const DashboardView *ui, GContext *ctx, const AgentUiElement *e) {
+  GRect f = e->frame;
+  char icon[24] = "", low[12] = "--", high[12] = "--", temperature[16];
+  agent_protocol_meta_get(e->meta, "icon", icon, sizeof(icon));
+  const char *split = !strncmp(e->subtitle, "L ", 2) ? strstr(e->subtitle + 2, " H ") : NULL;
+  if (split) {
+    size_t n = AGENT_MIN((size_t)(split - e->subtitle - 2), sizeof(low) - 1);
+    memcpy(low, e->subtitle + 2, n); low[n] = 0;
+    agent_protocol_copy(high, sizeof(high), split + 3);
+  }
+  // Units remain on the weather detail screen; the almanac uses a degree mark.
+  const char *raw = e->value[0] ? e->value : "--";
+  size_t n = strspn(raw, "0123456789-+");
+  if (n && n < sizeof(temperature) - 3) snprintf(temperature, sizeof(temperature), "%.*s°", (int)n, raw);
+  else agent_protocol_copy(temperature, sizeof(temperature), "--°");
+  int x = f.origin.x, cy = f.origin.y + f.size.h / 2;
+  prv_weather_icon(ctx, icon, x + 8, cy - 9);
+  int range_width = 22, temp_width = f.size.w - 40 - range_width;
+  GSize size = graphics_text_layout_get_content_size(temperature, prv_font(ui->fonts, DashboardFontTemperature),
+      GRect(0, 0, 200, 60), GTextOverflowModeWordWrap, GTextAlignmentLeft);
+  DashboardFont font = size.w > temp_width ? DashboardFontCount : DashboardFontTemperature;
+  int text_height = font == DashboardFontCount ? 34 : PBL_IF_ROUND_ELSE(46, 52);
+  prv_text(ui->fonts, ctx, temperature, font, GRect(x + 34, cy - text_height / 2 - 5, temp_width, text_height), GColorBlack, GTextAlignmentLeft);
+  int rx = x + f.size.w - range_width - 5;
+  prv_glyph(ctx, "..#.." ".###." "#####", 5, 3, rx - 7, cy - 8, 1, GColorBlack);
+  prv_glyph(ctx, "#####" ".###." "..#..", 5, 3, rx - 7, cy + 9, 1, GColorBlack);
+  prv_text(ui->fonts, ctx, high, DashboardFontSmall, GRect(rx, cy - 17, range_width, 22), GColorBlack, GTextAlignmentLeft);
+  prv_text(ui->fonts, ctx, low, DashboardFontSmall, GRect(rx, cy, range_width, 22), GColorBlack, GTextAlignmentLeft);
+}
+
+static void prv_tab(GContext *ctx, GRect f, bool selected, const char *pixels, int columns, int rows) {
+  graphics_context_set_fill_color(ctx, selected ? PAPER : GColorBlack);
+  graphics_fill_rect(ctx, f, 0, GCornerNone);
+  if (!selected) {
+    graphics_context_set_stroke_color(ctx, GColorDarkGray);
+    graphics_draw_rect(ctx, f);
+  }
+  prv_glyph(ctx, pixels, columns, rows, f.origin.x + (f.size.w - columns) / 2,
+      f.origin.y + (f.size.h - rows) / 2, 1, selected ? GColorBlack : GColorLightGray);
+}
+
+static void prv_collection(const DashboardView *ui, GContext *ctx, const AgentUiElement *e) {
+  GRect f = e->frame;
+  int tab_width = PBL_IF_ROUND_ELSE(14, 15), tab_height = PBL_IF_ROUND_ELSE(12, 13);
+  int tabs_y = f.origin.y + f.size.h / 2 + 6;
+  prv_text(ui->fonts, ctx, e->value[0] ? e->value : "0", DashboardFontCount,
+      GRect(f.origin.x, tabs_y - 36, f.size.w, 34), PAPER, GTextAlignmentCenter);
+  int selected = !strcmp(e->action, "local.notes") ? 1 : !strcmp(e->action, "local.checks") ? 2 : 0;
+  int x = f.origin.x + (f.size.w - 3 * tab_width - 4) / 2;
+  const char *pixels[] = {BOX, NOTE, CHECK};
+  const int columns[] = {7, 7, 9}, rows[] = {7, 9, 7};
+  for (int i = 0; i < 3; ++i)
+    prv_tab(ctx, GRect(x + i * (tab_width + 2), tabs_y, tab_width, tab_height),
+        selected == i, pixels[i], columns[i], rows[i]);
+}
+
+static void prv_jobs(const DashboardView *ui, GContext *ctx, GRect f) {
+  const AgentUiElement *items[AGENT_UI_MAX_ELEMENTS];
+  const AgentUiElement *tour = NULL;
+  int count = 0, jobs = 0;
+  for (int i = 0; i < ui->element_count; ++i) {
+    const AgentUiElement *e = &ui->elements[i];
+    if (!e->used) continue;
+    if (!strcmp(e->action, "local.tour")) { tour = e; continue; }
+    if (!strncmp(e->id, "schedule-", 9) || !strcmp(e->id, "dashboard-stopwatch") ||
+        !strcmp(e->action, "local.job.open")) items[count++] = e;
+    if (!strcmp(e->action, "local.job.open")) ++jobs;
+  }
+  if (!count && tour) items[count++] = tour;
+  // Active timer detail takes priority; the complete list keeps its ordering.
+  for (int i = 0; i < count; ++i) {
+    char kind[16] = "";
+    agent_protocol_meta_get(items[i]->meta, "dashboard_kind", kind, sizeof(kind));
+    if (!strcmp(kind, "timer")) {
+      const AgentUiElement *first = items[i]; items[i] = items[0]; items[0] = first;
+      break;
+    }
+  }
+  int cx = f.origin.x + f.size.w / 2, cy = f.origin.y + f.size.h / 2;
+  if (!count) { prv_glyph(ctx, TIMER, 9, 9, cx - 9, cy - 9, 2, GColorDarkGray); return; }
+  const AgentUiElement *first = items[0];
+  char kind[16] = "", label[24];
+  agent_protocol_meta_get(first->meta, "dashboard_kind", kind, sizeof(kind));
+  bool timer = !strcmp(kind, "timer");
+  if (timer) {
+    // Duration text begins with the bounded native H:MM:SS or M:SS value.
+    size_t n = strcspn(first->subtitle, " ");
+    snprintf(label, sizeof(label), "%.*s", (int)AGENT_MIN(n, sizeof(label) - 1), first->subtitle);
+    if (!strcmp(label, "Finished")) agent_protocol_copy(label, sizeof(label), "0:00");
+    // Keep multi-hour timers readable in the narrow key cap.
+    char *colon = strchr(label, ':');
+    if (colon && strchr(colon + 1, ':')) {
+      char hours[12]; snprintf(hours, sizeof(hours), "%.*sh", (int)(colon - label), label);
+      agent_protocol_copy(label, sizeof(label), hours);
+    }
+  } else if (!strcmp(first->action, "local.tour")) agent_protocol_copy(label, sizeof(label), "Start");
+  else if (!strcmp(kind, "job")) snprintf(label, sizeof(label), "%d run%s", jobs, jobs == 1 ? "" : "s");
+  else agent_protocol_copy(label, sizeof(label), !strcmp(first->id, "dashboard-stopwatch") ? first->subtitle : "Alarm");
+  if (timer) {
+    GRect ring = GRect(f.origin.x + 7, cy - 15, 14, 14);
+    int progress = AGENT_MAX(0, AGENT_MIN(100, agent_protocol_meta_get_int(first->meta, "progress", 0)));
+    graphics_context_set_fill_color(ctx, ACCENT);
+    graphics_fill_radial(ctx, ring, GOvalScaleModeFitCircle, 1, 0, TRIG_MAX_ANGLE);
+    if (progress) graphics_fill_radial(ctx, ring, GOvalScaleModeFitCircle, 7, 0,
+        (int32_t)((int64_t)TRIG_MAX_ANGLE * progress / 100));
+  }
+  prv_text(ui->fonts, ctx, label, DashboardFontLabel,
+      GRect(f.origin.x + (timer ? 24 : 4), cy - 23, f.size.w - (timer ? 26 : 8), 26), PAPER,
+      timer ? GTextAlignmentLeft : GTextAlignmentCenter);
+  int shown = AGENT_MIN(count, 3), x = cx - (shown * 16 + (shown - 1) * 2) / 2;
+  for (int i = 0; i < shown; ++i) {
+    char type[16] = "";
+    agent_protocol_meta_get(items[i]->meta, "dashboard_kind", type, sizeof(type));
+    bool job = !strcmp(type, "job") || !strcmp(items[i]->action, "local.tour");
+    bool alarm = !strcmp(type, "alarm");
+    prv_tab(ctx, GRect(x + i * 18, cy + 9, 16, 12), i == 0,
+        job ? ROBOT : alarm ? BELL : TIMER, job ? 11 : 9, alarm ? 8 : job ? 7 : 9);
+  }
 }
 
 void dashboard_draw(const DashboardView *ui, GContext *ctx) {
-  time_t now = time(NULL);
-  struct tm *local = localtime(&now);
-  char clock_text[12] = "--:--", day[12] = "", date[16] = "", period[8] = "";
-  if (local) {
-    strftime(clock_text, sizeof(clock_text), clock_is_24h_style() ? "%H:%M" : "%I:%M", local);
-    if (!clock_is_24h_style() && clock_text[0] == '0') {
-      memmove(clock_text, clock_text + 1, strlen(clock_text));
-    }
-    strftime(day, sizeof(day), "%a", local);
-    strftime(date, sizeof(date), "%b %d", local);
-    if (!clock_is_24h_style()) { strftime(period, sizeof(period), "%p", local); }
+  GRect board = dashboard_bounds(ui->width, ui->height, PBL_IF_ROUND_ELSE(true, false));
+  graphics_context_set_fill_color(ctx, PAPER);
+  graphics_fill_rect(ctx, board, 0, GCornerNone);
+  // Thin rules divide the left-hand almanac into date/time, weather, and preview.
+  graphics_context_set_stroke_color(ctx, GColorBlack);
+  for (int row = 1; row <= 2; ++row) {
+    GRect line = dashboard_layout_rect(board, 0, row * 76, 136, 1);
+    graphics_draw_line(ctx, line.origin, GPoint(line.origin.x + line.size.w - 1, line.origin.y));
   }
-  for (uint8_t i = 0; i < ui->element_count; ++i) {
+  for (int i = 0; i < ui->element_count; ++i) {
     const AgentUiElement *e = &ui->elements[i];
-    if (!e->used || !e->frame.size.h) { continue; }
+    if (!e->used || !e->frame.size.h) continue;
     GRect f = e->frame;
-    int16_t x = f.origin.x, y = f.origin.y, w = f.size.w, h = f.size.h;
-    bool blue = strcmp(e->id, "dictate") == 0 || strcmp(e->id, "new-chat") == 0;
-    prv_dashboard_card(ctx, f, blue, ui->selected_element == i);
-    if (strcmp(e->id, "calendar") == 0) {
-      prv_dashboard_battery(ctx,f);
-      prv_dashboard_quota(ui,ctx,f);
-      int scale = AGENT_MAX(1, AGENT_MIN(3,(w-8)/((int)strlen(clock_text)*6-1)));
-      int clock_width=((int)strlen(clock_text)*6-1)*scale;
-      int clock_height=42;
-      prv_pixel_text(ctx,clock_text,x+(w-clock_width)/2,y+(h-clock_height)/2-3,scale,6,GColorBlack);
-      prv_pixel_text(ctx,period,x+w-19,y+(h+clock_height)/2-3,1,1,GColorBlack);
-      char date_line[32];snprintf(date_line,sizeof(date_line),"%s %s",day,date);
-      prv_draw_text(ctx,date_line,prv_dashboard_label_font(date_line,w-6),GRect(x+3,y+h-25,w-6,23),GTextAlignmentCenter,GColorBlack,GTextOverflowModeTrailingEllipsis);
-    } else if (strcmp(e->id, "dashboard-summary") == 0) {
-      prv_pixel_text(ctx, "NOTIFICATIONS", x + (w - 77) / 2, y + 7, 1, 1, GColorBlack);
-      const AgentUiElement *items[AGENT_UI_MAX_ELEMENTS];
-      int count = 0;
-      for (uint8_t j = 0; j < ui->element_count; ++j) {
-        const AgentUiElement *item = &ui->elements[j];
-        if (item->used && (strncmp(item->id, "schedule-", 9) == 0 ||
-            strcmp(item->id, "dashboard-stopwatch") == 0 || strcmp(item->action, "local.job.open") == 0 || strcmp(item->action, "local.tour") == 0)) { items[count++] = item; }
-      }
-      // Reserve enough height for each icon and label below the title.
-      // Additional records remain available in the complete Notifications list.
-      int capacity = h - 20 >= 68 ? 4 : 2;
-      int shown = AGENT_MIN(count, capacity);
-      int columns = count == 1 ? 1 : 2;
-      int rows = shown <= 2 ? 1 : 2;
-      int row_height = (h - 20) / rows;
-      for (int item = 0; item < shown; ++item) {
-        int cell_width = (w - 6) / columns;
-        int16_t cx = x + 3 + cell_width * (item % columns) + cell_width / 2;
-        int16_t cy = y + 18 + (item / columns) * row_height;
-        if (count > capacity && item == capacity - 1) {
-          char more[20];
-          snprintf(more, sizeof(more), "%d MORE", count - capacity + 1);
-          prv_pixel_text(ctx, more, cx - ((int)strlen(more) * 6 - 1) / 2,
-                         cy + row_height / 2 - 3, 1, 1, GColorBlack);
-          continue;
-        }
-        int diameter = AGENT_MIN(32, row_height - 10);
-        GRect ring = GRect(cx - diameter / 2, cy, diameter, diameter);
-        char kind[16] = "";
-        agent_protocol_meta_get(items[item]->meta, "dashboard_kind", kind, sizeof(kind));
-        bool timer = strcmp(kind, "timer") == 0;
-        if (timer) {
-          int progress = AGENT_MAX(0, AGENT_MIN(100, agent_protocol_meta_get_int(items[item]->meta, "progress", 0)));
-          graphics_context_set_fill_color(ctx, GColorLightGray);
-          graphics_fill_radial(ctx, ring, GOvalScaleModeFitCircle, 3, 0, TRIG_MAX_ANGLE);
-          if (progress > 0) {
-            graphics_context_set_fill_color(ctx, GColorBlack);
-            graphics_fill_radial(ctx, ring, GOvalScaleModeFitCircle, 3, 0,
-                                 (int32_t)((int64_t)TRIG_MAX_ANGLE * progress / 100));
-          }
-        }
-        // The compact timer mark leaves the progress ring unobstructed.
-        if (timer) {
-          graphics_context_set_stroke_color(ctx, GColorBlack);
-          graphics_context_set_stroke_width(ctx, 1);
-          GPoint center = GPoint(cx, cy + diameter / 2);
-          graphics_draw_circle(ctx, center, 4);
-          graphics_draw_line(ctx, center, GPoint(cx, center.y - 3));
-          graphics_draw_line(ctx, GPoint(cx - 2, center.y - 6), GPoint(cx + 2, center.y - 6));
-        } else {
-          prv_dashboard_icon(ui, ctx, strcmp(kind, "job") == 0 ? prv_codey_icon(ui) : strcmp(items[item]->id, "dashboard-stopwatch") == 0 ? DashboardTimer : DashboardAlarm,
-                             cx - 10, cy + (diameter - 20) / 2);
-        }
-        char label[16];
-        int max_chars = AGENT_MIN((int)sizeof(label) - 1, (cell_width - 2) / 6);
-        agent_protocol_copy(label, max_chars + 1, items[item]->title);
-        if ((int)strlen(items[item]->title) > max_chars && max_chars > 0) { label[max_chars - 1] = '.'; }
-        prv_pixel_text(ctx, label, cx - ((int)strlen(label) * 6 - 1) / 2,
-                       cy + diameter + 2, 1, 1, GColorBlack);
-      }
-    } else if (strcmp(e->id, "dictate") == 0) {
-      prv_dashboard_codey(ui,ctx,f);
-
-    } else if (strcmp(e->id, "weather") == 0) {
-      char icon[24],low[12]="--",high[12]="--",label[20];
-      agent_protocol_meta_get(e->meta,"icon",icon,sizeof(icon));
-      const char *range=e->subtitle;
-      if(!strncmp(range,"L ",2)) {
-        const char *split=strstr(range+2," H ");
-        if(split){size_t n=AGENT_MIN((size_t)(split-range-2),sizeof(low)-1);memcpy(low,range+2,n);low[n]=0;agent_protocol_copy(high,sizeof(high),split+3);}
-      }
-      snprintf(label,sizeof(label),"H %s",high);
-      prv_draw_text(ctx,label,prv_dashboard_label_font(label,w-6),GRect(x+3,y-1,w-6,23),GTextAlignmentCenter,GColorBlack,GTextOverflowModeTrailingEllipsis);
-      const char *temperature=e->value[0]?e->value:"--";
-      int scale=strlen(temperature)<=4?2:1;
-      int combined=26+((int)strlen(temperature)*6-1)*scale;
-      int left=x+(w-combined)/2;
-      prv_weather_icon(ui,ctx,icon,left,y+(h-24)/2);
-      prv_pixel_text(ctx,temperature,left+26,y+(h-21)/2,scale,3,GColorBlack);
-      snprintf(label,sizeof(label),"L %s",low);
-      prv_draw_text(ctx,label,prv_dashboard_label_font(label,w-6),GRect(x+3,y+h-23,w-6,23),GTextAlignmentCenter,GColorBlack,GTextOverflowModeTrailingEllipsis);
-    } else if (strcmp(e->id, "todos") == 0) {
-      bool notes = strcmp(e->action, "local.notes") == 0;
-      bool checks = strcmp(e->action, "local.checks") == 0;
-      if (notes) {
-        graphics_context_set_stroke_color(ctx, GColorBlack);
-        graphics_context_set_stroke_width(ctx, 2);
-        graphics_draw_rect(ctx, GRect(x+9,y+(h-22)/2,17,22));
-        for (int line=0;line<3;line++) graphics_draw_line(ctx,GPoint(x+12,y+(h-22)/2+6+line*5),GPoint(x+23,y+(h-22)/2+6+line*5));
-        graphics_context_set_stroke_width(ctx, 1);
-      } else prv_dashboard_icon(ui, ctx, !strcmp(e->action,"local.events") ? DashboardCalendar : DashboardTodos, x + 5, y + (h - 24) / 2);
-      char label[16];
-      snprintf(label, sizeof(label), "%s %s", e->value[0] ? e->value : "0", !strcmp(e->action,"local.events") ? "EVENT" : notes ? "NOTE" : checks ? "CHECK" : "TODO");
-      prv_pixel_text(ctx, label, x + 32, y + (h - 7) / 2, 1, 1, GColorBlack);
+    bool cap = !strcmp(e->id, "dashboard-summary") || !strcmp(e->id, "dictate") || !strcmp(e->id, "todos");
+    bool selected = ui->selected_element == i;
+    if (cap || selected) {
+      graphics_context_set_fill_color(ctx, cap ? GColorBlack : GColorLightGray);
+      graphics_fill_rect(ctx, f, cap ? 12 : 0, cap ? GCornerTopLeft | GCornerBottomLeft : GCornerNone);
+    }
+    if (!strcmp(e->id, "weather")) prv_weather(ui, ctx, e);
+    else if (!strcmp(e->id, "collection-preview")) {
+      GRect text = GRect(f.origin.x + 8, f.origin.y, f.size.w - 16, f.size.h);
+      GSize size = graphics_text_layout_get_content_size(e->value, prv_font(ui->fonts, DashboardFontPreview),
+          text, GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft);
+      text.origin.y += AGENT_MAX(0, (text.size.h - size.h) / 2 - 3);
+      text.size.h = AGENT_MIN(text.size.h, size.h + 8);
+      prv_text(ui->fonts, ctx, e->value, DashboardFontPreview, text, GColorBlack, GTextAlignmentLeft);
+    } else if (!strcmp(e->id, "dashboard-summary")) prv_jobs(ui, ctx, f);
+    else if (!strcmp(e->id, "todos")) prv_collection(ui, ctx, e);
+    else if (!strcmp(e->id, "dictate")) {
+      int quota_height = PBL_IF_ROUND_ELSE(18, 20);
+      GRect mascot = f; mascot.size.h -= quota_height;
+      prv_dashboard_codey(ui, ctx, mascot);
+      char quota[8];
+      if (ui->codex_remaining < 0) agent_protocol_copy(quota, sizeof(quota), "--");
+      else snprintf(quota, sizeof(quota), "%d", ui->codex_remaining);
+      GSize size = graphics_text_layout_get_content_size(quota, prv_font(ui->fonts, DashboardFontSmall),
+          GRect(0, 0, 40, 24), GTextOverflowModeWordWrap, GTextAlignmentLeft);
+      int x = f.origin.x + (f.size.w - size.w - 12) / 2, y = f.origin.y + f.size.h - quota_height;
+      prv_glyph(ctx, BRAIN, 9, 8, x, y + 6, 1, PAPER);
+      prv_text(ui->fonts, ctx, quota, DashboardFontSmall, GRect(x + 12, y - 1, size.w + 2, quota_height), PAPER, GTextAlignmentLeft);
+    }
+    if (cap && selected) {
+      graphics_context_set_stroke_color(ctx, PAPER);
+      graphics_draw_round_rect(ctx, grect_inset(f, GEdgeInsets(2)), 10);
     }
   }
 }

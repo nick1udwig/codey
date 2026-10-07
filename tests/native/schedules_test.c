@@ -161,6 +161,7 @@ static void test_preview_changed_rows_and_interrupted_write(void) {
   before=writes;fail_write_at=writes+2; // Invalidation and one title persist; the next title fails.
   collection_preview_receive(caps,0,"Changed\nOther\nC\nD\nE\nF\nG\nH",16,"Saved","");
   assert(writes==before+2);assert(!collection_preview_show(caps,0));
+  char first[72]; collection_preview_first(0, first, sizeof(first)); assert(!first[0]);
   fail_write_at=-1;before=writes;
   collection_preview_receive(caps,0,"Changed\nOther\nC\nD\nE\nF\nG\nH",16,"Saved","");
   assert(writes==before+3);assert(collection_preview_show(caps,0));
@@ -186,9 +187,17 @@ static void test_collection_previews(void) {
   collection_preview_receive(caps,false,"Completed item",1,"Saved","d");
   assert(collection_preview_show(caps,false));
   assert(!strcmp(ui.elements[element("r0")].value,"Buy milk"));
+  char first[72]; collection_preview_first(0, first, sizeof(first));
+  assert(!strcmp(first, "Buy milk"));
+  event(caps, "local.home");
+  assert(!strcmp(ui.elements[element("collection-preview")].value, "Buy milk"));
+  assert(!strcmp(ui.elements[element("collection-preview")].action, "local.todos"));
   collection_preview_receive(caps,true,"Note title",16,"Saved","d");
   assert(collection_preview_show(caps,true));
   assert(!strcmp(ui.elements[element("r0")].title,"Note title"));
+  event(caps, "local.home");
+  assert(!strcmp(ui.elements[element("collection-preview")].value, "Note title"));
+  assert(!strcmp(ui.elements[element("collection-preview")].action, "local.notes"));
   collection_preview_receive(caps,false,"",16,"Saved","");
   assert(collection_preview_show(caps,false));assert(element("r0")<0);
   collection_preview_receive(caps,2,"Sep 15 12:00 · Lunch",16,"Saved","d");
@@ -207,6 +216,7 @@ static void test_collection_previews(void) {
   collection_preview_set_count(3,1);assert(collection_preview_show(caps,3));
   assert(!ui.elements[element("r0")].action[0]);
   assert(agent_capabilities_collection_kind(caps)==3);
+  collection_preview_first(3, first, sizeof(first)); assert(!strcmp(first, "baby  5"));
   agent_capabilities_destroy(caps);
   caps=agent_capabilities_create(&ui,todo_event,NULL);
   assert(agent_capabilities_collection_kind(caps)==3);
@@ -214,6 +224,11 @@ static void test_collection_previews(void) {
   event(caps,"local.calendar");assert(agent_capabilities_collection_kind(caps)==3);
   event(caps,"local.home");assert(!strcmp(ui.elements[element("todos")].action,"local.checks"));assert(!strcmp(ui.elements[element("todos")].value,"1"));
   storage[4491].size=0;assert(!collection_preview_show(caps,true));
+  collection_preview_first(1, first, sizeof(first)); assert(!first[0]);
+  collection_preview_receive(caps, 0, "", 16, "Saved", "");
+  collection_preview_first(0, first, sizeof(first)); assert(!first[0]);
+  event(caps, "local.home");
+  assert(!strcmp(ui.elements[element("collection-preview")].value, "Open your list"));
   agent_capabilities_destroy(caps);
 }
 

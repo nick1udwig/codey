@@ -16,7 +16,7 @@ menu_icon.save(ROOT / 'resources/images/menu_smiley.png')
 for state in ('sleep', 'think'):
     source = Image.open(ROOT / f'assets/codey-{state}-144.png').convert('RGBA')
     source = source.crop(source.getbbox())
-    for variant, bounds in [('emery', (82, 74)), ('gabbro', (74, 59)), ('small', (20, 20))]:
+    for variant, bounds in [('emery', (48, 48)), ('gabbro', (42, 42)), ('small', (20, 20))]:
         sprite = source.copy()
         sprite.thumbnail(bounds, Image.Resampling.NEAREST)
         # Bound the palette so decoded sprites fit the watch heap.

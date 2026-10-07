@@ -6,5 +6,6 @@ void collection_preview_receive_timeline(AgentCapabilities *host, const char *ti
 bool collection_preview_show(AgentCapabilities *host, int kind);
 
 void collection_preview_count(int kind, char *out, size_t size);
+void collection_preview_first(int kind, char *out, size_t size);
 
 void collection_preview_set_count(int kind, int count);

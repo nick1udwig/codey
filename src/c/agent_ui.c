@@ -57,8 +57,8 @@ struct AgentUi {
   uint8_t dirty;
   bool root_dirty, input_active, visible;
   NumberWindow *number_window;
-  GBitmap *dashboard_icons[DashboardIconCount];
   ArtworkCache artwork;
+  DashboardFonts dashboard_fonts;
   AgentUiEventHandler event_handler;
   AgentUiDictationHandler dictation_handler;
   void *context;
@@ -733,7 +733,7 @@ static void prv_content_update_proc(Layer *layer, GContext *ctx) {
     return;
   }
   bool dashboard = strcmp(ui->screen_id, "dashboard") == 0;
-  graphics_context_set_fill_color(ctx, dashboard ? GColorBlack : GColorWhite);
+  graphics_context_set_fill_color(ctx, dashboard ? PBL_IF_COLOR_ELSE(GColorPastelYellow, GColorWhite) : GColorWhite);
   graphics_fill_rect(ctx, layer_get_bounds(layer), 0, GCornerNone);
   if(!strcmp(ui->screen_id,"calendar")) {
     GPoint offset=scroll_layer_get_content_offset(ui->scroll_layer);
@@ -767,7 +767,8 @@ static void prv_content_update_proc(Layer *layer, GContext *ctx) {
   if (dashboard) {
     DashboardView dashboard_view = {
       .elements=ui->elements,.element_count=ui->element_count,.selected_element=ui->selected_element,
-      .dashboard_icons=ui->dashboard_icons,.artwork=&ui->artwork,
+      .artwork=&ui->artwork,
+      .fonts=&ui->dashboard_fonts,.width=ui->viewport_width,.height=ui->viewport_height,
       .codex_active=ui->codex_active,.codex_remaining=ui->codex_remaining,.request_frame=ui->request_frame
     };
     dashboard_draw(&dashboard_view, ctx);
@@ -776,7 +777,7 @@ static void prv_content_update_proc(Layer *layer, GContext *ctx) {
       int t = ui->request_frame;
       int x = from.origin.x + from.size.w/2 + ((to.origin.x + to.size.w/2) - (from.origin.x + from.size.w/2))*t/20;
       int y = from.origin.y + from.size.h/2 + ((to.origin.y + to.size.h/2) - (from.origin.y + from.size.h/2))*t/20;
-      graphics_context_set_fill_color(ctx, GColorBlue);
+      graphics_context_set_fill_color(ctx, PBL_IF_COLOR_ELSE(GColorFolly, GColorBlack));
       graphics_fill_circle(ctx, GPoint(x,y), 12 - t/4);
       graphics_context_set_stroke_color(ctx, GColorWhite);
       graphics_draw_circle(ctx, GPoint(x,y), 13 - t/4);
@@ -949,11 +950,12 @@ static void prv_relayout_root(AgentUi *ui) {
   if (!ui || !ui->loaded) { return; }
   root = window_get_root_layer(ui->window);
   bounds = layer_get_bounds(root);
-  scroll_layer_set_shadow_hidden(ui->scroll_layer,!strcmp(ui->screen_id,"calendar")||!strcmp(ui->screen_id,"event-detail"));
-  status_visible = (ui->screen_flags & AGENT_UI_FLAG_STATUS) != 0;
+  bool dashboard = !strcmp(ui->screen_id, "dashboard");
+  scroll_layer_set_shadow_hidden(ui->scroll_layer,dashboard||!strcmp(ui->screen_id,"calendar")||!strcmp(ui->screen_id,"event-detail"));
+  status_visible = dashboard || (ui->screen_flags & AGENT_UI_FLAG_STATUS) != 0;
   if(!strcmp(ui->screen_id,"calendar"))status_visible=false;
   action_visible = prv_has_action_bar(ui);
-  top = status_visible ? STATUS_BAR_LAYER_HEIGHT : 0;
+  top = !dashboard && status_visible ? STATUS_BAR_LAYER_HEIGHT : 0;
 #if defined(PBL_ROUND)
   // A hidden status bar still needs equivalent breathing room so custom
   // content does not begin in the clipped crown of the circle.
@@ -977,6 +979,7 @@ static void prv_relayout_root(AgentUi *ui) {
                   GRect(0, top, bounds.size.w - action_width, bounds.size.h - top));
   ui->viewport_width = bounds.size.w - action_width;
   ui->viewport_height = bounds.size.h - top;
+  layer_set_frame(ui->status_bar_layer, dashboard ? dashboard_frame(bounds.size.w, bounds.size.h, "calendar") : GRect(0, 0, bounds.size.w, STATUS_BAR_LAYER_HEIGHT));
 }
 
 static void prv_ensure_visible(AgentUi *ui, bool animated) {
@@ -1356,7 +1359,7 @@ static void prv_touch_hold(void *context) {
   if (ui->touch_down && !ui->touch_dragged && strcmp(ui->screen_id, "dashboard") == 0) {
     ui->touch_consumed = true;
     AgentUiElement *hit = prv_hit_test(ui, ui->touch_down_x, ui->touch_down_y);
-    if (hit && (!strcmp(hit->id, "todos") || !strcmp(hit->id,"calendar"))) {
+    if (hit && (!strcmp(hit->id, "todos") || !strcmp(hit->id,"calendar") || !strcmp(hit->id,"collection-preview"))) {
       prv_collection_menu(ui);
     } else prv_agent_menu(ui);
   }
@@ -1554,7 +1557,7 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
         }
         ui->touch_row = prv_todo_row(hit);
         if (ui->touch_row) { ui->selected_element = prv_index_of(ui, hit); }
-        if (hit && (!strcmp(hit->id, "dictate") || !strcmp(hit->id, "todos") || !strcmp(hit->id,"calendar")) && strcmp(ui->screen_id, "dashboard") == 0) {
+        if (hit && (!strcmp(hit->id, "dictate") || !strcmp(hit->id, "todos") || !strcmp(hit->id,"calendar") || !strcmp(hit->id,"collection-preview")) && strcmp(ui->screen_id, "dashboard") == 0) {
           ui->hold_timer = app_timer_register(AGENT_UI_SELECT_HOLD_MS, prv_touch_hold, ui);
         }
       }
@@ -1639,7 +1642,15 @@ static void prv_touch_handler(const TouchEvent *event, void *context) {
 #endif
 
 static void prv_clock_update(Layer *layer,GContext *ctx) {
-  GRect bounds=layer_get_bounds(layer); char clock[16];clock_copy_time_string(clock,sizeof(clock));
+  GRect bounds=layer_get_bounds(layer);
+  AgentUi *ui = *(AgentUi **)layer_get_data(layer);
+  if (!strcmp(ui->screen_id, "dashboard")) {
+    graphics_context_set_fill_color(ctx, PBL_IF_COLOR_ELSE(GColorPastelYellow, GColorWhite));
+    graphics_fill_rect(ctx, bounds, 0, GCornerNone);
+    dashboard_draw_calendar(&ui->dashboard_fonts, ctx, bounds);
+    return;
+  }
+  char clock[16];clock_copy_time_string(clock,sizeof(clock));
   graphics_context_set_fill_color(ctx,GColorWhite);graphics_fill_rect(ctx,bounds,0,GCornerNone);
   prv_draw_text(ctx,clock,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),GRect(0,-2,bounds.size.w,18),GTextAlignmentCenter,GColorBlack,GTextOverflowModeTrailingEllipsis);
   graphics_context_set_stroke_color(ctx,GColorBlack);
@@ -1656,10 +1667,10 @@ static void prv_window_load(Window *window) {
     layer_set_update_proc(ui->menu_layer, prv_menu_update);
     layer_set_hidden(ui->menu_layer, true);
   }
-  ui->status_bar_layer = layer_create(GRect(0,0,bounds.size.w,STATUS_BAR_LAYER_HEIGHT));
+  ui->status_bar_layer = layer_create_with_data(GRect(0,0,bounds.size.w,STATUS_BAR_LAYER_HEIGHT), sizeof(AgentUi *));
   if (!ui->status_bar_layer) { return; }
+  *(AgentUi **)layer_get_data(ui->status_bar_layer) = ui;
   layer_set_update_proc(ui->status_bar_layer,prv_clock_update);
-  layer_add_child(root, ui->status_bar_layer);
 
   ui->scroll_layer = scroll_layer_create(bounds);
   if (!ui->scroll_layer) { return; }
@@ -1670,6 +1681,7 @@ static void prv_window_load(Window *window) {
   *slot = ui;
   layer_set_update_proc(ui->content_layer, prv_content_update_proc);
   scroll_layer_add_child(ui->scroll_layer, ui->content_layer);
+  layer_add_child(root, ui->status_bar_layer);
 
   ui->action_bar_layer = layer_create_with_data(GRect(bounds.size.w, 0, 0, bounds.size.h),
                                                  sizeof(AgentUi *));
@@ -1772,16 +1784,6 @@ AgentUi *agent_ui_create(AgentUiEventHandler event_handler, AgentUiDictationHand
   });
   window_set_click_config_provider_with_context(ui->window, prv_click_config_provider, ui);
   agent_protocol_copy(ui->layout_name, sizeof(ui->layout_name), "text");
-  const uint32_t icons[DashboardIconCount] = {
-    [DashboardCalendar] = RESOURCE_ID_DASH_CALENDAR,
-    [DashboardWeather] = RESOURCE_ID_DASH_WEATHER,
-    [DashboardTodos] = RESOURCE_ID_DASH_TODOS,
-    [DashboardSleep] = RESOURCE_ID_DASH_CODEY_SLEEP_SMALL,
-    [DashboardThink] = RESOURCE_ID_DASH_CODEY_THINK_SMALL,
-    [DashboardTimer] = RESOURCE_ID_DASH_TIMER_SMALL,
-    [DashboardAlarm] = RESOURCE_ID_DASH_ALARM_SMALL,
-  };
-  for (int i = 0; i < DashboardIconCount; ++i) { ui->dashboard_icons[i] = gbitmap_create_with_resource(icons[i]); }
   return ui;
 }
 
@@ -1794,7 +1796,7 @@ void agent_ui_destroy(AgentUi *ui) {
   prv_stop_activity(ui);
   if (ui->number_window) { number_window_destroy(ui->number_window); }
   if (ui->window) { window_destroy(ui->window); }
-  for (int i = 0; i < DashboardIconCount; ++i) { if (ui->dashboard_icons[i]) { gbitmap_destroy(ui->dashboard_icons[i]); } }
+  dashboard_fonts_clear(&ui->dashboard_fonts);
   free(ui);
 }
 
@@ -1812,7 +1814,7 @@ void agent_ui_begin(AgentUi *ui, const char *screen_id, const char *layout, cons
                     const char *subtitle, const char *meta, int32_t flags) {
   if (!ui) { return; }
   ui->root_dirty=true;
-  if(!screen_id || strcmp(screen_id,"dashboard"))prv_stop_activity(ui);
+  if (!screen_id || strcmp(screen_id, "dashboard")) prv_stop_activity(ui);
 #if defined(PBL_TOUCH)
   prv_cancel_hold(ui);
   ui->touch_down = false;

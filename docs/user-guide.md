@@ -21,22 +21,33 @@ Relative durations support 1 second through 7 days.
 ## Dashboard
 
 On the dashboard, Up opens Notifications, Down opens the selected collection, and Select starts dictation.
+The Almanac dashboard uses Instrument Serif on pale yellow, with three black
+panels beside those buttons. The left side shows the date and time, weather,
+and the first cached item in the selected collection. Emery uses a compact
+month/day and weekday header; Gabbro uses the full date on one line.
 Touch taps open each section:
 
 - **Clock / Calendar:** opens your upcoming calendar agenda.
-  The top row shows battery and remaining agent quota as numbers around a shared `%`, with the brain at the far right.
+  The date row shows the battery icon and charge. The brain and remaining agent
+  quota appear below Codey in the middle panel; unavailable quota shows dashes.
   The public SDK cannot directly open the system Timeline; it is accessible from the watchface.
 - **Weather:** shows current temperature, daily low/high, and a condition icon (including sun/moon and cloudy day/night variants).
   It refreshes through the phone on startup and every 15 minutes; cached readings older than an hour are discarded on refresh.
   Tapping opens the full forecast without an agent request.
   Location permission and connectivity are required; missing readings show dashes.
 - **Notifications:** initially includes a **Welcome to codey** tour, which stays until you select **Got it**.
-  After dismissal it stays empty until items exist, then shows their labels.
+  The upper-right panel shows an idle timer icon when empty. Otherwise it shows
+  the first timer's remaining time, an agent job count, or an alarm indicator,
+  with up to three compact icons beneath it.
   Timer rings fill clockwise from 12 o’clock as elapsed time increases, freezing when paused and filling completely at completion.
-  Up to four entries fit; additional entries are indicated by a “MORE” count.
-  Select opens the complete live list of timers, alarms, reminders, and stopwatch controls.
-- **Talk to codey:** the full-button Codey artwork sleeps with zero active threads and thinks with one or more active threads. Tap it to dictate into the current conversation. Agent notification icons use the same sleeping/thinking state.
-- **Todos:** shows the undone count and opens the active task list.
+  Tap the panel or press Up to open the complete live list of timers, alarms,
+  reminders, agent jobs, and stopwatch controls.
+- **Talk to codey:** Codey sleeps with zero active threads and thinks with one or more active threads. Tap the middle panel to dictate into the current conversation.
+- **Collections:** the bottom panel shows the selected collection's count and
+  To-do, Notes, and Checks tabs. Its highlighted icon identifies the selection.
+  The italic preview beside it shows the first cached title, or “Open your list” when no title is cached.
+  Tap either area or press Down to open the selected collection.
+  For To-dos, the count is the number of undone tasks.
   Tap a checkbox or press Select to archive an item; archived items can be restored.
   Swipe vertically or use Up/Down to navigate.
   Drag item text horizontally, or hold Up to pan the selected item. Hold Down opens the collection menu.

@@ -13,12 +13,36 @@ npm run build:watch
 
 `npm test` currently includes:
 
-- 92 JavaScript tests covering PAM at every chunk boundary, byte and hierarchy limits, all layouts/elements, patches/removals, UTF-8 AppMessage splitting, queue retry/staleness, HTTP and WebSocket cancellation/timeouts, settings, weather, the capability registry, writer output, onboarding, native dashboard preservation, and dictation input through the full PebbleKit-to-agent-to-render bridge.
+- 109 JavaScript tests covering PAM at every chunk boundary, byte and hierarchy limits, all layouts/elements, patches/removals, UTF-8 AppMessage splitting, queue retry/staleness, HTTP and WebSocket cancellation/timeouts, settings, weather, the capability registry, writer output, onboarding, native dashboard preservation, and dictation input through the full PebbleKit-to-agent-to-render bridge.
 - Native C tests built with `-Wall -Wextra -Werror`, AddressSanitizer, and UndefinedBehaviorSanitizer. These cover metadata parsing and escaping, strict signed 32-bit bounds, bounded copies, and duration parsing/formatting.
-- 12 integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.
+- 14 integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.
 - Go tests covering strict request/output PAM handling, output at arbitrary model-delta boundaries, invalid-model containment, persisted conversation threads, Codex RPC initialization and fallback order, real loopback HTTP and downstream WebSocket requests, and app-server stdio, WebSocket, and WebSocket-over-Unix-socket transports.
 
-The watch build compiles and links the same sources for both target platforms. The current static footprint is 62,110 bytes on Emery and 62,622 bytes on Gabbro, leaving about 66 KiB of the 128 KiB RAM budget for heap.
+The watch build compiles and links the same sources for both target platforms. The current static footprint is 64,922 bytes on Emery and 65,458 bytes on Gabbro, leaving about 64 KiB of the 128 KiB RAM budget for heap. Gabbro's native app image is close to its separate 65,535-byte virtual-size limit; additional size work is tracked as `issues/native-watch-size-headroom` in the KB.
+
+### Almanac 5b dashboard
+
+The Instrument Serif dashboard was visually checked in Emery and Gabbro
+emulators, including the round-safe date/time layout and visible mascot after
+navigation. Screenshots are `docs/screenshots/dashboard-almanac-5b-emery.png`
+and `docs/screenshots/dashboard-almanac-5b-gabbro.png`. Emery uses a compact
+month/day and weekday header to avoid an intermittent SDK top-strip redraw
+artifact. Direct QEMU framebuffer captures confirmed repeated Up/Back navigation.
+Quota and collection counts in these captures are synthetic emulator inputs.
+Monochrome font-advance checks cover every 24-hour time and all English
+month/day labels: clocks need at most 125 / 116 pixels within 132 / 117-pixel
+boxes on Emery / Gabbro, and the compact Emery date needs at most 26 pixels
+within its 28-pixel box.
+
+Emery buttons verified Up opens Notifications, Down opens the selected collection,
+and hold Down opens To Do / Notes / Checks. Selecting Checks updates the count,
+highlighted tab, and preview prompt on returning home. The unconfigured emulator
+reports a missing collection-server URL when opening a live list.
+
+Native sanitizer tests cover usable, nonoverlapping touch targets within the
+round display and cached first-title previews for To-dos, Notes, and Checks,
+including empty and invalidated caches. Physical touch and dictation remain
+hardware checks. Both emulators are stopped after validation.
 
 ### Streaming efficiency regressions
 

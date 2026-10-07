@@ -83,4 +83,14 @@ bool collection_preview_show(AgentCapabilities *host,int kind){
 
 void collection_preview_count(int kind,char *out,size_t size){int n=persist_exists(key(kind)+9)?persist_read_int(key(kind)+9):persist_read_int(key(kind))-1;snprintf(out,size,n<0?"0":"%d",n<0?0:n);}
 
+void collection_preview_first(int kind, char *out, size_t size) {
+  if (!size) return;
+  out[0] = 0;
+  if (kind < 0 || kind > 3 || persist_read_int(key(kind)) <= 1) return;
+  char title[TITLE_BYTES] = {0};
+  if (persist_read_data(key(kind) + 1, title, sizeof(title)) != TITLE_BYTES) return;
+  title[TITLE_BYTES - 1] = 0;
+  agent_protocol_copy(out, size, title);
+}
+
 void collection_preview_set_count(int kind,int count){if(kind<0||kind>3||count<0)return;int k=key(kind)+9;if(!persist_exists(k)||persist_read_int(k)!=count)persist_write_int(k,count);}

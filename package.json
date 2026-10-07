@@ -66,45 +66,6 @@
         },
         {
           "type": "bitmap",
-          "name": "DASH_CALENDAR",
-          "file": "images/icon_calendar.png"
-        },
-        {
-          "type": "bitmap",
-          "name": "DASH_WEATHER",
-          "file": "images/icon_weather.png"
-        },
-        {
-          "type": "bitmap",
-          "name": "DASH_CODEY_SLEEP_SMALL",
-          "file": "images/codey_sleep_small.png",
-          "storageFormat": "pbi",
-          "memoryFormat": "4bitpalette"
-        },
-        {
-          "type": "bitmap",
-          "name": "DASH_TODOS",
-          "file": "images/icon_todos.png"
-        },
-        {
-          "type": "bitmap",
-          "name": "DASH_TIMER_SMALL",
-          "file": "images/icon_timer_small.png"
-        },
-        {
-          "type": "bitmap",
-          "name": "DASH_ALARM_SMALL",
-          "file": "images/icon_alarm_small.png"
-        },
-        {
-          "type": "bitmap",
-          "name": "DASH_CODEY_THINK_SMALL",
-          "file": "images/codey_think_small.png",
-          "storageFormat": "pbi",
-          "memoryFormat": "4bitpalette"
-        },
-        {
-          "type": "bitmap",
           "name": "DASH_CODEY_SLEEP_EMERY",
           "file": "images/codey_sleep_emery.png",
           "storageFormat": "pbi",
@@ -139,6 +100,132 @@
           "file": "images/codey_think_gabbro.png",
           "storageFormat": "pbi",
           "memoryFormat": "4bitpalette",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_DASH_TIME_60",
+          "file": "fonts/InstrumentSerif-Regular.ttf",
+          "characterRegex": "[0-9:\u00b0\u2212?+.-]|\u2026",
+          "targetPlatforms": [
+            "emery"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_DASH_TEMPERATURE_44",
+          "file": "fonts/InstrumentSerif-Regular.ttf",
+          "characterRegex": "[0-9:\u00b0\u2212?+.-]|\u2026",
+          "targetPlatforms": [
+            "emery"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_DASH_SMALL_14",
+          "file": "fonts/InstrumentSerif-Regular.ttf",
+          "characterRegex": "[0-9?.-]|\u2026",
+          "targetPlatforms": [
+            "emery"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_DASH_DATE_11",
+          "file": "fonts/InstrumentSerif-Italic.ttf",
+          "characterRegex": "[A-Za-z0-9, .-]|\u2026",
+          "targetPlatforms": [
+            "emery"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_DASH_PREVIEW_21",
+          "file": "fonts/InstrumentSerif-Italic.ttf",
+          "characterRegex": "[ -~\\u00a0-\\u00ff\\u2010-\\u2026]",
+          "targetPlatforms": [
+            "emery"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_DASH_LABEL_19",
+          "file": "fonts/InstrumentSerif-Regular.ttf",
+          "characterRegex": "[0-9: ASadeghilmnprstu?.-]|\u2026",
+          "targetPlatforms": [
+            "emery"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_DASH_COUNT_28",
+          "file": "fonts/InstrumentSerif-Regular.ttf",
+          "characterRegex": "[0-9:\u00b0\u2212?+.-]|\u2026",
+          "targetPlatforms": [
+            "emery"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_DASH_TIME_56",
+          "file": "fonts/InstrumentSerif-Regular.ttf",
+          "characterRegex": "[0-9:\u00b0\u2212?+.-]|\u2026",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_DASH_TEMPERATURE_38",
+          "file": "fonts/InstrumentSerif-Regular.ttf",
+          "characterRegex": "[0-9:\u00b0\u2212?+.-]|\u2026",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_DASH_SMALL_12",
+          "file": "fonts/InstrumentSerif-Regular.ttf",
+          "characterRegex": "[0-9?.-]|\u2026",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_DASH_DATE_12",
+          "file": "fonts/InstrumentSerif-Italic.ttf",
+          "characterRegex": "[A-Za-z0-9, .-]|\u2026",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_DASH_PREVIEW_18",
+          "file": "fonts/InstrumentSerif-Italic.ttf",
+          "characterRegex": "[ -~\\u00a0-\\u00ff\\u2010-\\u2026]",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_DASH_LABEL_16",
+          "file": "fonts/InstrumentSerif-Regular.ttf",
+          "characterRegex": "[0-9: ASadeghilmnprstu?.-]|\u2026",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_DASH_COUNT_24",
+          "file": "fonts/InstrumentSerif-Regular.ttf",
+          "characterRegex": "[0-9:\u00b0\u2212?+.-]|\u2026",
           "targetPlatforms": [
             "gabbro"
           ]

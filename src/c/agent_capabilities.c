@@ -227,6 +227,8 @@ void agent_capabilities_show_dashboard(AgentCapabilities *capabilities) {
                                "Hold Select", "", "local.dictate", "", 0);
   agent_capability_add_element(capabilities->ui, "item", "weather", "Weather", capabilities->weather_range, capabilities->weather_temperature, "local.weather", capabilities->weather_meta, 0);
   agent_capability_add_element(capabilities->ui, "item", "todos", capabilities->collection_kind==1 ? "Notes" : capabilities->collection_kind==3 ? "Checks" : "Todos", "", "", capabilities->collection_kind==1 ? "local.notes" : capabilities->collection_kind==3 ? "local.checks" : "local.todos", "", 0);
+  agent_capability_add_element(capabilities->ui, "item", "collection-preview", "", "", "",
+      capabilities->collection_kind == 1 ? "local.notes" : capabilities->collection_kind == 3 ? "local.checks" : "local.todos", "", 0);
   prv_add_tour(capabilities);
   for (uint8_t i = 0; i < capabilities->module_count; ++i) {
     RegisteredModule *module = &capabilities->modules[i];

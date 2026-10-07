@@ -258,10 +258,21 @@ Use the Repebble documentation for Emery/Gabbro APIs and behavior; do not substi
 
 ## Dashboard assets and agent UI guidance
 
-Dashboard PNGs and the bitmap font live in `resources/images/`.
+Legacy dashboard PNGs and the bitmap font live in `resources/images/`.
 Regenerate them with `python3 scripts/generate_dashboard_icons.py`.
 Regenerate the Codey mascot sprites and app-list icon from `assets/codey-*.png`
 with `python3 scripts/prepare_codey_icons.py` (requires Pillow).
+
+The Almanac 5b dashboard uses bundled Instrument Serif regular and italic fonts
+in `resources/fonts/`, licensed under the accompanying SIL Open Font License.
+`package.json` subsets them for each platform. Run `pebble clean` before building
+after changing font filters; the SDK can otherwise reuse previous font resources.
+The reference canvas is 200 × 228;
+`src/c/dashboard_layout.h` adapts its hit targets to Emery and a round-safe
+square on Gabbro. Collection previews use the first title in the watch cache.
+The clock layer paints the calendar separately from the dashboard body. Emery
+keeps a compact date in its leftmost tile and the clock below the top strip,
+which avoids the SDK emulator's intermittent month/day redraw artifact.
 
 The bundled [pam-ui guidance](internal/agent/skills/pam-ui/SKILL.md) covers agent-authored forms, sliders, and winding dials.
 The server installs it beside its state on startup; restart an updated server to activate changes.
