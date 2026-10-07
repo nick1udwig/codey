@@ -216,6 +216,14 @@ Each connection attempt follows this order:
 Use `CODEY_CODEX` to select another Codex executable, `CODEY_APP_SERVER_UNIX` for an explicit socket, and `CODEY_APP_SERVER_URL` for the fallback URL.
 If a remote WebSocket app-server requires a bearer token, put it in `CODEX_APP_SERVER_TOKEN` or change the variable name with `--app-server-token-env`.
 
+If a systemd user unit starts a separately managed Codex daemon, use
+`Wants=codex-remote-control.service` with `After=codex-remote-control.service`.
+Codey already resolves its app-server transport and can start without that daemon.
+`Requires=` can leave codey stopped after a transient daemon startup failure,
+even when the daemon's own restart policy subsequently recovers it.
+Check `systemctl --user status codey.service` and authenticated `GET /v1/status`
+when watch quota or thread counts display dashes.
+
 Every transport performs the required `initialize` request and `initialized` notification.
 A dropped long-lived connection is re-resolved in the same order on the next request.
 A connection attempt has a five-second per-transport timeout by default.
