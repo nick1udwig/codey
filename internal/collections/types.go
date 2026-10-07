@@ -49,6 +49,7 @@ type Collection struct {
 	BindingID  string `json:"binding_id,omitempty"`
 }
 type Record struct {
+	Count         int             `json:"count,omitempty"`
 	Start         string          `json:"start,omitempty"`
 	End           string          `json:"end,omitempty"`
 	Location      string          `json:"location,omitempty"`
@@ -132,7 +133,7 @@ func Apply(old *Record, op Operation, kind string) (Record, error) {
 	if old != nil {
 		r = *old
 	}
-	create := op.Type == "task.create" || op.Type == "note.create" || op.Type == "event.create"
+	create := op.Type == "task.create" || op.Type == "note.create" || op.Type == "event.create" || op.Type == "check.create"
 	if create && old != nil {
 		return r, Fail("record_exists", "Record already exists")
 	}
@@ -153,11 +154,15 @@ func Apply(old *Record, op Operation, kind string) (Record, error) {
 	if r.Deleted {
 		return r, Fail("deleted", "Deleted records cannot be edited")
 	}
-	if strings.HasPrefix(op.Type, "task.") && kind != "task" || strings.HasPrefix(op.Type, "note.") && kind != "note" || strings.HasPrefix(op.Type, "event.") && kind != "event" {
+	if strings.HasPrefix(op.Type, "task.") && kind != "task" || strings.HasPrefix(op.Type, "note.") && kind != "note" || strings.HasPrefix(op.Type, "event.") && kind != "event" || strings.HasPrefix(op.Type, "check.") && kind != "check" {
 		return r, Fail("invalid_input", "Operation kind does not match collection")
 	}
 	allowed := map[string]bool{}
 	switch op.Type {
+	case "check.create":
+		allowed["title"] = true
+	case "check.add":
+		allowed["occurred_at"] = true
 	case "task.create", "task.patch":
 		for _, k := range []string{"title", "description", "due"} {
 			allowed[k] = true
@@ -217,6 +222,10 @@ func Apply(old *Record, op Operation, kind string) (Record, error) {
 			return r, Fail("invalid_input", "Text field is invalid")
 		}
 		switch k {
+		case "occurred_at":
+			if _, e := time.Parse(time.RFC3339Nano, s); e != nil {
+				return r, Fail("invalid_input", "Check time must be an ISO 8601 timestamp with timezone")
+			}
 		case "start":
 			r.Start = s
 		case "end":
@@ -263,10 +272,24 @@ func Apply(old *Record, op Operation, kind string) (Record, error) {
 			return r, Fail("invalid_input", "Events require start and end with time-zone offsets (or two dates), and end after start")
 		}
 	}
+	if kind == "check" {
+		if len(r.Title) > 160 || NormalizeCheckName(r.Title) == "" {
+			return r, Fail("invalid_input", "Check name must be 1–160 characters")
+		}
+		if op.Type == "check.add" {
+			var occurred string
+			if json.Unmarshal(op.Payload["occurred_at"], &occurred) != nil {
+				return r, Fail("invalid_input", "Check time is required")
+			}
+			r.Count++
+		}
+	}
 	r.Revision = Next(r.Revision)
 	r.UpdatedAt = Now()
 	r.BodyHash = Hash(r.Body)
-	if kind == "event" {
+	if kind == "check" {
+		r.Capabilities = []string{"check.add"}
+	} else if kind == "event" {
 		r.Capabilities = []string{}
 	} else if kind == "note" {
 		r.Capabilities = []string{"note.append", "note.replace", "record.delete"}
@@ -274,6 +297,11 @@ func Apply(old *Record, op Operation, kind string) (Record, error) {
 		r.Capabilities = []string{"task.patch", "task.complete", "task.restore", "record.delete"}
 	}
 	return r, nil
+}
+
+// NormalizeCheckName is shared by creation and lookup so names cannot fork.
+func NormalizeCheckName(name string) string {
+	return strings.ToLower(strings.Join(strings.Fields(name), " "))
 }
 func ValidateIdentity(client string, op Operation) error {
 	n, e := strconv.ParseUint(op.Sequence, 10, 64)

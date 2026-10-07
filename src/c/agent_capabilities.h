@@ -5,7 +5,7 @@
 #include "agent_ui.h"
 
 #define AGENT_CAPABILITY_NAME_LENGTH 20
-#define AGENT_CAPABILITY_MAX_MODULES 8
+#define AGENT_CAPABILITY_MAX_MODULES 9
 
 typedef struct AgentCapabilities AgentCapabilities;
 

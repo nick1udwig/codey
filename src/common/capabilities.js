@@ -44,6 +44,7 @@ function installBuiltins(registry, weatherHandler) {
   registerWatchCapability(registry, "todo");
   registerWatchCapability(registry, "note");
   registerWatchCapability(registry, "calendar");
+  registerWatchCapability(registry, "check");
   if (weatherHandler) {
     registry.register("weather", weatherHandler);
   }

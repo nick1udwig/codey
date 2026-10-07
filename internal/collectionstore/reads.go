@@ -18,6 +18,92 @@ import (
 	"unicode/utf8"
 )
 
+type CheckOccurrence struct {
+	ID         string `json:"id"`
+	OccurredAt string `json:"occurred_at"`
+}
+
+func (s *Store) CheckByName(name string) (c.Record, error) {
+	key := c.NormalizeCheckName(name)
+	if key == "" {
+		return c.Record{}, c.Fail("invalid_input", "Check name is required")
+	}
+	var raw []byte
+	e := s.DB.QueryRow("SELECT r.data FROM check_names n JOIN records r ON r.id=n.record_id WHERE n.name=?", key).Scan(&raw)
+	if errors.Is(e, sql.ErrNoRows) {
+		return c.Record{}, c.Fail("not_found", "Check '"+strings.Join(strings.Fields(name), " ")+"' does not exist. Say 'check new "+strings.Join(strings.Fields(name), " ")+"' first.")
+	}
+	if e != nil {
+		return c.Record{}, e
+	}
+	r, e := Decode[c.Record](raw)
+	return r.Summary(), e
+}
+
+// CheckHistory uses a (timestamp, operation ID) keyset so a newly inserted
+// occurrence cannot shift older pages or make an event appear twice.
+func (s *Store) CheckHistory(id, token string, n int) (map[string]any, error) {
+	if n <= 0 || n > 20 {
+		n = 8
+	}
+	var canonical string
+	if e := s.DB.QueryRow("SELECT record_id FROM check_aliases WHERE alias_id=?", id).Scan(&canonical); e == nil {
+		id = canonical
+	} else if !errors.Is(e, sql.ErrNoRows) {
+		return nil, e
+	}
+	r, e := s.Record(id, "")
+	if e != nil {
+		return nil, e
+	}
+	if r.Kind != "check" || r.Deleted {
+		return nil, c.Fail("not_found", "Check unavailable")
+	}
+	var at, opID string
+	if token != "" {
+		b, er := base64.RawURLEncoding.DecodeString(token)
+		if er != nil || len(b) > 256 {
+			return nil, c.Fail("cursor_expired", "Invalid check history cursor")
+		}
+		parts := strings.SplitN(string(b), "|", 2)
+		if len(parts) != 2 || len(parts[0]) != 30 || !strings.HasPrefix(parts[1], "op:") {
+			return nil, c.Fail("cursor_expired", "Invalid check history cursor")
+		}
+		at, opID = parts[0], parts[1]
+	}
+	query := "SELECT id,occurred_at FROM check_occurrences WHERE record_id=?"
+	args := []any{id}
+	if token != "" {
+		query += " AND (occurred_at<? OR (occurred_at=? AND id<?))"
+		args = append(args, at, at, opID)
+	}
+	query += " ORDER BY occurred_at DESC,id DESC LIMIT ?"
+	args = append(args, n+1)
+	rows, e := s.DB.Query(query, args...)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []CheckOccurrence{}
+	for rows.Next() {
+		var v CheckOccurrence
+		if e = rows.Scan(&v.ID, &v.OccurredAt); e != nil {
+			return nil, e
+		}
+		out = append(out, v)
+	}
+	if e = rows.Err(); e != nil {
+		return nil, e
+	}
+	next := ""
+	if len(out) > n {
+		out = out[:n]
+		last := out[len(out)-1]
+		next = base64.RawURLEncoding.EncodeToString([]byte(last.OccurredAt + "|" + last.ID))
+	}
+	return map[string]any{"record": r.Summary(), "occurrences": out, "next_cursor": next, "complete": next == ""}, nil
+}
+
 type Page struct {
 	Total      int        `json:"total"`
 	Records    []c.Record `json:"records"`

@@ -2,11 +2,48 @@ package httpapi
 
 import (
 	"encoding/json"
+	c "github.com/nick1udwig/pebble-agent/internal/collections"
 	"github.com/nick1udwig/pebble-agent/internal/collectionstore"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func TestCheckLookupAndHistoryRoutes(t *testing.T) {
+	store, e := collectionstore.Open(t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer store.Close()
+	client, e := store.Enroll()
+	if e != nil {
+		t.Fatal(e)
+	}
+	recordID := "rec:" + client + ":1"
+	batch := c.Batch{Version: 1, ServerID: store.ServerID, Epoch: store.Epoch, ClientID: client, Operations: []c.Operation{{ID: "op:" + client + ":1", IngressID: "check-route-1", Sequence: "1", CollectionID: "col_check", Generation: "1", RecordID: recordID, Type: "check.create", Payload: map[string]json.RawMessage{"title": json.RawMessage(`"baby"`)}}}}
+	if _, e = store.Mutate(batch); e != nil {
+		t.Fatal(e)
+	}
+	server := New(Config{Token: "secret", Collections: store})
+	get := func(path string, auth bool) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", path, nil)
+		if auth {
+			r.Header.Set("Authorization", "Bearer secret")
+		}
+		w := httptest.NewRecorder()
+		server.ServeHTTP(w, r)
+		return w
+	}
+	if w := get("/v1/checks/lookup?name=BABY", false); w.Code != 401 {
+		t.Fatal(w.Code)
+	}
+	if w := get("/v1/checks/lookup?name=BABY", true); w.Code != 200 || !strings.Contains(w.Body.String(), recordID) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w := get("/v1/checks/"+recordID+"/history?limit=8", true); w.Code != 200 || !strings.Contains(w.Body.String(), `"occurrences":[]`) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
 
 func TestCollectionsRequireAuthAndWorkWithoutAgent(t *testing.T) {
 	store, e := collectionstore.Open(t.TempDir())

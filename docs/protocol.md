@@ -406,6 +406,19 @@ See [collections](collections.md) for server ownership and durability handoff.
 
 ## Collection protocol version 1
 
+Checks uses `col_check`, kind `check`. PAM commands are
+`capability type=check command=new value="baby"`,
+`capability type=check command=add value="baby"`, and
+`capability type=check command=list`. Local dictation supplies an
+`occurred_at` RFC3339 timestamp before phone networking begins. The phone
+resolves an exact normalized name, including locally queued creations, then
+sends `check.create` with `title` or `check.add` with `occurred_at` through the
+durable mutation journal. The server's `GET /v1/checks/lookup?name=...` resolves
+full names; `GET /v1/checks/{record_id}/history?limit=8&cursor=...` returns a
+bounded newest-first page with `occurrences`, `next_cursor`, and `complete`.
+`check.add` is additive across stale record revisions; operation receipts make
+transport retries idempotent. Check history has no provider binding.
+
 AppMessage keys 0–12 retain their values. New keys are:
 
 | Number | Name | Meaning |
@@ -419,7 +432,7 @@ AppMessage keys 0–12 retain their values. New keys are:
 
 `bridge operation=collections` supplies protocol/session readiness. `collection-view`
 sets the token for the matching render request. Lists instead use one
-`collection-list` message: Operation is `note`, `task`, or `event`, Value contains up to eight
+`collection-list` message: Operation is `note`, `task`, `event`, or `check`, Value contains up to eight
 newline-separated titles (71 UTF-8 bytes each; embedded whitespace is normalized),
 ViewToken binds `r0` through `r7` to the exact phone records/revisions, and Meta has
 one delivery-state character per row (`p` pending server, `s` synced, `b` backend
@@ -429,7 +442,7 @@ not just the number of preview rows. Event titles include date/time. Subtitle ca
 active pages replace the persistent title preview. Preview rows have no mutation
 or read aliases until a live response arrives. All list messages are guarded by
 the same request/navigation checks as render messages. Existing `capability_event` messages
-with operation `note`, `todo`, or `calendar` carry list/read/edit/append/complete/restore actions.
+with operation `note`, `todo`, `calendar`, or `check` carry list/read/edit/append/complete/restore actions.
 The phone resolves an alias only within that exact view. It checks an existing
 receipt before rejecting an expired view, so retransmission cannot target a reused
 row. `collection-ack` carries the original session/event and delivery state.
@@ -487,8 +500,8 @@ is restricted to the successfully read time window. Records remain read-only on
 the watch after creation; edits and recurring-series creation use a calendar client.
 
 `bridge operation=collection-counts` sends task count in Index, note count in Flags,
-and event count in EventSequence. Watch caches use ten keys per kind: 4480, 4490,
-4500; base+1..8 hold titles, base+9 holds the full count.
+event count in EventSequence, and check-list count in Title. Watch caches use ten keys per kind: 4480, 4490,
+4500, 4510; base+1..8 hold titles, base+9 holds the full count.
 `bridge operation=preferences` uses Flags for ripple enabled, Index for double-tap
 required (both default 1). `bridge operation=agent-dispatched` starts the blue
 request animation only after the phone submits an agent job over HTTP.

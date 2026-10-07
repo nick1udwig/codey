@@ -84,6 +84,9 @@
             "note.create",
             "note.append",
             "note.replace",
+            "event.create",
+            "check.create",
+            "check.add",
             "record.delete",
             "conflict.resolve"
           ]

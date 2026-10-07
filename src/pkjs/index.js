@@ -245,6 +245,7 @@ var capabilityRegistry = Capabilities.installBuiltins(
 capabilityRegistry.register("calendar", function(attrs, context) { attrs.type="calendar"; context.phoneNote(attrs); });
 capabilityRegistry.register("note", function(attrs, context) { attrs.type="note"; context.phoneNote(attrs); });
 capabilityRegistry.register("todo", function(attrs, context) { attrs.type="todo"; context.phoneNote(attrs); });
+capabilityRegistry.register("check", function(attrs, context) { attrs.type="check"; context.phoneNote(attrs); });
 capabilityRegistry.register("settings", function(attrs, context) {
   try {
     context.changeSetting(attrs);
@@ -458,7 +459,7 @@ function handleWatchMessage(event) {
     return;
   }
   if (type === "capability_event" && operation === "status") {dashboardStatus.refresh();return;}
-  if (type === "capability_event" && (operation === "note" || operation === "todo" || operation === "calendar")) { collectionController.handle(operation==="calendar"?"event":operation==="note"?"note":"task",action,element,value,Number(read(payload,Key.meta,"Meta"))||0,payload);return; }
+  if (type === "capability_event" && (operation === "note" || operation === "todo" || operation === "calendar" || operation === "check")) { collectionController.handle(operation==="calendar"?"event":operation==="note"?"note":operation==="check"?"check":"task",action,element,value,Number(read(payload,Key.meta,"Meta"))||0,payload);return; }
   if (type === "capability_event" && operation === "job") {
     if (action === "executed" || action === "execution-failed") {
       jobPresentation.receipt(element,value,action);

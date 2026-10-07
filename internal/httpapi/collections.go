@@ -83,6 +83,11 @@ func (s *Server) collection(w http.ResponseWriter, r *http.Request) {
 	case p == "/v1/collections" && r.Method == "GET":
 		offset, _ := strconv.Atoi(q.Get("utc_offset_minutes"))
 		value, err = store.CollectionsInZone(offset)
+	case p == "/v1/checks/lookup" && r.Method == "GET":
+		value, err = store.CheckByName(q.Get("name"))
+	case strings.HasPrefix(p, "/v1/checks/") && strings.HasSuffix(p, "/history") && r.Method == "GET":
+		id := strings.TrimSuffix(strings.TrimPrefix(p, "/v1/checks/"), "/history")
+		value, err = store.CheckHistory(id, q.Get("cursor"), n)
 	case p == "/v1/sync/mutations" && r.Method == "POST":
 		var batch c.Batch
 		err = collectionDecode(w, r, &batch)

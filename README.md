@@ -126,7 +126,7 @@ Try “start a five-minute timer,” “remind me in an hour to check the oven,�
 Common commands run locally; other requests go to your agent.
 
 - **Up** opens Notifications, where you can check requests and open completed answers.
-- **Down** opens the selected collection. **Hold Down** opens **To Do / Notes**.
+- **Down** opens the selected collection. **Hold Down** opens **To Do / Notes / Checks**.
   Tap then hold the collection tile to open the same menu. The top-left date tile opens Calendar.
 - **Hold Select** on the dashboard to choose **New Chat**; on other screens, it starts dictation.
 - **Back** returns from a note or event to its list, then home; pressing it on home exits the app.

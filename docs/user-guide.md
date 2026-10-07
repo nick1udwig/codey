@@ -59,10 +59,10 @@ On other screens, hold Select to dictate into the current conversation.
 
 ## Requests and stored items
 
-Notes and to-dos are saved on the server. The phone queues accepted changes during server outages; the watch needs its phone connection to save. Cached pages are marked stale when the server is unavailable. See [collection setup and recovery](collections.md).
+Notes, to-dos, and checks are saved on the server. The phone queues accepted changes during server outages; the watch needs its phone connection to save. Cached pages are marked stale when the server is unavailable. See [collection setup and recovery](collections.md).
 Agent requests animate into **Notifications** when the phone submits them. Local
 dictation shortcuts do not show this animation.
-Completed action commands run as soon as their result reaches the phone. Timers, alarms, reminders, and stopwatches appear in Notifications without opening the job; notes, to-dos, and calendar events enter the durable collection queue. The job disappears after watch execution or durable phone acceptance. Delivery failures remain available to retry, using the same command identity. Plain answers and forms stay in the job list for you to open.
+Completed action commands run as soon as their result reaches the phone. Timers, alarms, reminders, and stopwatches appear in Notifications without opening the job; notes, to-dos, checks, and calendar events enter the durable collection queue. The job disappears after watch execution or durable phone acceptance. Delivery failures remain available to retry, using the same command identity. Plain answers and forms stay in the job list for you to open.
 A completed plain answer buzzes during the configured notification window (45 seconds by default), without replacing the current screen.
 After that window there is no automatic polling.
 Opening Notifications immediately marks ongoing requests as **Checking** and refreshes them once.
@@ -70,8 +70,8 @@ Tap a request to refresh its status; finished requests open their answer, and on
 Connection failures keep the job available for another check.
 Canceling does not undo work already performed.
 
-To Do and Notes share the collection tile. Tap, then hold it, or hold
-Down, to choose **To Do** or **Notes**. Down opens your selected
+To Do, Notes, and Checks share the collection tile. Tap, then hold it, or hold
+Down, to choose **To Do**, **Notes**, or **Checks**. Down opens your selected
 collection; the top-left date tile opens Calendar.
 The last collection opened stays on the dashboard.
 Say “make a note Call Jane” or “note: Call Jane.”
@@ -80,6 +80,15 @@ Notes live on the server; the phone loads bounded summaries and revision-pinned 
 The watch persists the first page of truncated titles and loads it immediately
 while refreshing from the phone. Full content is fetched in pages.
 See [collection setup and backend sync](collections.md).
+
+Say “check new baby” to create an empty named checklist. “Check baby” records
+the current time; “check new baby sleep” and “check new baby wake” create separate
+lists. Names ignore case and repeated spaces. The Checks list shows each name and
+its lifetime total. Open one to see recent times under Today, Yesterday, and older
+dates; select **Older checks** to continue through its history. A duplicate
+creation leaves the existing list untouched. If the name is unknown, create it
+first with “check new …”. Offline history is limited to cached pages and recent
+pending checks on the phone.
 
 The arming tap shows a brief expanding ripple with edge reflection.
 The next touch stops it immediately.

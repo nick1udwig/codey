@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS clients(id TEXT PRIMARY KEY,principal TEXT NOT NULL,revoked INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS collections(id TEXT PRIMARY KEY,principal TEXT NOT NULL,data BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY,collection_id TEXT NOT NULL REFERENCES collections(id),data BLOB NOT NULL);
+CREATE TABLE IF NOT EXISTS check_names(name TEXT PRIMARY KEY,record_id TEXT NOT NULL UNIQUE REFERENCES records(id));
+CREATE TABLE IF NOT EXISTS check_aliases(alias_id TEXT PRIMARY KEY,record_id TEXT NOT NULL REFERENCES records(id));
+CREATE TABLE IF NOT EXISTS check_occurrences(id TEXT PRIMARY KEY,record_id TEXT NOT NULL REFERENCES records(id),occurred_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS check_occurrences_history ON check_occurrences(record_id,occurred_at DESC,id DESC);
 CREATE INDEX IF NOT EXISTS records_collection_state ON records(collection_id,json_extract(data,'$.deleted'),json_extract(data,'$.completed'),json_extract(data,'$.end'));
 CREATE TABLE IF NOT EXISTS versions(record_id TEXT NOT NULL,revision TEXT NOT NULL,data BLOB NOT NULL,PRIMARY KEY(record_id,revision));
 CREATE TABLE IF NOT EXISTS version_bodies(record_id TEXT NOT NULL,revision TEXT NOT NULL,bytes INTEGER NOT NULL,hash TEXT NOT NULL,complete INTEGER NOT NULL,PRIMARY KEY(record_id,revision),FOREIGN KEY(record_id,revision) REFERENCES versions(record_id,revision) ON DELETE CASCADE);
@@ -60,7 +64,7 @@ CREATE TABLE IF NOT EXISTS mappings(binding_id TEXT NOT NULL,remote_id TEXT NOT 
 CREATE INDEX IF NOT EXISTS mappings_record ON mappings(binding_id,record_id);
 CREATE TABLE IF NOT EXISTS secrets(id TEXT PRIMARY KEY,data BLOB NOT NULL);
 CREATE INDEX IF NOT EXISTS changes_collection ON changes(collection_id,sequence);
-PRAGMA user_version=3;
+PRAGMA user_version=4;
 `
 
 func Open(dir string) (*Store, error) {
@@ -96,7 +100,7 @@ func Open(dir string) (*Store, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 3 {
+	if version > 4 {
 		return fail(fmt.Errorf("unsupported collection schema %d", version))
 	}
 	if err = s.initializeSchema(version); err != nil {
@@ -116,8 +120,8 @@ func Open(dir string) (*Store, error) {
 	if err = db.QueryRow("SELECT value FROM metadata WHERE key='cursor_key'").Scan(&s.cursorKey); err != nil {
 		return fail(err)
 	}
-	for _, kind := range []string{"task", "note", "event"} {
-		v := c.Collection{ID: "col_" + kind, Kind: kind, Name: map[string]string{"task": "To-dos", "note": "Notes", "event": "Calendar"}[kind], Generation: "1"}
+	for _, kind := range []string{"task", "note", "event", "check"} {
+		v := c.Collection{ID: "col_" + kind, Kind: kind, Name: map[string]string{"task": "To-dos", "note": "Notes", "event": "Calendar", "check": "Checks"}[kind], Generation: "1"}
 		if _, err = db.Exec("INSERT OR IGNORE INTO collections VALUES(?,?,?)", v.ID, c.Principal, encode(v)); err != nil {
 			return fail(err)
 		}
@@ -378,6 +382,72 @@ func (s *Store) mutate(client string, op c.Operation) (result c.Result, err erro
 	if op.Generation != col.Generation {
 		return result, c.Fail("binding_changed", "Collection destination changed; recover pending input")
 	}
+	var checkError error
+	var duplicateCheckID string
+	if op.Type == "check.create" {
+		var title string
+		if json.Unmarshal(op.Payload["title"], &title) != nil || c.NormalizeCheckName(title) == "" || len(title) > 160 {
+			checkError = c.Fail("invalid_input", "Check name must be 1–160 characters")
+		}
+		if checkError == nil {
+			if er := tx.QueryRow("SELECT record_id FROM check_names WHERE name=?", c.NormalizeCheckName(title)).Scan(&duplicateCheckID); er == nil {
+				// A queued offline creation may already have dependent checks. Keep
+				// its local identity as an alias for the existing canonical list.
+			} else if !errors.Is(er, sql.ErrNoRows) {
+				return result, er
+			}
+		}
+	}
+	if op.Type == "check.add" {
+		var canonical string
+		if er := tx.QueryRow("SELECT record_id FROM check_aliases WHERE alias_id=?", op.RecordID).Scan(&canonical); er == nil {
+			op.RecordID = canonical
+		} else if !errors.Is(er, sql.ErrNoRows) {
+			return result, er
+		}
+	}
+	var occurredAt string
+	if op.Type == "check.add" {
+		if json.Unmarshal(op.Payload["occurred_at"], &occurredAt) != nil {
+			checkError = c.Fail("invalid_input", "Check time is required")
+		} else if at, er := time.Parse(time.RFC3339Nano, occurredAt); er != nil {
+			checkError = c.Fail("invalid_input", "Check time must include a timezone")
+		} else {
+			occurredAt = at.UTC().Format("2006-01-02T15:04:05.000000000Z")
+		}
+	}
+	if duplicateCheckID != "" {
+		if _, er := c.Apply(nil, op, col.Kind); er != nil {
+			checkError, duplicateCheckID = er, ""
+		}
+	}
+	if duplicateCheckID != "" {
+		var raw []byte
+		if e = tx.QueryRow("SELECT data FROM records WHERE id=?", duplicateCheckID).Scan(&raw); e != nil {
+			return result, e
+		}
+		canonical, er := Decode[c.Record](raw)
+		if er != nil {
+			return result, er
+		}
+		if _, e = tx.Exec("INSERT INTO check_aliases VALUES(?,?)", wire.RecordID, duplicateCheckID); e != nil {
+			return result, e
+		}
+		summary := canonical.Summary()
+		result.Outcome, result.Durable, result.Code = "applied", true, "already_exists"
+		result.Revision, result.Record = canonical.Revision, &summary
+		receipt := c.Receipt{ClientID: client, Request: wire, Hash: c.Hash(wire), Result: result}
+		if _, e = tx.Exec("INSERT INTO operations VALUES(?,?,?,?)", wire.ID, client, wire.IngressID, encode(receipt)); e != nil {
+			return result, e
+		}
+		if e = s.hit("mutation.before_commit"); e != nil {
+			return result, e
+		}
+		if e = tx.Commit(); e != nil {
+			return result, e
+		}
+		return result, s.hit("mutation.after_commit")
+	}
 	var old *c.Record
 	e = tx.QueryRow("SELECT data FROM records WHERE id=? AND collection_id=?", op.RecordID, col.ID).Scan(&b)
 	if e == nil {
@@ -432,7 +502,9 @@ func (s *Store) mutate(client string, op c.Operation) (result c.Result, err erro
 		return result, s.hit("mutation.after_commit")
 	}
 	var next c.Record
-	if old != nil && op.Type != "task.create" && op.Type != "note.create" && op.BaseRevision != old.Revision {
+	if checkError != nil {
+		e = checkError
+	} else if old != nil && op.Type != "task.create" && op.Type != "note.create" && op.Type != "check.add" && op.BaseRevision != old.Revision {
 		e = c.Fail("stale_revision", "Record changed since displayed revision")
 	} else {
 		next, e = c.Apply(old, op, col.Kind)
@@ -456,6 +528,16 @@ func (s *Store) mutate(client string, op c.Operation) (result c.Result, err erro
 		}
 		if _, e = tx.Exec("INSERT INTO records VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data", next.ID, col.ID, encode(next)); e != nil {
 			return result, e
+		}
+		if op.Type == "check.create" {
+			if _, e = tx.Exec("INSERT INTO check_names VALUES(?,?)", c.NormalizeCheckName(next.Title), next.ID); e != nil {
+				return result, e
+			}
+		}
+		if op.Type == "check.add" {
+			if _, e = tx.Exec("INSERT INTO check_occurrences VALUES(?,?,?)", op.ID, next.ID, occurredAt); e != nil {
+				return result, e
+			}
 		}
 		if e = writeVersion(tx, next); e != nil {
 			return result, e

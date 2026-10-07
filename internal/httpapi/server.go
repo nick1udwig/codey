@@ -45,7 +45,7 @@ type Server struct {
 
 func New(config Config) *Server {
 	server := &Server{config: config, mux: http.NewServeMux()}
-	for _, path := range []string{"/v1/sync/", "/v1/collections", "/v1/collections/", "/v1/records/", "/v1/conflicts", "/v1/conflicts/"} {
+	for _, path := range []string{"/v1/sync/", "/v1/collections", "/v1/collections/", "/v1/checks/", "/v1/records/", "/v1/conflicts", "/v1/conflicts/"} {
 		server.mux.HandleFunc(path, server.collection)
 	}
 	server.mux.HandleFunc("/v1/providers", server.integrationAPI)

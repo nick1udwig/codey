@@ -46,7 +46,7 @@ module.exports = function(options) {
     options.enqueue(m);
   }
   var collectionPoll = new Poll(function(done) {
-    if (!collections || !collectionBase() || !options.settings().token) {
+    if (!collections || !collectionBase()) {
       done(false);
       return;
     }
@@ -58,7 +58,8 @@ module.exports = function(options) {
       var counts = {
         task: 0,
         note: 0,
-        event: 0
+        event: 0,
+        check: 0
       }, changed = false;
       collections.collections.forEach(function(c) {
         counts[c.kind] = c.count || 0;
@@ -73,6 +74,7 @@ module.exports = function(options) {
         m[Key.index] = counts.task;
         m[Key.flags] = counts.note;
         m[Key.eventSequence] = counts.event;
+        m[Key.title] = counts.check;
         collectionCounts = counts;
         options.enqueue(m);
       }
@@ -83,7 +85,7 @@ module.exports = function(options) {
     });
   });
   function syncCollections() {
-    if (!collections || !collectionBase() || !options.settings().token) {
+    if (!collections || !collectionBase()) {
       collectionPoll.stop();
       return;
     }
@@ -142,7 +144,7 @@ module.exports = function(options) {
     };
     try {
       if (action === "list" || action === "archive") {
-        if ((value === "return" || value === "previous") && kind === "event") {
+        if ((value === "return" || value === "previous") && (kind === "event" || kind === "check")) {
           var previous = collectionViews.resolve(viewToken, value === "return" ? "back" : "previous");
           collectionViews.list(kind, previous.state, previous.snapshot, previous.cursor, function(e, v) {
             if (v) v.list.focus = value === "previous" ? Math.max(0, v.list.titles.length - 1) : previous.focus;
@@ -175,7 +177,8 @@ module.exports = function(options) {
       }
       var target = collectionViews.resolve(viewToken, id);
       if (action === "read") {
-        collectionViews.body(target.record, target.cursor || "", done);
+        if (kind === "check") collectionViews.check(target.record, target.cursor || "", done);
+        else collectionViews.body(target.record, target.cursor || "", done);
         return;
       }
       if (session !== collections.journal.data.bridge || seq <= 0) throw new Error("Stale collection session.");
@@ -223,11 +226,17 @@ module.exports = function(options) {
     }
   }
   function phoneCollection(attrs, requestId, complete, job, commandIndex, background) {
+    if (attrs.type === "check" && attrs.command === "add" && !attrs.occurred_at) {
+      var scope = collections && collections.journal.data.scope;
+      var prior = job && scope && collections.journal.data.receipts["agent:" + scope.server_instance_id + ":" + job.id + ":" + commandIndex];
+      attrs.occurred_at = prior && prior.operation.type === "check.add" ? prior.operation.payload.occurred_at : new Date().toISOString();
+    }
     if (!collections) {
       options.sendStatus(collectionError || "Collections unavailable", "error", requestId);
       if (complete) complete(false);
       return;
     }
+    var kind = attrs.type === "calendar" ? "event" : attrs.type === "todo" ? "task" : attrs.type === "check" ? "check" : "note";
     collections.ensure(function(e) {
       if (e) {
         options.sendStatus(e.message, "error", requestId);
@@ -235,10 +244,10 @@ module.exports = function(options) {
         return;
       }
       phoneCollectionReady(attrs, requestId, complete, job, commandIndex, background);
-    });
+    }, kind);
   }
   function phoneCollectionReady(attrs, requestId, complete, job, commandIndex, background) {
-    var kind = attrs.type === "calendar" ? "event" : attrs.type === "todo" ? "task" : "note";
+    var kind = attrs.type === "calendar" ? "event" : attrs.type === "todo" ? "task" : attrs.type === "check" ? "check" : "note";
     function finish(e, op) {
       if (background) {
         if (e) {
@@ -283,6 +292,45 @@ module.exports = function(options) {
           renderCollection(requestId, e, v);
           if (complete) complete(!e);
         });
+        return;
+      }
+      if (kind === "check" && (attrs.command === "new" || attrs.command === "add")) {
+        var checkName = String(attrs.value || attrs.title || "").trim().replace(/\s+/g, " ");
+        if (!checkName || checkName.length > 160) throw new Error("Check name must be 1–160 characters.");
+        var checkCol = collections.collection("check"), checkScope = collections.journal.data.scope;
+        var checkIngress = job ? "agent:" + checkScope.server_instance_id + ":" + job.id + ":" + commandIndex : "direct:" + checkScope.client_id + ":" + options.nextCommandId();
+        var expectedType = attrs.command === "new" ? "check.create" : "check.add";
+        function sameCheck(receipt) {
+          var op = receipt.operation || receipt.request;
+          var title = expectedType === "check.create" ? op && op.payload.title : receipt.input && receipt.input.alias || receipt.result && receipt.result.record && receipt.result.record.title;
+          return op && op.type === expectedType && String(title || "").trim().replace(/\s+/g," ").toLowerCase() === checkName.toLowerCase();
+        }
+        var priorCheck = collections.journal.data.receipts[checkIngress];
+        if (job && priorCheck) {
+          if (!sameCheck(priorCheck)) return finish(new Error("Agent ingress identity reused with different check."));
+          return finish(null, priorCheck.operation);
+        }
+        function acceptCheck(record) {
+          var input = {ingress:checkIngress,alias:checkName.toLowerCase(),collection_id:checkCol.id,generation:checkCol.binding_generation,
+            type:attrs.command === "new" ? "check.create" : "check.add",
+            payload:attrs.command === "new" ? {title:checkName} : {occurred_at:String(attrs.occurred_at || new Date().toISOString())}};
+          if (record) {input.record_id=record.id;input.revision=record.revision;}
+          try {if (job) collections.agent(input, finish); else finish(null, collections.accept(input));} catch (error) {finish(error);}
+        }
+        function resolveAndAccept() { collections.resolveCheck(checkName, function(error, record) {
+          if (attrs.command === "new") {
+            if (record) return finish(new Error("Check '"+checkName+"' already exists. Say 'check "+checkName+"' to record it."));
+            if (error && error.code !== "not_found" && !/server unavailable/i.test(error.message)) return finish(error);
+            acceptCheck(null);
+          } else if (error) finish(error); else acceptCheck(record);
+        }); }
+        if (job) collections.request("GET", "/v1/sync/ingress/" + encodeURIComponent(checkIngress), null, function(error, receipt) {
+          if (!error) {
+            if (!sameCheck(receipt)) return finish(new Error("Agent ingress identity reused with different check."));
+            return finish(null, receipt.request);
+          }
+          if (error.status === 404) resolveAndAccept(); else finish(error);
+        }); else resolveAndAccept();
         return;
       }
       if (attrs.command !== "add") throw new Error("Open the collection and choose a record to edit.");

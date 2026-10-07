@@ -344,6 +344,7 @@ void dashboard_draw(const DashboardView *ui, GContext *ctx) {
       prv_draw_text(ctx,label,prv_dashboard_label_font(label,w-6),GRect(x+3,y+h-23,w-6,23),GTextAlignmentCenter,GColorBlack,GTextOverflowModeTrailingEllipsis);
     } else if (strcmp(e->id, "todos") == 0) {
       bool notes = strcmp(e->action, "local.notes") == 0;
+      bool checks = strcmp(e->action, "local.checks") == 0;
       if (notes) {
         graphics_context_set_stroke_color(ctx, GColorBlack);
         graphics_context_set_stroke_width(ctx, 2);
@@ -352,9 +353,8 @@ void dashboard_draw(const DashboardView *ui, GContext *ctx) {
         graphics_context_set_stroke_width(ctx, 1);
       } else prv_dashboard_icon(ui, ctx, !strcmp(e->action,"local.events") ? DashboardCalendar : DashboardTodos, x + 5, y + (h - 24) / 2);
       char label[16];
-      snprintf(label, sizeof(label), "%s %s", e->value[0] ? e->value : "0", !strcmp(e->action,"local.events") ? "EVENT" : notes ? "NOTE" : "TODO");
+      snprintf(label, sizeof(label), "%s %s", e->value[0] ? e->value : "0", !strcmp(e->action,"local.events") ? "EVENT" : notes ? "NOTE" : checks ? "CHECK" : "TODO");
       prv_pixel_text(ctx, label, x + 32, y + (h - 7) / 2, 1, 1, GColorBlack);
     }
   }
 }
-

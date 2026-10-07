@@ -143,6 +143,14 @@ function parse(input, now) {
   if (typeof input !== "string" || input.length > 512) { return null; }
   var raw = input.trim();
   now = now || new Date();
+  if (/^(?:show|open|list)(?: me)? (?:my |the )?checks[.!?]?$/i.test(raw)) { return operation("check", "list"); }
+  var check = /^(?:please )?check\s+(.+)$/i.exec(raw);
+  if (check) {
+    var name = check[1].replace(/[.!?]+$/, "").replace(/\s+/g, " ").trim();
+    if (name.toLowerCase() === "new") { return null; }
+    if (/^new\s+/i.test(name)) { return operation("check", "new", { value: name.replace(/^new\s+/i, "").trim() }); }
+    return operation("check", "add", { value: name, occurred_at: now.toISOString() });
+  }
   var calendar = calendarEvent(raw, now);
   if (calendar) { return calendar; }
   if (/^(?:show|open|list)(?: me)? (?:my |the )?(?:calendar|agenda|events)[.!?]?$/i.test(raw)) { return operation("calendar", "list"); }

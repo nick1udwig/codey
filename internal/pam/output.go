@@ -22,6 +22,7 @@ var capabilityCommands = map[string]map[string]bool{
 	"todo":      set("add", "list", "archive"),
 	"calendar":  set("add", "list"),
 	"note":      set("add", "edit", "list"),
+	"check":     set("new", "add", "list"),
 	"timer":     set("start", "pause", "resume", "cancel", "show", "list", "ack", "cancel_all"),
 	"stopwatch": set("start", "pause", "resume", "lap", "reset", "show"),
 	"weather":   set("current", "show"),
@@ -121,6 +122,11 @@ func (validator *OutputValidator) acceptNode(node *Node) error {
 		if node.Attrs["type"] == "settings" {
 			if err := validateSettingsCapability(node); err != nil {
 				return err
+			}
+		}
+		if node.Attrs["type"] == "check" && node.Attrs["command"] != "list" {
+			if strings.TrimSpace(node.Attrs["value"]) == "" || len(node.Attrs["value"]) > 160 {
+				return nodeError(node, "check name must be 1–160 bytes")
 			}
 		}
 		if err := boundedAttribute(node, "id", 31); err != nil {

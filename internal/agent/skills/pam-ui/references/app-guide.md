@@ -17,9 +17,12 @@
 - **To Do:** Down on home opens a server-backed checklist. Say “make a to-do
   to buy milk.” Select or double-tap the checkbox archives it; archived items
   can be restored. Up/Down scroll; hold Up to pan long text. Hold Down opens the collection menu.
-- **Notes:** Tap then hold the To Do/Notes tile to choose the collection. Say
+- **Notes:** Tap then hold the collection tile to choose the collection. Say
   “make a note Call Jane.” Open a note and choose Edit note to dictate its
   replacement. Notes are stored on the server with a durable phone queue and cached watch titles.
+- **Checks:** Hold Down or tap then hold the collection tile to select Checks.
+  Say “check new baby” to create an empty list and “check baby” for each event.
+  The list shows lifetime totals; opening one shows times grouped by local day.
 - **Calendar:** Open the top-left date tile.
   View upcoming events and dictate new events with a start and end. Optional CalDAV
   syncing is configured independently in phone settings; see the protocol for
@@ -32,7 +35,7 @@
   need an arming tap: tap twice to activate, or tap then hold/drag/swipe on the
   control. The arm expires after 1.5 seconds. Disable Require double tap in settings for a
   single tap or hold. Water ripple is independently configurable; both default on.
-  Hold Down opens To Do / Notes. Back returns from note/event details to their list,
+  Hold Down opens To Do / Notes / Checks. Back returns from collection details to their list,
   then home, then exits.
   A watch Quick Launch shortcut starts dictation on launch.
 - **Setup:** In the Pebble phone app, open codey's gear/settings and enter the

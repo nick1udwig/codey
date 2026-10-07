@@ -1,8 +1,87 @@
 "use strict";
 var assert=require("assert"),J=require("../src/common/collections/journal"),Client=require("../src/common/collections/client").Client,Views=require("../src/common/collection-views");
+var CollectionController=require("../src/pkjs/collection-controller"),Watch=require("../src/common/watch-protocol");
 function storage(){var values={},fail=false;return {values:values,getItem:function(k){return values[k]||null;},setItem:function(k,v){if(fail)throw new Error("disk full");values[k]=v;},removeItem:function(k){delete values[k];},fail:function(v){fail=v;}};}
 function enrolled(){var s=storage(),j=new J.Journal(s);j.enroll({client_id:"client_a",server_instance_id:"server_a",store_epoch:"epoch_a"});j.bridge("bridge_a");return {s:s,j:j};}
 function input(seq){return {ingress:"watch:bridge_a:"+seq,collection_id:"col_note",generation:"1",type:"note.create",payload:{title:"Unicode",body:"José 🌙 ".repeat(100)}};}
+(function checksControllerCreatesRecordsAndBrowsesHistory(){
+ var s=storage(),j=new J.Journal(s);j.enroll({client_id:"client_checks",server_instance_id:"server_checks",store_epoch:"epoch_checks",base:"https://checks.test",credential:J.checksum("")});
+ var client=new Client({storage:s,base:function(){return "https://checks.test";},token:function(){return "";}});
+ client.collections=[{id:"col_check",kind:"check",binding_generation:"1"}];
+ var originalEnsure=client.ensure;
+ client.ensure=function(done,kind){assert.strictEqual(kind,"check");originalEnsure.call(this,done,kind);};
+ var records={},occurrences=[],receipts={},sent=[],rendered=[],command=0,request=0;
+ client.request=function(method,path,body,done){
+  if(path.indexOf("/v1/sync/ingress/")===0){var ingress=decodeURIComponent(path.split("/v1/sync/ingress/")[1]);if(receipts[ingress])return done(null,receipts[ingress]);var unseen=new Error("not found");unseen.status=404;return done(unseen);}
+  if(path.indexOf("/v1/checks/lookup?")===0){var name=decodeURIComponent(path.split("name=")[1]).trim().toLowerCase();var found=Object.keys(records).map(function(id){return records[id];}).filter(function(r){return r.title.toLowerCase()===name;})[0];if(found)return done(null,found);var missing=new Error("not found");missing.status=404;return done(missing);}
+  if(path==="/v1/sync/mutations"){
+   var results=body.operations.map(function(op){var record=records[op.record_id];if(op.type==="check.create")record={id:op.record_id,collection_id:"col_check",kind:"check",revision:"1",title:op.payload.title,count:0,capabilities:["check.add"]};else{record=Object.assign({},record,{revision:String(Number(record.revision)+1),count:record.count+1});occurrences.push({id:op.id,occurred_at:op.payload.occurred_at});}records[op.record_id]=record;var result={operation_id:op.id,outcome:"applied",durably_recorded:true,record:record,revision:record.revision};receipts[op.ingress_id]={request:op,result:result};return result;});return done(null,{results:results});
+  }
+  if(path==="/v1/sync/snapshots")return done(null,{snapshot_id:"checks",records:Object.keys(records).map(function(id){return records[id];}),total:Object.keys(records).length,complete:true});
+  if(path.indexOf("/history?")>=0)return done(null,{record:records[decodeURIComponent(path.split("/")[3])],occurrences:occurrences.slice().reverse(),next_cursor:"",complete:true});
+  throw new Error("Unexpected check route "+path);
+ };
+ var controller=CollectionController({storage:s,settings:function(){return {endpoint:"https://checks.test/v1/agent",token:""};},Client:function(){return client;},enqueue:function(m){sent.push(m);},read:function(p,k){return p[k];},beginRequest:function(){return ++request;},isCurrent:function(){return true;},sendAnswerNotification:function(){},sendStatus:function(){},capabilityContext:function(){return {renderPam:function(source){rendered.push(source);}};},nextCommandId:function(){return ++command;},log:function(){}});
+ controller.command({type:"check",command:"new",value:"baby"},1);
+ for(var i=0;i<5;i++)controller.command({type:"check",command:"add",value:"BABY",occurred_at:"2026-09-27T12:00:00."+("00"+i).slice(-3)+"Z"},2+i);
+ assert.strictEqual(Object.keys(records).length,1);assert.strictEqual(occurrences.length,5);assert.strictEqual(records[Object.keys(records)[0]].count,5);
+ var list=sent.filter(function(m){return m[0]==="collection-list";}).pop();assert.strictEqual(list[8],"baby  5");
+ var payload={};payload[Watch.Key.viewToken]=list[Watch.Key.viewToken];
+ controller.handle("check","read","r0","",0,payload);
+ assert.ok(rendered.length,JSON.stringify(sent.slice(-3)));assert.match(rendered.pop(),/check-detail/);assert.strictEqual((occurrences.map(function(o){return o.id;})).filter(function(id,i,a){return a.indexOf(id)===i;}).length,5);
+ controller.command({type:"check",command:"new",value:"sleep"},7,null,{id:"job-create"},0);
+ controller.command({type:"check",command:"new",value:"sleep"},8,null,{id:"job-create"},0);
+ assert.strictEqual(Object.keys(records).length,2,"agent replay must bypass duplicate-name preflight");
+ controller.command({type:"check",command:"add",value:"sleep"},9,null,{id:"job-add"},0);
+ var firstJobTime=occurrences[occurrences.length-1].occurred_at;
+ controller.command({type:"check",command:"add",value:"sleep"},10,null,{id:"job-add"},0);
+ assert.strictEqual(occurrences.length,6,"agent replay must not create a second occurrence");
+ assert.strictEqual(occurrences[occurrences.length-1].occurred_at,firstJobTime);
+})();
+(function checksOfflineReplayAndProjection(){
+ var s=storage(),j=new J.Journal(s);j.enroll({client_id:"client_a",server_instance_id:"server_a",store_epoch:"epoch_a",base:"https://server.test",credential:J.checksum("token")});
+ var create=j.accept({ingress:"direct:1",collection_id:"col_check",generation:"1",type:"check.create",payload:{title:"baby"}});
+ for(var i=0;i<5;i++)j.accept({ingress:"direct:"+(i+2),collection_id:"col_check",generation:"1",record_id:create.record_id,type:"check.add",payload:{occurred_at:"2026-09-27T12:00:00."+("00"+i).slice(-3)+"Z"}});
+ var client=new Client({storage:s,base:function(){return "https://server.test";},token:function(){return "token";}});
+ client.collections=[{id:"col_check",kind:"check",binding_generation:"1"}];
+ var pending=client.project({records:[],total:0},"check","active");assert.strictEqual(pending.records[0].count,5);assert.strictEqual(pending.records[0].title,"baby");
+ var rows=client.journal.data.entries;assert.strictEqual(rows.length,6);assert.strictEqual(rows[1].operation.base_operation_id,create.id);assert.strictEqual(rows[5].operation.payload.occurred_at,"2026-09-27T12:00:00.004Z");
+ var stale=client.project({records:[{id:create.record_id,kind:"check",title:"baby",revision:"6",count:5}],total:1},"check","active");assert.strictEqual(stale.records[0].count,5,"lost receipt cannot double count a fresh server snapshot");
+ client.request=function(method,path,body,done){var e=new Error("Collection server unavailable.");done(e);};
+ var detail;client.checkHistory(pending.records[0],"",function(e,p){assert.ifError(e);detail=p;});assert.strictEqual(detail.occurrences.length,5);assert.strictEqual(detail.offline_only,true);
+ var all=Array.from({length:8},function(_,i){return {id:"server:"+i,occurred_at:"2026-09-26T12:00:00Z"};});
+ client.cacheStore.putPage("check-history:"+create.record_id+":",{record:pending.records[0],occurrences:all,next_cursor:"older"},true);
+ client.checkHistory(pending.records[0],"",function(e,p){assert.ifError(e);detail=p;});assert.strictEqual(detail.occurrences.length,13,"pending rows cannot evict server rows");assert.strictEqual(detail.next_cursor,"older");
+ client.cacheStore.putPage("check-history:"+create.record_id+":older",{record:pending.records[0],occurrences:[{id:"server:older",occurred_at:"2026-09-25T12:00:00Z"}],next_cursor:""},false);
+ client.checkHistory(pending.records[0],"older",function(e,p){assert.ifError(e);detail=p;});assert.strictEqual(detail.occurrences.length,1,"pending rows appear only on the newest page");
+})();
+(function checksAliasOfflineDuplicateWithoutLosingQueuedEvents(){
+ var s=storage(),j=new J.Journal(s);j.enroll({client_id:"client_a",server_instance_id:"server_a",store_epoch:"epoch_a",base:"https://server.test",credential:J.checksum("token")});
+ var create=j.accept({ingress:"direct:1",alias:"baby",collection_id:"col_check",generation:"1",type:"check.create",payload:{title:"baby"}});
+ var adds=[];for(var i=0;i<2;i++)adds.push(j.accept({ingress:"direct:"+(i+2),alias:"baby",collection_id:"col_check",generation:"1",record_id:create.record_id,type:"check.add",payload:{occurred_at:"2026-09-27T12:00:00.00"+i+"Z"}}));
+ var canonical={id:"existing",kind:"check",title:"baby",count:0,revision:"1",capabilities:["check.add"]};
+ j.receipts([{operation_id:create.id,outcome:"applied",durably_recorded:true,code:"already_exists",record:canonical,revision:"1"}]);
+ var client=new Client({storage:s,base:function(){return "https://server.test";},token:function(){return "token";}});client.collections=[{id:"col_check",kind:"check",binding_generation:"1"}];
+ client.cacheStore.merge([canonical]);client.journal.compact(client.cache.records);
+ assert.strictEqual(client.journal.data.entries.length,3,"dependent alias receipt must survive compaction");
+ var projected=client.project({records:[canonical],total:1},"check","active");
+ assert.strictEqual(projected.records.length,1);assert.strictEqual(projected.records[0].id,"existing");assert.strictEqual(projected.records[0].count,2);
+ var resolved;client.resolveCheck("BABY",function(e,r){assert.ifError(e);resolved=r;});assert.strictEqual(resolved.id,"existing");
+ client.request=function(method,path,body,done){done(null,{record:canonical,occurrences:[],next_cursor:"",complete:true});};
+ var history;client.checkHistory(canonical,"",function(e,p){assert.ifError(e);history=p;});assert.strictEqual(history.occurrences.length,2);
+ j=client.journal;j.receipts(adds.map(function(op,i){return {operation_id:op.id,outcome:"applied",durably_recorded:true,record:Object.assign({},canonical,{count:i+1,revision:String(i+2)}),revision:String(i+2)};}));
+ client.cacheStore.merge([{id:"existing",kind:"check",title:"baby",count:2,revision:"3"}]);j.compact(client.cache.records);
+ assert.strictEqual(j.data.entries.length,0,"alias chain compacts after every occurrence is reflected");
+})();
+(function checkHistoryGroupsLocalCalendarDays(){
+ var now=new Date(),today=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,45),yesterday=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1,0,15),older=new Date(now.getFullYear(),now.getMonth(),now.getDate()-3,10,30);
+ var record={id:"baby",kind:"check",title:"baby",count:3,revision:"4"},views=new Views({list:function(k,s,snap,cur,done){done(null,{records:[record],total:1});},checkHistory:function(r,c,done){done(null,{record:r,occurrences:[today,yesterday,older].map(function(d,i){return {id:String(i),occurred_at:d.toISOString()};}),next_cursor:"older"});}}),list,detail;
+ views.list("check","active","","",function(e,v){assert.ifError(e);list=v;});
+ assert.strictEqual(list.list.titles[0],"baby  3");
+ views.check(views.resolve(list.token,"r0").record,"",function(e,v){assert.ifError(e);detail=v;});
+ assert.match(detail.source,/value=Today/);assert.match(detail.source,/value=Yesterday/);assert.match(detail.source,/Older checks/);assert.match(detail.source,/action=local.check.list/);
+ assert.strictEqual(views.resolve(detail.token,"next").cursor,"older");assert.strictEqual(views.resolve(detail.token,"back").state,"active");
+})();
 (function pollingBacksOffAndCoalescesExplicitRefresh(){
  var Poll=require("../src/common/poll"),pending=[],timers=[],cleared=[];
  var poll=new Poll(function(done){pending.push(done);},{setTimeout:function(fn,delay){timers.push({fn:fn,delay:delay});return timers.length;},clearTimeout:function(id){cleared.push(id);}});
@@ -142,6 +221,21 @@ function credentialRotation(oldToken){
  var client=new Client({storage:storage()});
  client.collections=[{id:"col_task",kind:"task"},{id:"col_note",kind:"note"}];
  assert.throws(function(){client.collection("event");},/Calendar requires a newer codey-server/);
+})();
+(function newlyAddedCollectionRefreshesOldPhoneMetadata(){
+ var s=storage(),j=new J.Journal(s),scope={client_id:"client_a",server_instance_id:"server_a",store_epoch:"epoch_a",principal:"operator",base:"https://server.test",credential:J.checksum("token")};
+ j.enroll(scope);
+ var client=new Client({storage:s,base:function(){return "https://server.test";},token:function(){return "token";}});
+ var old=[{id:"col_task",kind:"task",binding_generation:"1"},{id:"col_note",kind:"note",binding_generation:"1"}];
+ client.collections=old;client.cache.collections=old;
+ var refreshes=0;
+ client.connect=function(done){refreshes++;client.collections=old.concat([{id:"col_check",kind:"check",binding_generation:"1"}]);done();};
+ client.request=function(method,path,body,done){assert.strictEqual(path,"/v1/sync/snapshots");assert.strictEqual(body.collection_id,"col_check");done(null,{records:[],total:0,snapshot_id:"checks",complete:true});};
+ client.list("check","active","","",function(e,page){assert.ifError(e);assert.strictEqual(page.total,0);});
+ assert.strictEqual(refreshes,1,"an old collection list must refresh before Checks is opened");
+ client.ensure(function(e){assert.ifError(e);},"check");
+ client.ensure(function(e){assert.ifError(e);},"note");
+ assert.strictEqual(refreshes,1,"known collections retain the cached fast path");
 })();
 (function batchReceiptsAreAtomicAndSkipNoops(){
  var f=enrolled(),results=[];

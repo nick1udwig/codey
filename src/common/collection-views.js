@@ -34,13 +34,43 @@ Views.prototype.list=function(kind,state,snapshot,cursor,done,preferCache){
   }
   p.records.forEach(function(r,i){
    view.aliases["r"+i]={record:r,state:state,snapshot:snapshot||"",cursor:cursor||""};
-   titles.push(Wire.truncateUtf8(String(r.title||"").replace(/\s+/g," ").trim()||"Untitled",71));
+   var suffix=kind==="check"?"  "+String(r.count||0):"";
+   titles.push(Wire.truncateUtf8(String(r.title||"").replace(/\s+/g," ").trim()||"Untitled",71-suffix.length)+suffix);
    if(kind==="event")timeline.push(eventMeta(r));
    states.push(r.pending?"p":r.provider_state==="synced"?"s":r.provider_state==="pending"?"b":"d");
   });
   if(p.next_cursor)view.aliases.next={snapshot:p.snapshot_id,cursor:p.next_cursor,state:state};
   done(null,{token:view.token,list:{kind:kind,state:state,total:p.total,titles:titles,timeline:timeline,states:states.join(""),previous:!!view.aliases.previous,next:!!p.next_cursor,stale:!!p.stale,partial:!!p.partial,first:!snapshot&&state==="active",pending:p.pending_count||0}});
  },preferCache);
+};
+function checkDay(date) { return date.getFullYear()+"-"+("0"+(date.getMonth()+1)).slice(-2)+"-"+("0"+date.getDate()).slice(-2); }
+function checkHeading(date, now) {
+ var today=checkDay(now), yesterday=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1);
+ if(checkDay(date)===today)return "Today";
+ if(checkDay(date)===checkDay(yesterday))return "Yesterday";
+ var months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+ return months[date.getMonth()]+" "+date.getDate()+", "+date.getFullYear();
+}
+Views.prototype.check=function(record,cursor,done){
+ var self=this,request=++this.requestSequence;
+ this.client.checkHistory(record,cursor,function(e,p){
+  if(request!==self.requestSequence)return done(new Error("View superseded"));
+  if(e)return done(e);
+  var view=self.begin("check"),source="pam version=1\nscreen "+Pam.formatAttributes({id:"check-detail",layout:"list",title:Wire.truncateUtf8(record.title,71),status:true})+"\n";
+  if(p.stale)source+=line("text",{id:"stale",value:p.offline_only?"Server history unavailable offline":"Cached history · Server unavailable"});
+  if(!p.occurrences.length&&!p.offline_only)source+=line("text",{id:"empty",value:"No checks yet. Say 'check "+Wire.truncateUtf8(record.title,110)+"'."});
+  var day="",now=new Date();
+  p.occurrences.forEach(function(o,i){
+   var date=new Date(o.occurred_at),key=checkDay(date);
+   if(key!==day){day=key;source+=line("text",{id:"day-"+i,value:checkHeading(date,now)});}
+   var hour=date.getHours(),minute=("0"+date.getMinutes()).slice(-2),label=(hour%12||12)+":"+minute+(hour<12?" AM":" PM");
+   source+=line("text",{id:"check-"+i,value:label+(o.pending?" · Pending server":"")});
+  });
+  if(p.hidden_local)source+=line("text",{id:"more-pending",value:p.hidden_local+" more checks pending. Reconnect to browse all."});
+  if(p.next_cursor){view.aliases.next={record:record,cursor:p.next_cursor};source+=line("item",{id:"next",title:"Older checks",action:"local.check.page"});}
+  if(self.pages.check){view.aliases.back=self.pages.check;source+=line("bind",{id:"back",input:"back",action:"local.check.list",value:"return"});}
+  done(null,{source:source+"done\n",token:view.token});
+ });
 };
 Views.prototype.body=function(record,cursor,done){var self=this,request=++this.requestSequence;this.client.body(record,cursor,function(e,p){if(request!==self.requestSequence)return done(new Error("View superseded"));if(e)return done(e);var calendar=record.kind==="event",view=self.begin(calendar?"event":"note");view.aliases.note={record:record};view.aliases.append={record:record};var source="pam version=1\nscreen "+Pam.formatAttributes({id:calendar?"event-detail":"note-detail",layout:"list",title:Wire.truncateUtf8(record.title,71),status:true})+"\n";if(calendar){source+=line("text",{id:"when",value:eventTitle(record).split(" · ")[0]});source+=line("text",{id:"until",value:"Ends: "+(record.end.length===10?record.end+" (exclusive)":new Date(record.end).toLocaleString())});if(record.location)source+=line("text",{id:"where",value:Wire.truncateUtf8(record.location,179)});}
  if(p.stale)source+=line("text",{id:"stale",value:"Cached · Server unavailable"});Wire.splitUtf8(p.body,179).forEach(function(part,i){source+=line("text",{id:"body-"+i,value:part});});

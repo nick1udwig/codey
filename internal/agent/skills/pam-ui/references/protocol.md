@@ -78,6 +78,13 @@ Append or Replace entire note action. Do not invent canonical IDs or resolve rec
 from ambiguous title matches. Provider setup and conflict resolution belong in the
 server management page, not in agent-generated capability commands.
 
+Checks records repeated events on named lists. Use
+`capability type=check command=new value="baby sleep"` to create an empty list,
+`capability type=check command=add value="baby sleep"` to record one occurrence
+at the current phone time, or `capability type=check command=list` to browse.
+Use the complete name. Creation is explicit; an unknown name is never created
+by an add command. Repeated adds are independent events.
+
 Calendar uses `capability type=calendar command=list` or
 `capability type=calendar command=add title="Lunch" start="2026-09-16T12:00:00-07:00" end="2026-09-16T13:00:00-07:00" location="Cafe" description="Optional agenda"`.
 Timed start/end must be RFC3339 with explicit offsets; all-day events use two

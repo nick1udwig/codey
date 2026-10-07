@@ -46,7 +46,7 @@ static void prv_show_tour(AgentCapabilities *capabilities) {
   static const char *pages[] = {
     "Drag to scroll. Tap twice to activate; change this in settings. Up/Down navigate. Back returns home.",
     "Hold Select to ask the agent. Try: what can this app do? Ask follow-ups for details.",
-    "Hold Down for To Do or Notes. Tap the date for Calendar. On home, hold Select for New Chat. Tap, then hold a tile for its menu."
+    "Hold Down for To Do, Notes, or Checks. Tap the date for Calendar. On home, hold Select for New Chat. Tap, then hold a tile for its menu."
   };
   capabilities->navigation_revision += 1;
   agent_capabilities_set_active(capabilities, "tour", true);
@@ -109,7 +109,7 @@ AgentCapabilities *agent_capabilities_create(AgentUi *ui, AgentCapabilityEventHa
   s_wakeup_capabilities = capabilities;
   wakeup_service_subscribe(prv_wakeup_handler);
   capabilities->collection_kind = persist_read_int(COLLECTION_PREFERENCE_KEY);
-  if(capabilities->collection_kind<0||capabilities->collection_kind>1)capabilities->collection_kind=0;
+  if(capabilities->collection_kind<0||(capabilities->collection_kind>1&&capabilities->collection_kind!=3))capabilities->collection_kind=0;
   if (!agent_capabilities_install_builtins(capabilities)) {
     agent_capabilities_destroy(capabilities);
     return NULL;
@@ -195,7 +195,7 @@ bool agent_capabilities_handle_ui_event(AgentCapabilities *capabilities, const A
     agent_capabilities_handle_command(capabilities, &refresh);
     return true;
   }
-  if (strcmp(event->action, "local.events") == 0 || strcmp(event->action, "local.calendar") == 0 || strncmp(event->action,"local.event.",12)==0 || strcmp(event->action, "local.notes") == 0 || strncmp(event->action, "local.note.", 11) == 0 || strcmp(event->action, "local.todos") == 0 || strncmp(event->action, "local.todo.", 11) == 0) { capabilities->navigation_revision += 1; }
+  if (strcmp(event->action, "local.events") == 0 || strcmp(event->action, "local.calendar") == 0 || strncmp(event->action,"local.event.",12)==0 || strcmp(event->action, "local.notes") == 0 || strncmp(event->action, "local.note.", 11) == 0 || strcmp(event->action, "local.todos") == 0 || strncmp(event->action, "local.todo.", 11) == 0 || strcmp(event->action,"local.checks")==0 || strncmp(event->action,"local.check.",12)==0) { capabilities->navigation_revision += 1; }
   for (index = 0; index < capabilities->module_count; index += 1) {
     RegisteredModule *registered = &capabilities->modules[index];
     if (registered->module.event &&
@@ -226,7 +226,7 @@ void agent_capabilities_show_dashboard(AgentCapabilities *capabilities) {
   agent_capability_add_element(capabilities->ui, "item", "dictate", "Talk to codey",
                                "Hold Select", "", "local.dictate", "", 0);
   agent_capability_add_element(capabilities->ui, "item", "weather", "Weather", capabilities->weather_range, capabilities->weather_temperature, "local.weather", capabilities->weather_meta, 0);
-  agent_capability_add_element(capabilities->ui, "item", "todos", capabilities->collection_kind==1 ? "Notes" : "Todos", "", "", capabilities->collection_kind==1 ? "local.notes" : "local.todos", "", 0);
+  agent_capability_add_element(capabilities->ui, "item", "todos", capabilities->collection_kind==1 ? "Notes" : capabilities->collection_kind==3 ? "Checks" : "Todos", "", "", capabilities->collection_kind==1 ? "local.notes" : capabilities->collection_kind==3 ? "local.checks" : "local.todos", "", 0);
   prv_add_tour(capabilities);
   for (uint8_t i = 0; i < capabilities->module_count; ++i) {
     RegisteredModule *module = &capabilities->modules[i];
@@ -385,7 +385,7 @@ void agent_capabilities_set_weather(AgentCapabilities *c, const char *temperatur
 }
 
 void agent_capabilities_set_collection_kind(AgentCapabilities *capabilities,int kind) {
-  if(kind<0||kind>1||capabilities->collection_kind==kind)return;
+  if(kind<0||(kind>1&&kind!=3)||capabilities->collection_kind==kind)return;
   if(persist_write_int(COLLECTION_PREFERENCE_KEY,kind)!=sizeof(int32_t)){agent_ui_set_status(capabilities->ui,"Could not save dashboard preference.",false,false);return;}
   capabilities->collection_kind=kind;
 }

@@ -11,22 +11,22 @@
 
 static int key(int kind) { return CACHE_KEY + kind * 10; }
 static void draw(AgentCapabilities *host, int kind, char titles[ROWS][TITLE_BYTES], char metadata[ROWS][META_BYTES], int count, int flags, const char *status, const char *states, bool preview) {
-  bool notes=kind==1, calendar=kind==2;
+  bool notes=kind==1, calendar=kind==2, checks=kind==3;
   AgentUi *ui=agent_capabilities_ui(host);
   agent_capabilities_set_collection_kind(host,kind);
-  agent_capabilities_set_active(host,calendar?"calendar":notes?"notes":"todos",true);
-  agent_ui_begin(ui,calendar?"calendar":notes?"notes":"todos","list",calendar?"Calendar":notes?"Notes":(flags&1)?"Completed":"To-dos",status,"",16);
+  agent_capabilities_set_active(host,calendar?"calendar":notes?"notes":checks?"checks":"todos",true);
+  agent_ui_begin(ui,calendar?"calendar":notes?"notes":checks?"checks":"todos","list",calendar?"Calendar":notes?"Notes":checks?"Checks":(flags&1)?"Completed":"To-dos",status,"",16);
   for(int i=0;i<count;i++) {
     char id[12];snprintf(id,sizeof(id),"r%d",i);
-    const char *action=preview?"":calendar?"local.event.open":notes?"local.note.open":(flags&1)?"local.todo.restore":"local.todo.complete";
+    const char *action=preview?"":calendar?"local.event.open":notes?"local.note.open":checks?"local.check.open":(flags&1)?"local.todo.restore":"local.todo.complete";
     char state=i<(int)strlen(states)?states[i]:'d';
     const char *subtitle=preview?"Cached preview":state=='p'?"Pending server":state=='s'?"Synced":state=='b'?"Backend pending":"Saved on server";
     agent_capability_add_element(ui,kind?"item":"choice",id,kind?titles[i]:"",subtitle,kind?"":titles[i],action,calendar?metadata[i]:kind?"":"todo=true",(preview?1:0)|((flags&1)?2:0)|(calendar&&i==((flags>>8)&7)?64:0));
   }
-  if(!count)agent_capability_add_element(ui,"text","empty","","","No items","","",0);
-  if(!preview && (flags&2))agent_capability_add_element(ui,calendar?"bind":"item","next","Next page","","next",calendar?"local.event.list":notes?"local.note.list":"local.todo.list",calendar?"input=timeline-next":"",0);
+  if(!count)agent_capability_add_element(ui,"text","empty","","",checks?"No checks yet. Say 'check new baby'.":"No items","","",0);
+  if(!preview && (flags&2))agent_capability_add_element(ui,calendar?"bind":"item","next","Next page","","next",calendar?"local.event.list":notes?"local.note.list":checks?"local.check.list":"local.todo.list",calendar?"input=timeline-next":"",0);
   if(calendar&&!preview&&(flags&32))agent_capability_add_element(ui,"bind","previous","","","previous","local.event.list","input=timeline-previous",0);
-  agent_capability_add_element(ui,"item","refresh","Refresh","","",calendar?"local.events":notes?"local.notes":"local.todos","",0);
+  agent_capability_add_element(ui,"item","refresh","Refresh","","",calendar?"local.events":notes?"local.notes":checks?"local.checks":"local.todos","",0);
   if(!preview&&!kind)agent_capability_add_element(ui,"item","state",(flags&1)?"Active tasks":"Completed tasks","","",(flags&1)?"local.todos":"local.todo.archive","",0);
   agent_ui_end(ui);
 }
@@ -83,4 +83,4 @@ bool collection_preview_show(AgentCapabilities *host,int kind){
 
 void collection_preview_count(int kind,char *out,size_t size){int n=persist_exists(key(kind)+9)?persist_read_int(key(kind)+9):persist_read_int(key(kind))-1;snprintf(out,size,n<0?"0":"%d",n<0?0:n);}
 
-void collection_preview_set_count(int kind,int count){if(kind<0||kind>2||count<0)return;int k=key(kind)+9;if(!persist_exists(k)||persist_read_int(k)!=count)persist_write_int(k,count);}
+void collection_preview_set_count(int kind,int count){if(kind<0||kind>3||count<0)return;int k=key(kind)+9;if(!persist_exists(k)||persist_read_int(k)!=count)persist_write_int(k,count);}

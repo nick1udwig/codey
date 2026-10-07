@@ -395,7 +395,7 @@ static void prv_capability_event(const char *type, const char *id, const char *a
                                  const char *value, void *context) {
   (void)context;
   char token[16] = "";
-  if (!strcmp(type,"note") || !strcmp(type,"todo") || !strcmp(type,"calendar")) {
+  if (!strcmp(type,"note") || !strcmp(type,"todo") || !strcmp(type,"calendar") || !strcmp(type,"check")) {
     if (!connection_service_peek_pebble_app_connection() || !s_collection_bridge[0]) { agent_ui_set_status(s_ui,"Phone unavailable · Not saved",true,false); return; }
     if(s_collection_waiting && (!strcmp(action,"edit")||!strcmp(action,"append")||!strcmp(action,"complete")||!strcmp(action,"restore"))) {agent_ui_set_status(s_ui,"Waiting for phone save confirmation",false,false);return;}
     if (s_collection_event == INT32_MAX) { agent_ui_set_status(s_ui,"Reopen app to renew collection session",true,false); return; }
@@ -458,6 +458,7 @@ static void prv_handle_render(DictionaryIterator *iter, uint32_t request_id, con
   if (strcmp(operation, "begin") == 0) {
     const char *screen_id = prv_tuple_string(iter, MESSAGE_KEY_ElementId);
     if (!strcmp(screen_id,"notes") || !strcmp(screen_id,"note-detail")) agent_capabilities_set_collection(s_capabilities,true);
+    if (!strcmp(screen_id,"checks") || !strcmp(screen_id,"check-detail")) agent_capabilities_set_collection_kind(s_capabilities,3);
     agent_capabilities_set_active(s_capabilities, "remote", true);
     agent_ui_begin(s_ui,
                    prv_tuple_string(iter, MESSAGE_KEY_ElementId),
@@ -521,12 +522,12 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
     prv_flush_outbox();
     return;
   }
-  if(!strcmp(type,"bridge")&&!strcmp(operation,"collection-counts")){collection_preview_set_count(0,prv_tuple_int(iter,MESSAGE_KEY_Index,0));collection_preview_set_count(1,prv_tuple_int(iter,MESSAGE_KEY_Flags,0));collection_preview_set_count(2,prv_tuple_int(iter,MESSAGE_KEY_EventSequence,0));agent_capabilities_refresh_dashboard(s_capabilities);return;}
+  if(!strcmp(type,"bridge")&&!strcmp(operation,"collection-counts")){collection_preview_set_count(0,prv_tuple_int(iter,MESSAGE_KEY_Index,0));collection_preview_set_count(1,prv_tuple_int(iter,MESSAGE_KEY_Flags,0));collection_preview_set_count(2,prv_tuple_int(iter,MESSAGE_KEY_EventSequence,0));collection_preview_set_count(3,prv_tuple_int(iter,MESSAGE_KEY_Title,0));agent_capabilities_refresh_dashboard(s_capabilities);return;}
   if(!strcmp(type,"bridge")&&!strcmp(operation,"agent-dispatched")){agent_ui_animate_request(s_ui);return;}
   if (!strcmp(type,"collection-list")) {
     if(!watch_response_accepts(&s_response,request_id))return;
     agent_protocol_copy(s_collection_view,sizeof(s_collection_view),prv_tuple_string(iter,MESSAGE_KEY_ViewToken));
-    int kind=!strcmp(operation,"event")?2:!strcmp(operation,"note")?1:0;
+    int kind=!strcmp(operation,"event")?2:!strcmp(operation,"note")?1:!strcmp(operation,"check")?3:0;
     if(!(prv_tuple_int(iter,MESSAGE_KEY_Flags,0)&1))collection_preview_set_count(kind,prv_tuple_int(iter,MESSAGE_KEY_Index,0));
     if(kind==2)collection_preview_receive_timeline(s_capabilities,prv_tuple_string(iter,MESSAGE_KEY_Value),prv_tuple_int(iter,MESSAGE_KEY_Flags,0),prv_tuple_string(iter,MESSAGE_KEY_Subtitle),prv_tuple_string(iter,MESSAGE_KEY_Meta),prv_tuple_string(iter,MESSAGE_KEY_Title));
     else collection_preview_receive(s_capabilities,kind,prv_tuple_string(iter,MESSAGE_KEY_Value),prv_tuple_int(iter,MESSAGE_KEY_Flags,0),prv_tuple_string(iter,MESSAGE_KEY_Subtitle),prv_tuple_string(iter,MESSAGE_KEY_Meta));

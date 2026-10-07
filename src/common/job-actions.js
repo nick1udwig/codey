@@ -11,7 +11,7 @@ function inspect(source) {
     if(op.type!=="capability")return;
     var a=op.node.attrs, current=index++;
     var local=/^(timer|alarm|reminder|stopwatch)$/.test(a.type) && !/^(show|list)$/.test(a.command);
-    var collection=/^(todo|note|calendar)$/.test(a.type) && a.command==="add";
+    var collection=/^(todo|note|calendar)$/.test(a.type) && a.command==="add" || a.type==="check" && (a.command==="new" || a.command==="add");
     var settings=a.type==="settings" && a.command==="set";
     if(local||collection||settings)actions.push({attrs:a,index:current});else other=true;
     // Keep the result available so opening it can show the saved preference.

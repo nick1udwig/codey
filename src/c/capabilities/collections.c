@@ -12,7 +12,8 @@ typedef struct {
 static const Collection collections[] = {
   {0, "todo", "todos", "todos", "To-dos", "local.todos", "local.todo.list", NULL, NULL},
   {1, "note", "notes", "notes-loading", "Notes", "local.notes", "local.note.list", "local.note.open", "local.note.page"},
-  {2, "calendar", "calendar", "calendar", "Calendar", "local.events", "local.event.list", "local.event.open", "local.event.page"}
+  {2, "calendar", "calendar", "calendar", "Calendar", "local.events", "local.event.list", "local.event.open", "local.event.page"},
+  {3, "check", "checks", "checks-loading", "Checks", "local.checks", "local.check.list", "local.check.open", "local.check.page"}
 };
 
 static void request(AgentCapabilities *host, const Collection *c, const char *id,

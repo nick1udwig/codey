@@ -157,6 +157,9 @@ func TestAlarmAndDashboardCommands(t *testing.T) {
 		`capability type=note command=add value="Call Jane"`,
 		`capability type=note command=edit id=note-1 value="Call John"`,
 		"capability type=note command=list",
+		`capability type=check command=new value="baby sleep"`,
+		`capability type=check command=add value="baby sleep"`,
+		"capability type=check command=list",
 	} {
 		stream := NewOutputStream(func([]byte) error { return nil })
 		if err := stream.Push("pam version=1\n" + line + "\n"); err != nil {
@@ -164,6 +167,15 @@ func TestAlarmAndDashboardCommands(t *testing.T) {
 		}
 		if err := stream.Finish(); err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+func TestCheckCapabilityRequiresNamedList(t *testing.T) {
+	for _, line := range []string{"capability type=check command=new", `capability type=check command=add value="   "`, "capability type=check command=delete value=baby"} {
+		stream := NewOutputStream(func([]byte) error { return nil })
+		if err := stream.Push("pam version=1\n" + line + "\n"); err == nil {
+			t.Fatalf("accepted %s", line)
 		}
 	}
 }

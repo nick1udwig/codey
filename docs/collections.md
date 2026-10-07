@@ -1,11 +1,11 @@
-# Notes and To-dos: server storage and backend sync
+# Collections: server storage and backend sync
 
-Notes and to-dos are canonical server records. The phone keeps a durable mutation
-journal and a bounded disposable read cache. The watch persists up to eight truncated titles each for Notes and active To-dos.
+Notes, to-dos, and checks are canonical server records. The phone keeps a durable mutation
+journal and a bounded disposable read cache. The watch persists up to eight truncated titles each for Notes, active To-dos, and Checks.
 It shows these noninteractive cached previews immediately while refreshing live
 aliases from the phone; completed lists and later pages do not replace the preview.
 Mutations and record identities are not stored in this display cache. Timers, alarms, and the remembered
-Notes/To-dos tile selection retain their existing persistence.
+collection tile selection retains its existing persistence.
 
 This is a breaking development upgrade. Legacy phone notes and native task slots
 are ignored; there is no migration or compatibility fallback. Existing collection
@@ -22,7 +22,7 @@ token, and provider-management endpoints always require one.
 Collections always use that same URL, stripping a trailing `/v1/agent` and
 converting WebSocket schemes to HTTP(S). There is no separate collection URL.
 HTTPS is required unless **Allow HTTP for local development collections** is
-explicitly enabled. The server creates one To-dos and one Notes collection.
+explicitly enabled. The server creates To-dos, Notes, Calendar, and Checks collections.
 Collection APIs remain available when Codex is unavailable.
 
 Choose **To-do sync setup** or **Notes sync setup** independently; both default
@@ -48,9 +48,24 @@ changing a selector alone does not change it. See [setup instructions](../README
   page. Ambiguous text-based edits direct you to the record picker.
 - Task checkboxes emit explicit complete/restore operations. Completed tasks have
   a separate paginated view. Completion is distinct from deletion.
+- “check new baby” creates an empty list. “check baby” records one timestamp;
+  repeated commands add separate occurrences, even within the same second.
+  Names match case-insensitively after whitespace normalization. Duplicate
+  creation never erases a list; unknown names require explicit creation. If an
+  offline creation duplicates a list already on the server, dependent queued
+  occurrences are applied to that existing list after replay.
+- Checks rows show lifetime occurrence counts. Opening a list shows newest
+  timestamps first, grouped by the phone's local calendar day, with pages of
+  older history. Each occurrence is an indexed SQLite row and its operation
+  receipt commits with the count update. A queued offline creation can be
+  followed by checks; the journal preserves each original command time.
 - Lists contain at most eight records; bodies contain at most four UTF-8 chunks
   per page. Large collections remain server-owned. Uncached offline pages are
   reported unavailable; cached pages are marked stale.
+- Check history reads return eight server rows per page. The first page may also
+  display up to eight locally pending occurrences without displacing server
+  rows. Further pending history waits for synchronization; offline history
+  without a cache is labeled as unavailable even when local pending entries show.
 - Saves first show Sending, then **Saved on phone · Pending server**, then
   **Saved on server**. External delivery is tracked separately in server settings.
   A transport acknowledgment alone never means that the input was saved.

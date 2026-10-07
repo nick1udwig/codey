@@ -5,6 +5,30 @@ var J = require("./journal");
 var Cache = require("./cache");
 
 var CACHE = Cache.KEY;
+function checkName(s) { return String(s || "").trim().replace(/\s+/g, " ").toLowerCase(); }
+function checkCanonical(entries, id) {
+  var create = entries.filter(function(e) { return e.operation.type === "check.create" && e.operation.record_id === id && e.receipt && e.receipt.record; })[0];
+  return create ? create.receipt.record.id : id;
+}
+function checkDisplayedID(entries, id, map) {
+  var canonical = checkCanonical(entries, id);
+  if (map[canonical]) return canonical;
+  var create = entries.filter(function(e) { return e.operation.type === "check.create" && e.operation.record_id === id; })[0];
+  if (!create) return canonical;
+  var key = checkName(create.operation.payload.title);
+  return Object.keys(map).filter(function(candidate) { return map[candidate].kind === "check" && checkName(map[candidate].title) === key; })[0] || canonical;
+}
+function checkBase(entries, op) {
+  if (op.base_revision) return op.base_revision;
+  if (!op.base_operation_id) return "";
+  var parent = entries.filter(function(e) { return e.operation.id === op.base_operation_id; })[0];
+  if (!parent) return "";
+  return parent.receipt && parent.receipt.outcome === "applied" ? parent.receipt.revision : checkBase(entries, parent.operation);
+}
+function mayProjectCheck(record, entries, op) {
+  var base = checkBase(entries, op), revision = String(record.revision || "");
+  return revision === base || base === "" && revision === "1" && !record.count;
+}
 
 function Client(options) {
   this.options = options;
@@ -112,9 +136,9 @@ Client.prototype.connect = function(done) {
   });
 };
 
-Client.prototype.ensure = function(done) {
+Client.prototype.ensure = function(done, kind) {
   var known = this.collections.length ? this.collections : this.cache.collections || [], scope = this.journal.data.scope;
-  if (scope && !this.quarantined && scope.base === this.options.base() && scope.credential === J.checksum(this.options.token()) && known.length) {
+  if (scope && !this.quarantined && scope.base === this.options.base() && scope.credential === J.checksum(this.options.token()) && known.length && (!kind || known.some(function(c) { return c.kind === kind; }))) {
     done();
     return;
   }
@@ -187,6 +211,64 @@ Client.prototype.collection = function(kind) {
   return c;
 };
 
+Client.prototype.resolveCheck = function(name, done) {
+  var key = checkName(name), self = this;
+  if (!key) return done(new Error("Say a check name, for example 'check baby'."));
+  var creates = this.journal.data.entries.filter(function(e) {
+    return e.operation.type === "check.create" && (!e.receipt || e.receipt.outcome === "applied") && checkName(e.operation.payload.title) === key;
+  });
+  if (creates.length) {
+    var latest = creates[creates.length - 1], create = latest.operation;
+    return done(null, latest.receipt && latest.receipt.record || {id:create.record_id, title:create.payload.title, kind:"check", revision:"", count:0, capabilities:["check.add"]});
+  }
+  var cached = Object.keys(this.cache.records).map(function(id) { return self.cache.records[id]; }).filter(function(r) { return r.kind === "check" && !r.deleted && checkName(r.title) === key; })[0];
+  if (cached) return done(null, cached);
+  this.request("GET", "/v1/checks/lookup?name=" + encodeURIComponent(name), null, function(e, r) {
+    if (!e) { self.merge([r]); self.saveCache(); return done(null, r); }
+    if (e.status === 404) { var missing = new Error("Check '" + name + "' does not exist. Say 'check new " + name + "' first."); missing.code="not_found"; return done(missing); }
+    done(e);
+  });
+};
+
+Client.prototype.checkHistory = function(record, cursor, done) {
+  var self = this, key = "check-history:" + record.id + ":" + (cursor || "");
+  this.cacheStore.focus(key);
+  this.request("GET", "/v1/checks/" + encodeURIComponent(record.id) + "/history?limit=8&cursor=" + encodeURIComponent(cursor || ""), null, function(e, page) {
+    if (e) {
+      page = self.cacheStore.page(key, false);
+      if (!page) {
+        var local = self.journal.data.entries.some(function(entry) { return entry.operation.record_id === record.id && (!entry.receipt || entry.receipt.outcome === "applied"); });
+        if (!local) return done(new Error("Check history unavailable offline. Reconnect the phone to load it."));
+        page = {record:record,occurrences:[],next_cursor:"",complete:false,offline_only:true};
+      } else page = J.clone(page);
+      page.stale = true;
+    } else {
+      self.merge([page.record]);
+      self.cacheStore.putPage(key, page, !cursor, false);
+      self.saveCache();
+    }
+    var seen = {}, rows = page.occurrences.slice(), localRows = [];
+    rows.forEach(function(o) { seen[o.id] = true; });
+    if (!cursor) self.journal.data.entries.forEach(function(entry) {
+      var op = entry.operation;
+      if (op.type !== "check.add" || entry.receipt || seen[op.id] || !mayProjectCheck(page.record, self.journal.data.entries, op)) return;
+      if (checkCanonical(self.journal.data.entries, op.record_id) !== record.id) {
+        var create = self.journal.data.entries.filter(function(e) { return e.operation.type === "check.create" && e.operation.record_id === op.record_id && checkName(e.operation.payload.title) === checkName(record.title); })[0];
+        if (!create) return;
+      }
+      localRows.push({id:op.id, occurred_at:op.payload.occurred_at, pending:true});
+    });
+    localRows.sort(function(a,b) { return new Date(b.occurred_at) - new Date(a.occurred_at) || (a.id < b.id ? 1 : -1); });
+    rows = rows.concat(localRows.slice(0, 8));
+    rows.sort(function(a,b) { return new Date(b.occurred_at) - new Date(a.occurred_at) || (a.id < b.id ? 1 : -1); });
+    page = J.clone(page);
+    page.hidden_local = Math.max(0, localRows.length - 8);
+    page.occurrences = rows;
+    page.record = self.cache.records[record.id] || page.record;
+    done(null, page);
+  });
+};
+
 Client.prototype.accept = function(input) {
   if (this.quarantined) throw new Error("Queue is quarantined. Recover original server first.");
   var scope = this.journal.data.scope;
@@ -237,7 +319,7 @@ Client.prototype.list = function(kind, state, snapshot, cursor, done, preferCach
   this.ensure(function(e) {
     if (e) return done(e);
     self.listReady(kind, state, snapshot, cursor, done, preferCache);
-  });
+  }, kind);
 };
 
 Client.prototype.listReady = function(kind, state, snapshot, cursor, done, preferCache) {
@@ -251,7 +333,7 @@ Client.prototype.listReady = function(kind, state, snapshot, cursor, done, prefe
   var key = kind + ":" + state + ":" + (snapshot || "") + ":" + (cursor || "");
   this.cacheStore.focus(key);
   if (preferCache && this.cacheStore.page(key)) {
-    done(null, this.project(this.cacheStore.page(key), kind, state));
+    done(null, this.project(this.cacheStore.page(key), kind, state, !snapshot && !cursor));
     return;
   }
   function receive(e, p) {
@@ -260,7 +342,7 @@ Client.prototype.listReady = function(kind, state, snapshot, cursor, done, prefe
       if (cached) {
         cached = J.clone(cached);
         cached.stale = true;
-        done(null, self.project(cached, kind, state));
+        done(null, self.project(cached, kind, state, !snapshot && !cursor));
       } else done(e);
       return;
     }
@@ -270,7 +352,7 @@ Client.prototype.listReady = function(kind, state, snapshot, cursor, done, prefe
     try {
       self.journal.compact(self.cache.records);
     } catch (_) {}
-    done(null, self.project(p, kind, state));
+    done(null, self.project(p, kind, state, !snapshot && !cursor));
   }
   if (snapshot) {
     this.request("GET", "/v1/sync/snapshots/" + encodeURIComponent(snapshot) + "?limit=8&page_token=" + encodeURIComponent(cursor || ""), null, receive);
@@ -284,8 +366,10 @@ Client.prototype.listReady = function(kind, state, snapshot, cursor, done, prefe
   }
 };
 
-Client.prototype.project = function(page, kind, state) {
+Client.prototype.project = function(page, kind, state, first) {
+  if (first === undefined) first = true;
   var p = J.clone(page), map = {}, self = this;
+  var entries = this.journal.data.entries;
   p.records.forEach(function(r) {
     var newer = self.cache.records[r.id];
     map[r.id] = newer && J.compare(newer.revision, r.revision) > 0 ? J.clone(newer) : r;
@@ -294,10 +378,11 @@ Client.prototype.project = function(page, kind, state) {
     var op = e.operation;
     if (op.collection_id !== "col_" + kind) return;
     if (e.receipt && e.receipt.outcome !== "applied") return;
-    var r = map[op.record_id];
-    if (!r && op.type.indexOf(".create") > 0) {
+    var targetID = kind === "check" ? checkDisplayedID(entries, op.record_id, map) : op.record_id;
+    var r = map[targetID];
+    if (!r && op.type.indexOf(".create") > 0 && (kind !== "check" || first)) {
       r = {
-        id: op.record_id,
+        id: targetID,
         collection_id: op.collection_id,
         kind: kind,
         revision: "",
@@ -307,7 +392,8 @@ Client.prototype.project = function(page, kind, state) {
         end: op.payload.end,
         location: op.payload.location,
         body_complete: true,
-        capabilities: kind === "event" ? [] : kind === "note" ? [ "note.replace", "note.append" ] : [ "task.complete", "task.restore" ]
+        count: kind === "check" ? 0 : undefined,
+        capabilities: kind === "event" ? [] : kind === "note" ? [ "note.replace", "note.append" ] : kind === "check" ? [ "check.add" ] : [ "task.complete", "task.restore" ]
       };
       map[r.id] = r;
     }
@@ -317,12 +403,18 @@ Client.prototype.project = function(page, kind, state) {
     if (op.type === "task.complete") r.completed = true;
     if (op.type === "task.restore") r.completed = false;
     if (op.type === "record.delete") r.deleted = true;
-    if (e.receipt && e.receipt.record) Object.assign(r, e.receipt.record);
+    if (e.receipt && e.receipt.record && J.compare(e.receipt.record.revision, r.revision) >= 0) Object.assign(r, e.receipt.record);
+  });
+  if (kind === "check") Object.keys(map).forEach(function(id) {
+    var r = map[id], pending = entries.filter(function(e) { return checkDisplayedID(entries, e.operation.record_id, map) === id && e.operation.type === "check.add" && !e.receipt; });
+    // A newer server revision may already include a mutation whose response was
+    // lost. Suppress optimistic arithmetic until replay supplies its receipt.
+    if (pending.length && pending.every(function(e) { return mayProjectCheck(r, entries, e.operation); })) r.count = (r.count || 0) + pending.length;
   });
   p.records = Object.keys(map).map(function(k) {
     return map[k];
   }).filter(function(r) {
-    return !r.deleted && (kind === "event" ? new Date(r.end.length === 10 ? r.end + "T00:00:00" : r.end).getTime() > Date.now() : kind === "note" || r.completed === (state === "completed"));
+    return !r.deleted && (kind === "event" ? new Date(r.end.length === 10 ? r.end + "T00:00:00" : r.end).getTime() > Date.now() : kind === "note" || kind === "check" || r.completed === (state === "completed"));
   });
   if (kind === "event") p.records.sort(function(a, b) {
     return new Date(a.start.length === 10 ? a.start + "T00:00:00" : a.start) - new Date(b.start.length === 10 ? b.start + "T00:00:00" : b.start);

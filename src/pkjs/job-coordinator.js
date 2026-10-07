@@ -69,7 +69,7 @@ module.exports = function(options) {
       var attrs = Object.assign({}, action.attrs, {
         show: "false"
       });
-      if (/^(todo|note|calendar)$/.test(attrs.type)) {
+      if (/^(todo|note|calendar|check)$/.test(attrs.type)) {
         options.collectionCommand(attrs, 0, function(ok) {
           done(ok ? null : new Error("Collection action needs attention. Open the job to retry."));
         }, job, action.index, true);

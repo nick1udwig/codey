@@ -3,6 +3,13 @@ var assert = require("assert");
 var parse = require("../src/common/local-dictation").parse;
 
 module.exports = function(test) {
+  test("check commands preserve exact names and capture event time before upload", function() {
+    var now=new Date("2026-09-27T12:00:00.123Z");
+    assert.deepStrictEqual(parse("check new baby sleep.",now).node.attrs,{type:"check",command:"new",value:"baby sleep"});
+    assert.deepStrictEqual(parse("Check baby wake!",now).node.attrs,{type:"check",command:"add",value:"baby wake",occurred_at:"2026-09-27T12:00:00.123Z"});
+    assert.strictEqual(parse("check new",now),null);
+    assert.strictEqual(parse("show my checks",now).node.attrs.command,"list");
+  });
   test("calendar shortcuts preserve titles and require unambiguous event times", function() {
     var now=new Date(2026,8,17,12);
     ["Calendar: Café with Jo tomorrow at 3 pm for an hour", "make an event: Café with Jo tomorrow at 3 pm for an hour", "Add a calendar event Café with Jo tomorrow at 3 pm for an hour"].forEach(function(text){

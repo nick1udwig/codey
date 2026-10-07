@@ -240,11 +240,22 @@ Journal.prototype.receipts = function(results) {
 
 Journal.prototype.compact = function(records) {
   var data = this.data, retained = Object.create(null);
+  var byID = Object.create(null), required = Object.create(null);
+  data.entries.forEach(function(e) { byID[e.operation.id] = e; });
+  function requireAncestors(op) {
+    (op.depends_on || []).concat(op.base_operation_id || []).forEach(function(id) {
+      if (!id || required[id]) return;
+      required[id] = true;
+      if (byID[id]) requireAncestors(byID[id].operation);
+    });
+  }
+  data.entries.forEach(function(e) { if (!e.receipt) requireAncestors(e.operation); });
   var entries = data.entries.filter(function(e) {
     var keep = true;
     if (e.receipt && e.receipt.durably_recorded) {
-      var r = records[e.operation.record_id];
-      keep = e.receipt.outcome === "applied" && (!r || compare(r.revision, e.receipt.revision) < 0);
+      var id = e.receipt.record && e.receipt.record.id || e.operation.record_id;
+      var r = records[id];
+      keep = required[e.operation.id] || e.receipt.outcome === "applied" && (!r || compare(r.revision, e.receipt.revision) < 0);
     }
     if (keep) retained[e.operation.ingress_id] = true;
     return keep;
