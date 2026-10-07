@@ -24,6 +24,109 @@ function input(seq){return {ingress:"watch:bridge_a:"+seq,collection_id:"col_not
  var x=requests[0];x.status=200;x.responseText=JSON.stringify({protocol_version:1,server_instance_id:"old",store_epoch:"e"});x.onload();
  assert.match(error.message,/settings changed/);assert.strictEqual(client.journal.data.scope,null);assert.strictEqual(requests.length,1);
 })();
+function credentialRotation(oldToken){
+ var s=storage(),j=new J.Journal(s),state={base:"https://server.test",token:"new"},requests=[];
+ var scope={client_id:"client_a",server_instance_id:"server_a",store_epoch:"epoch_a",principal:"operator",base:state.base,credential:J.checksum(oldToken)};
+ var info={protocol_version:1,server_instance_id:scope.server_instance_id,store_epoch:scope.store_epoch,principal:scope.principal};
+ j.enroll(scope);j.bridge("bridge_a");
+ var note=j.accept(input(1));
+ j.receipts([{operation_id:note.id,outcome:"applied",durably_recorded:true,revision:"1"}]);
+ j.accept({ingress:"watch:bridge_a:2",collection_id:"col_note",generation:"1",record_id:note.record_id,type:"note.append",payload:{text:" more"}});
+ j.accept({ingress:"direct:task",collection_id:"col_task",generation:"1",type:"task.create",payload:{title:"Pending task"}});
+ var check=j.accept({ingress:"direct:check",collection_id:"col_check",generation:"1",type:"check.create",payload:{title:"baby wake"}});
+ j.accept({ingress:"direct:occurrence",collection_id:"col_check",generation:"1",record_id:check.record_id,type:"check.add",payload:{occurred_at:"2026-10-01T12:34:56Z"}});
+ function XHR(){requests.push(this);this.headers={};}
+ XHR.prototype.open=function(method,url){this.method=method;this.url=url;};
+ XHR.prototype.setRequestHeader=function(k,v){this.headers[k]=v;};
+ XHR.prototype.send=function(body){this.body=body&&JSON.parse(body);};
+ var client=new Client({storage:s,base:function(){return state.base;},token:function(){return state.token;},XMLHttpRequest:XHR});
+ client.cache.collections=[{id:"col_task",kind:"task",binding_generation:"1"},{id:"col_note",kind:"note",binding_generation:"1"}];
+ client.cacheStore.putPage("note:active::",{records:[{id:note.record_id,kind:"note",revision:"1",title:"Cached note"}],total:1},true);
+ client.saveCache();
+ return {s:s,state:state,client:client,info:info,requests:requests,reply:function(index,status,value){var xhr=requests[index];xhr.status=status;xhr.responseText=JSON.stringify(value);xhr.onload();}};
+}
+(function verifiedTokenRotationPreservesPendingWorkAndCaches(){
+ ["","old"].forEach(function(oldToken){
+  var f=credentialRotation(oldToken),before=J.clone(f.client.journal.data),completed=0;
+  f.client.drain(function(e){assert.match(e.message,/quarantined/);});
+  assert.strictEqual(f.requests.length,0,"unverified credentials cannot send mutations");
+  f.client.ensure(function(e){assert.ifError(e);completed++;},"note");
+  f.client.ensure(function(e){assert.ifError(e);completed++;},"check");
+  assert.strictEqual(f.requests.length,1,"cached collections still verify changed credentials, with concurrent verification coalesced");
+  assert.strictEqual(f.requests[0].method,"GET");assert.match(f.requests[0].url,/\/v1\/sync\/info$/);
+  assert.strictEqual(f.requests[0].headers.Authorization,"Bearer new");
+  assert.deepStrictEqual(f.client.journal.data,before);
+  f.reply(0,200,f.info);
+  before.scope.credential=J.checksum("new");
+  assert.deepStrictEqual(f.client.journal.data,before,"only the credential fingerprint changes");
+  assert.deepStrictEqual(new J.Journal(f.s).data,before,"rotation must survive a phone restart");
+  assert.strictEqual(f.requests[1].method,"GET");assert.match(f.requests[1].url,/\/v1\/collections\?/);
+  var cols=f.client.cache.collections.concat([{id:"col_check",kind:"check",binding_generation:"1"}]);
+  f.reply(1,200,cols);assert.strictEqual(completed,2);assert.strictEqual(f.client.quarantined,false);
+  var reloaded=new Client({storage:f.s,base:function(){return f.state.base;},token:function(){return f.state.token;}});
+  assert.strictEqual(reloaded.cache.pages["note:active::"].records[0].title,"Cached note");
+  assert.deepStrictEqual(reloaded.cache.collections,cols);
+  f.client.drain(function(e){assert.match(e.message,/unavailable/);});
+  var batch=f.requests[2].body;
+  assert.strictEqual(batch.client_id,before.scope.client_id);
+  assert.deepStrictEqual(batch.operations,before.entries.filter(function(e){return !e.receipt;}).map(function(e){return e.operation;}));
+  f.requests[2].onerror();
+  f.client.drain(function(e){assert.ifError(e);});
+  assert.deepStrictEqual(f.requests[3].body,batch,"lost responses replay the original operation IDs and timestamps");
+  f.reply(3,200,{results:batch.operations.map(function(op){return {operation_id:op.id,outcome:"applied",durably_recorded:true,revision:"2"};})});
+  assert.ok(f.client.journal.data.entries.every(function(e){return e.receipt&&e.receipt.durably_recorded;}));
+  assert.strictEqual(f.client.accept(input(1)).id,before.entries[0].operation.id,"old ingress receipts remain idempotent");
+  assert.strictEqual(f.client.journal.data.sequence,before.sequence);
+ });
+})();
+(function unsuccessfulTokenRotationNeverMovesPendingWork(){
+ ["unauthorized","offline","server","epoch","principal","base","settings","scope","storage"].forEach(function(problem){
+  var f=credentialRotation("old"),error;
+  if(problem==="base")f.state.base="https://other.test";
+  f.client.ensure(function(e){error=e;},"check");
+  if(problem!=="base"){
+   var info=J.clone(f.info);
+   if(problem==="server")info.server_instance_id="other";
+   if(problem==="epoch")info.store_epoch="restored";
+   if(problem==="principal")info.principal="other";
+   if(problem==="settings")f.state.token="changed-again";
+   if(problem==="scope")f.client.journal.update(function(d){d.scope.client_id="recovered";});
+   var before=J.clone(f.client.journal.data);
+   if(problem==="storage")f.s.fail(true);
+   if(problem==="offline")f.requests[0].onerror();
+   else f.reply(0,problem==="unauthorized"?401:200,problem==="unauthorized"?{code:"auth_required",message:"Wrong token"}:info);
+   assert.deepStrictEqual(f.client.journal.data,before,problem);
+   assert.deepStrictEqual(new J.Journal(f.s).data,before,problem+" survives restart");
+  }
+  assert.ok(error,problem+" must fail verification");
+  assert.strictEqual(f.requests.length,problem==="base"?0:1,problem+" cannot enroll, replay, or replace caches");
+  assert.strictEqual(f.client.journal.data.scope.credential,J.checksum("old"));
+  assert.throws(function(){f.client.accept(input(6));},/quarantined|original collection server/);
+ });
+})();
+(function credentialRotationDoesNotClearBindingQuarantine(){
+ var f=credentialRotation("old"),error;f.state.token="old";
+ f.client.drain(function(e){assert.strictEqual(e.code,"binding_changed");});
+ f.reply(0,409,{code:"binding_changed",message:"Binding changed"});
+ var before=J.clone(f.client.journal.data);f.state.token="new";
+ f.client.connect(function(e){error=e;});f.reply(1,200,f.info);
+ assert.match(error.message,/recovery|Recover/);
+ assert.strictEqual(f.requests.length,2);assert.strictEqual(f.client.quarantined,true);
+ assert.deepStrictEqual(f.client.journal.data,before);
+})();
+(function tokenlessCollectionRequestOmitsAuthorization(){
+ var request;
+ function XHR(){request=this;this.headers={};}
+ XHR.prototype.open=function(method,url){this.method=method;this.url=url;};
+ XHR.prototype.setRequestHeader=function(name,value){this.headers[name]=value;};
+ XHR.prototype.send=function(){};
+ var client=new Client({storage:storage(),base:function(){return "https://server.test/codey";},token:function(){return "";},XMLHttpRequest:XHR});
+ var result;client.request("GET","/v1/sync/info",null,function(e,v){assert.ifError(e);result=v;});
+ assert.strictEqual(request.method,"GET");assert.strictEqual(request.url,"https://server.test/codey/v1/sync/info");
+ assert.strictEqual(request.headers.Authorization,undefined);
+ request.status=200;request.responseText=JSON.stringify({ready:true});request.onload();
+ assert.strictEqual(result.ready,true);
+})();
 (function olderServerExplainsMissingCollectionAPI(){
  var request;
  function XHR(){request=this;}
@@ -95,10 +198,11 @@ console.log("✓ collection journal: durable recovery, torn slots, duplicate ing
  client.list("task","active","","",function(e){assert.match(e.message,/HTTP requires/);});
  assert.strictEqual(client.connectWaiters,null);
  client.options.base=function(){return "";};
- client.ensure(function(e){assert.match(e.message,/URL and bearer token/);});
+ client.ensure(function(e){assert.match(e.message,/collection server URL/);});
 })();
 (function completedTaskImmediatelyUsesCachedPageAndTotal(){
  var f=enrolled(),client=new Client({storage:f.s,base:function(){return "https://server.test";},token:function(){return "secret";}});
+ client.journal.update(function(d){d.scope.base="https://server.test";d.scope.credential=J.checksum("secret");});
  client.collections=[{id:"col_task",kind:"task",binding_generation:"1"}];
  var a={id:"a",title:"First",kind:"task",revision:"1",completed:false,capabilities:["task.complete"]},b={id:"b",title:"Second",kind:"task",revision:"1",completed:false,capabilities:["task.complete"]};
  client.cache.pages["task:active::"]={total:21,records:[a,b],next_cursor:"next"};client.cache.records={a:a,b:b};

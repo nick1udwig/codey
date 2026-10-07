@@ -6,7 +6,11 @@
 SQLite WAL, foreign keys, a busy timeout, and `synchronous=FULL`. The default is
 `~/.codey/data`. Keep this directory outside the agent workspace. Set
 `CODEY_TOKEN`; collection endpoints reject unauthenticated requests even if the
-legacy agent endpoint permits localhost without a token.
+legacy agent endpoint permits localhost without a token. A loopback listener
+behind a private tailnet proxy can explicitly opt in with
+`--allow-unauthenticated-collections`; anyone who can reach the proxy can then
+read and change collection data. Provider-management endpoints still require
+`CODEY_TOKEN`.
 
 The phone sends its HTTPS server URL and selected sync service to the authenticated
 management-session endpoint. No operator `public_url` is required. The supplied

@@ -32,26 +32,27 @@ import (
 var version = "dev"
 
 type options struct {
-	integrationsConfig         string
-	dataDir                    string
-	backup                     string
-	restoreEpoch               bool
-	listen                     string
-	model                      string
-	effort                     string
-	codexCommand               string
-	appServerUnix              string
-	appServerURL               string
-	appServerTokenEnvironment  string
-	authTokenEnvironment       string
-	allowUnauthenticatedPublic bool
-	connectTimeout             time.Duration
-	turnTimeout                time.Duration
-	jobRetention               time.Duration
-	statePath                  string
-	workspace                  string
-	logLevel                   string
-	logFile                    string
+	integrationsConfig              string
+	dataDir                         string
+	backup                          string
+	restoreEpoch                    bool
+	listen                          string
+	model                           string
+	effort                          string
+	codexCommand                    string
+	appServerUnix                   string
+	appServerURL                    string
+	appServerTokenEnvironment       string
+	authTokenEnvironment            string
+	allowUnauthenticatedPublic      bool
+	allowUnauthenticatedCollections bool
+	connectTimeout                  time.Duration
+	turnTimeout                     time.Duration
+	jobRetention                    time.Duration
+	statePath                       string
+	workspace                       string
+	logLevel                        string
+	logFile                         string
 }
 
 func main() {
@@ -92,6 +93,7 @@ func run(arguments []string) error {
 	flags.StringVar(&config.appServerTokenEnvironment, "app-server-token-env", "CODEX_APP_SERVER_TOKEN", "environment variable containing app-server WebSocket bearer token")
 	flags.StringVar(&config.authTokenEnvironment, "auth-token-env", "CODEY_TOKEN", "environment variable containing the phone bearer token")
 	flags.BoolVar(&config.allowUnauthenticatedPublic, "allow-unauthenticated-public", false, "allow a non-loopback listener without a phone bearer token")
+	flags.BoolVar(&config.allowUnauthenticatedCollections, "allow-unauthenticated-collections", false, "allow collection API requests without a bearer token when listening on loopback")
 	flags.DurationVar(&config.connectTimeout, "connect-timeout", 5*time.Second, "timeout per app-server transport")
 	flags.DurationVar(&config.turnTimeout, "turn-timeout", 0, "maximum Codex turn duration; 0 means unlimited")
 	flags.DurationVar(&config.jobRetention, "job-retention", 0, "completed job retention (e.g. 168h); 0 keeps unreceived results forever")
@@ -137,6 +139,9 @@ func run(arguments []string) error {
 	phoneToken := environment(config.authTokenEnvironment, "")
 	if phoneToken == "" && !config.allowUnauthenticatedPublic && !loopbackListener(config.listen) {
 		return fmt.Errorf("refusing unauthenticated non-loopback listener %q; set %s or pass --allow-unauthenticated-public", config.listen, config.authTokenEnvironment)
+	}
+	if phoneToken == "" && config.allowUnauthenticatedCollections && !loopbackListener(config.listen) {
+		return fmt.Errorf("refusing tokenless collections on non-loopback listener %q", config.listen)
 	}
 	if err := os.MkdirAll(config.workspace, 0o700); err != nil {
 		return fmt.Errorf("create workspace: %w", err)
@@ -233,7 +238,7 @@ func run(arguments []string) error {
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); engine.Run(workerContext) }()
 	defer func() { workerCancel(); <-workerDone }()
-	handler := httpapi.New(httpapi.Config{Collections: collections, RefreshCollections: engine.Refresh, WakeCollections: engine.Wake, Integrations: integrations, IntegrationTicket: integrations.Ticket, IntegrationSetup: integrations.SetupSession, ProviderDescriptors: func() any { return integrations.Descriptors() }, Jobs: jobStore, Responder: responder, Token: phoneToken, Logger: logger})
+	handler := httpapi.New(httpapi.Config{Collections: collections, RefreshCollections: engine.Refresh, WakeCollections: engine.Wake, Integrations: integrations, IntegrationTicket: integrations.Ticket, IntegrationSetup: integrations.SetupSession, ProviderDescriptors: func() any { return integrations.Descriptors() }, Jobs: jobStore, Responder: responder, Token: phoneToken, AllowUnauthenticatedCollections: config.allowUnauthenticatedCollections, Logger: logger})
 	listener, err := net.Listen("tcp", config.listen)
 	if err != nil {
 		return err

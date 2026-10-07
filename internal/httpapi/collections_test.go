@@ -56,6 +56,41 @@ func TestCollectionsRequireAuthAndWorkWithoutAgent(t *testing.T) {
 	}
 }
 
+func TestTokenlessCollectionsRequireExplicitOptIn(t *testing.T) {
+	store, err := collectionstore.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, tc := range []struct {
+		name   string
+		config Config
+		want   int
+	}{
+		{"default", Config{Collections: store}, 401},
+		{"opted in", Config{Collections: store, AllowUnauthenticatedCollections: true}, 200},
+		{"token still required", Config{Collections: store, Token: "secret", AllowUnauthenticatedCollections: true}, 401},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := New(tc.config)
+			request := httptest.NewRequest("GET", "/v1/sync/info", nil)
+			response := httptest.NewRecorder()
+			server.ServeHTTP(response, request)
+			if response.Code != tc.want {
+				t.Fatalf("collection status = %d, want %d", response.Code, tc.want)
+			}
+			if tc.name == "opted in" {
+				request = httptest.NewRequest("GET", "/v1/providers", nil)
+				response = httptest.NewRecorder()
+				server.ServeHTTP(response, request)
+				if response.Code != 401 {
+					t.Fatalf("integration management status = %d, want 401", response.Code)
+				}
+			}
+		})
+	}
+}
+
 func TestManagementURLAndProviderRequireAuthenticatedPhone(t *testing.T) {
 	calls := 0
 	s := New(Config{Token: "t", IntegrationTicket: func(base, provider, collection string) (string, error) {

@@ -19,6 +19,7 @@ function Client(options) {
   this.cache = this.cacheStore.data;
   this.busy = false;
   this.quarantined = false;
+  this.quarantineReason = "";
   this.collections = [];
 }
 
@@ -29,12 +30,13 @@ Client.prototype.saveCache = function() {
 Client.prototype.request = function(method, path, body, done, recovery) {
   var options = this.options, scope = this.journal.data.scope, base = options.base(), token = options.token();
   if (!recovery && scope && (scope.base !== base || scope.credential !== J.checksum(token))) {
+    if (!this.quarantined) this.quarantineReason = "settings";
     this.quarantined = true;
     done(new Error("Server settings changed. Original pending work is quarantined."));
     return;
   }
-  if (!base || !token) {
-    done(new Error("Configure the collection server URL and bearer token."));
+  if (!base) {
+    done(new Error("Configure the collection server URL."));
     return;
   }
   if (!/^https:\/\//.test(base) && !(options.allowHTTP && options.allowHTTP())) {
@@ -55,7 +57,7 @@ Client.prototype.request = function(method, path, body, done, recovery) {
     xhr = new options.XMLHttpRequest();
     xhr.open(method, base.replace(/\/$/, "") + path, true);
     xhr.timeout = 15e3;
-    xhr.setRequestHeader("Authorization", "Bearer " + token);
+    if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
     xhr.setRequestHeader("Content-Type", "application/json");
     xhr.onload = function() {
       var v;
@@ -111,7 +113,8 @@ Client.prototype.connect = function(done) {
 };
 
 Client.prototype.ensure = function(done) {
-  if (this.journal.data.scope && (this.collections.length || (this.cache.collections || []).length)) {
+  var known = this.collections.length ? this.collections : this.cache.collections || [], scope = this.journal.data.scope;
+  if (scope && !this.quarantined && scope.base === this.options.base() && scope.credential === J.checksum(this.options.token()) && known.length) {
     done();
     return;
   }
@@ -120,14 +123,33 @@ Client.prototype.ensure = function(done) {
 
 Client.prototype.connectOnce = function(done) {
   var self = this;
+  var scope = this.journal.data.scope, originalScope = J.stable(scope);
+  var base = this.options.base(), credential = J.checksum(this.options.token());
+  // A changed token may only bypass the settings guard for this identity read
+  // at the original URL. Mutations stay blocked until verification is durable.
+  var rotateCredential = scope && scope.base === base && scope.credential !== credential;
   this.request("GET", "/v1/sync/info", null, function(e, info) {
     if (e) return done(e);
     if (info.protocol_version !== 1 || !info.server_instance_id || !info.store_epoch) return done(new Error("Unsupported collection server."));
-    var scope = self.journal.data.scope;
+    if (originalScope !== J.stable(self.journal.data.scope)) return done(new Error("Collection scope changed during connection. Reconnect collections."));
     if (scope && (scope.server_instance_id !== info.server_instance_id || scope.store_epoch !== info.store_epoch || scope.principal !== info.principal)) {
       self.quarantined = true;
+      self.quarantineReason = "identity";
       return done(new Error("Server/store identity changed. Queue recovery required."));
     }
+    if (self.quarantined && self.quarantineReason !== "settings") return done(new Error("Queue is quarantined. Recover original server first."));
+    if (rotateCredential) {
+      try {
+        self.journal.update(function(d) {
+          d.scope.credential = credential;
+        });
+      } catch (error) {
+        return done(error);
+      }
+      self.saveCache();
+    }
+    self.quarantined = false;
+    self.quarantineReason = "";
     function ready() {
       self.request("GET", "/v1/collections?utc_offset_minutes=" + -new Date().getTimezoneOffset(), null, function(e, cols) {
         if (!e) {
@@ -153,7 +175,7 @@ Client.prototype.connectOnce = function(done) {
       }
       ready();
     });
-  });
+  }, rotateCredential);
 };
 
 Client.prototype.collection = function(kind) {
@@ -198,7 +220,10 @@ Client.prototype.drain = function(done) {
         e = error;
       }
     }
-    if (e && [ "store_epoch_changed", "server_mismatch", "binding_changed" ].indexOf(e.code) >= 0) self.quarantined = true;
+    if (e && [ "store_epoch_changed", "server_mismatch", "binding_changed" ].indexOf(e.code) >= 0) {
+      self.quarantined = true;
+      self.quarantineReason = e.code;
+    }
     if (done) done(e, data);
   });
 };
@@ -375,6 +400,7 @@ Client.prototype.recover = function(done) {
           self.cache.collections = [];
           self.saveCache();
           self.quarantined = false;
+          self.quarantineReason = "";
           done();
         } catch (e) {
           done(e);

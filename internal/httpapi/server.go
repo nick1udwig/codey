@@ -24,17 +24,18 @@ type Responder interface {
 }
 
 type Config struct {
-	Collections         *collectionstore.Store
-	RefreshCollections  func()
-	WakeCollections     func()
-	Integrations        http.Handler
-	IntegrationSetup    func(string) (map[string]string, error)
-	IntegrationTicket   func(string, string, string) (string, error)
-	ProviderDescriptors func() any
-	Jobs                *jobs.Store
-	Responder           Responder
-	Token               string
-	Logger              *slog.Logger
+	Collections                     *collectionstore.Store
+	RefreshCollections              func()
+	WakeCollections                 func()
+	Integrations                    http.Handler
+	IntegrationSetup                func(string) (map[string]string, error)
+	IntegrationTicket               func(string, string, string) (string, error)
+	ProviderDescriptors             func() any
+	Jobs                            *jobs.Store
+	Responder                       Responder
+	Token                           string
+	AllowUnauthenticatedCollections bool
+	Logger                          *slog.Logger
 }
 
 type Server struct {

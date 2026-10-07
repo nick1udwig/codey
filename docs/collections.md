@@ -14,6 +14,11 @@ data was explicitly excluded from preservation for this implementation.
 ## Setup
 
 Configure the server bearer token (`CODEY_TOKEN`) and server URL in phone settings.
+For a private, loopback-listening server behind a trusted tailnet proxy, the
+operator can instead start the server with `--allow-unauthenticated-collections`
+and leave the phone token blank. This opt-in permits anyone who can reach that
+proxy to read and change collection data. The default still requires a bearer
+token, and provider-management endpoints always require one.
 Collections always use that same URL, stripping a trailing `/v1/agent` and
 converting WebSocket schemes to HTTP(S). There is no separate collection URL.
 HTTPS is required unless **Allow HTTP for local development collections** is
@@ -120,9 +125,18 @@ or explicitly confirming that retrying cannot duplicate a write. Switching
 providers preserves records and requires a decision about pending delivery;
 in-flight/unknown work prevents a switch.
 
-Changing the server URL, bearer-token identity, or restored store epoch quarantines
-old phone work. Restore the original connection to recover that journal rather
-than redirecting it. For a restored original server, the phone settings recovery checkbox archives quarantined input as server conflicts without executing it, then re-enrolls only after durable handoff. Review those proposals before applying them. Developer recovery can also export complete JSON with
+Changing the server URL, account identity, or restored store epoch quarantines
+old phone work. When only the bearer token changes at the original URL, the phone
+authenticates with the new token and verifies the same server, store epoch, and
+account before durably updating its credential fingerprint. This preserves the
+client identity, pending operations, timestamps, receipts, and cached collections;
+queued operations then resume normally. Failed authentication or identity
+verification leaves the journal unchanged.
+
+Restore the original connection to recover a quarantined journal. For a restored
+original server, the phone settings recovery checkbox archives quarantined input
+as server conflicts without executing it, then re-enrolls only after durable
+handoff. Review those proposals before applying them. Developer recovery can also export complete JSON with
 `CollectionClient.exportJournal()` from the running phone bridge.
 
 See [server operations](collections-server-operations.md), the

@@ -916,6 +916,17 @@ function loadPkjsHarness(options) {
     // Keep telemetry requests separate from each feature's network fixtures.
     global.XMLHttpRequest = function() {};
     global.XMLHttpRequest.prototype.open = function(method, url, async) {
+      var hasToken = false;
+      try { hasToken = !!JSON.parse(storageData[Settings.STORAGE_KEY] || "{}").token; } catch (_) {}
+      if (/\/v1\/sync\/info$/.test(url) && !hasToken && !options.allowTokenlessCollections) {
+        this.setRequestHeader = function() {};
+        this.send = function() {
+          this.status = 401;
+          this.responseText = JSON.stringify({ code: "auth_required", message: "Configure a server bearer token to use collections" });
+          if (this.onload) { this.onload(); }
+        };
+        return;
+      }
       if (/\/v1\/status$/.test(url)) {
         this.url = url; statusRequests.push(this);
         this.setRequestHeader = function() {};

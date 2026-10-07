@@ -45,6 +45,11 @@ Set the watchapp server URL to `http://SERVER:8787` and enter the same token.
 The server refuses a non-loopback listener when `CODEY_TOKEN` is empty.
 `--allow-unauthenticated-public` exists for tightly controlled development environments, but it is deliberately explicit.
 The bearer token is read from an environment variable rather than a command-line value so it is not exposed in a process listing.
+Collection endpoints require that token by default. For a loopback listener
+behind a trusted private proxy, `--allow-unauthenticated-collections` explicitly
+permits tokenless collection requests; anyone who can reach the proxy can then
+read and change collection data. Provider-management endpoints still require a
+token.
 
 ## Private phone access with Tailscale
 

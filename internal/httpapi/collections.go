@@ -51,7 +51,7 @@ func collectionDecode(w http.ResponseWriter, r *http.Request, v any) error {
 	return nil
 }
 func (s *Server) collection(w http.ResponseWriter, r *http.Request) {
-	if s.config.Token == "" || !s.authorized(headerToken(r), "") {
+	if s.config.Token == "" && !s.config.AllowUnauthenticatedCollections || s.config.Token != "" && !s.authorized(headerToken(r), "") {
 		collectionError(w, c.Fail("auth_required", "Configure a server bearer token to use collections"))
 		return
 	}
