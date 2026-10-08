@@ -66,6 +66,7 @@ function request(port, { method = "POST", body = "" } = {}) {
 function runConfig(hash, bridge, XHR) {
   const ids = ["settings", "endpoint", "token", "units", "timeout", "location-label", "status", "codex-model", "codex-effort", "fast-mode", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review", "answer-vibrate", "tap-animation", "double-tap"];
   const elements = {};
+  ids.push("refresh-interval");
   ids.push("calendar-sync-provider","calendar-sync-help","todo-sync-provider","note-sync-provider","todo-sync-help","note-sync-help","token-status","new-session","collection-development-http","recover-collections");
   ["todo","note","calendar"].forEach(kind=>["back","progress","next","destination-title","secret-title","form","active","credentials","endpoint-label","username-label","secret-label","endpoint","username","secret","connect","destination","container","export","preview","stop","status","activate"].forEach(name=>ids.push(kind+"-sync-"+name)));
   let submit;
@@ -215,6 +216,7 @@ test("configuration page hydrates state and closes with normalized form values",
     units: "metric",
     locationLabel: "Current location",
     timeoutSeconds: 90,
+    refreshIntervalSeconds: 60,
     codexModel: "gpt-6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
     networkAccess: false, shellAccess: false, autoReview: false, answerVibrate: true, tapAnimation: true, doubleTap: true
   });
@@ -283,6 +285,7 @@ test("configuration page recovers from a bad hash and supports the native bridge
   assert.equal(harness.elements["fast-mode"].checked, true);
   assert.equal(harness.elements["answer-vibrate"].checked, true);
   assert.equal(harness.elements["tap-animation"].checked, true);
+  assert.equal(harness.elements["refresh-interval"].value, "60");
   harness.elements["tap-animation"].checked = false;
   assert.equal(harness.elements["double-tap"].checked,true);
   harness.elements["double-tap"].checked=false;
@@ -298,7 +301,23 @@ test("configuration page recovers from a bad hash and supports the native bridge
   assert.equal(submitted.answerVibrate, false);
   assert.equal(submitted.tapAnimation, false);
   assert.equal(submitted.doubleTap,false);
+  assert.equal(submitted.refreshIntervalSeconds,60);
   assert.equal(harness.location.href, "https://config.test/#%not-json");
+});
+
+test("configuration page restores and changes the screen refresh interval", () => {
+  let saved;
+  const h = runConfig("#" + encodeURIComponent(JSON.stringify({ refreshIntervalSeconds: 60 })), { submit(s) { saved = s; } });
+  assert.equal(h.elements["refresh-interval"].value, "60");
+  h.submit({ preventDefault() {} });
+  assert.equal(saved.refreshIntervalSeconds, 60);
+  h.elements["refresh-interval"].value = "1";
+  h.submit({ preventDefault() {} });
+  assert.equal(saved.refreshIntervalSeconds, 1);
+  const legacy = runConfig("#" + encodeURIComponent(JSON.stringify({ doubleTap: false })));
+  assert.equal(legacy.elements["refresh-interval"].value, "60");
+  const selected = runConfig("#" + encodeURIComponent(JSON.stringify({ refreshIntervalSeconds: 1 })));
+  assert.equal(selected.elements["refresh-interval"].value, "1");
 });
 
 test("new conversation is an explicit one-time settings action", () => {

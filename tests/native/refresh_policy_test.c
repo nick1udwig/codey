@@ -7,6 +7,20 @@ int main(void) {
   assert(refresh_policy_delay(&p, 100, false) == 0);
   refresh_policy_painted(&p, 100);
   assert(refresh_policy_delay(&p, 101, false) == 59999);
+  assert(refresh_policy_delay(&p, 60099, false) == 1);
+  assert(refresh_policy_delay(&p, 60100, false) == 0);
+  p.interval_ms = refresh_policy_interval_ms(1);
+  assert(refresh_policy_delay(&p, 101, false) == 999);
+  assert(refresh_policy_delay(&p, 1099, false) == 1);
+  assert(refresh_policy_delay(&p, 1100, false) == 0);
+  assert(refresh_policy_delay(&p, 500, true) == 0);
+  assert(refresh_policy_screen_delay(&p, 500, false, true) == 0);
+  assert(refresh_policy_interval_ms(60) == 60000);
+  assert(refresh_policy_interval_ms(1) == 1000);
+  assert(refresh_policy_interval_ms(0) == 60000);
+  assert(refresh_policy_interval_ms(-60) == 60000);
+  p.interval_ms = refresh_policy_interval_ms(60);
+  assert(refresh_policy_delay(&p, 101, false) == 59999);
   assert(refresh_policy_delay(&p, 30100, false) == 30000);
   assert(refresh_policy_delay(&p, 60099, false) == 1);
   assert(refresh_policy_delay(&p, 60100, false) == 0);
@@ -17,6 +31,9 @@ int main(void) {
   assert(refresh_policy_delay(&p, 50, false) == 59849);
   assert(refresh_policy_screen_delay(&p,51,false,true)==0);
   assert(refresh_policy_screen_delay(&p,51,false,false)>0);
+  p.interval_ms = refresh_policy_interval_ms(1);
+  assert(refresh_policy_delay(&p, 50, false) == 849);
+  assert(refresh_policy_delay(&p, 900, false) == 0);
   unsigned layouts=0, content=0, clocks=0;
   for(unsigned minute=1;minute<=10;minute++) {
     uint8_t work=ui_invalidation_expand(ui_invalidation_clock(false));
@@ -31,6 +48,6 @@ int main(void) {
   assert(!ui_invalidation_visible(false,false));
   assert(ui_invalidation_visible(false,true));
   assert(ui_invalidation_visible(true,false));
-  puts("✓ refresh policy: one passive frame per minute, immediate input, "
+  puts("✓ refresh policy: minute default, selectable one-second cadence, immediate input, "
        "renewed deadline, clock wrap");
 }

@@ -28,6 +28,14 @@
         <label class="toggle"><input id="answer-vibrate" type="checkbox" checked /><span>Answer arrived vibration</span></label>
         <p>Vibrate when an answer finishes arriving. Quiet Time always silences this vibration.</p>
         <label>
+          <span>Screen refresh interval</span>
+          <select id="refresh-interval" name="refreshIntervalSeconds">
+            <option value="60">60 seconds (default)</option>
+            <option value="1">1 second</option>
+          </select>
+          <small>Controls automatic screen updates, including timers and the stopwatch. Choose 60 seconds to reduce display updates. Taps and buttons respond immediately.</small>
+        </label>
+        <label>
           <span>Agent endpoint</span>
           <input id="endpoint" name="endpoint" type="text" inputmode="url"
                  placeholder="https://example.com/codey" autocomplete="url" />

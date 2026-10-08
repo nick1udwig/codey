@@ -678,9 +678,47 @@ test("settings normalize and round-trip", function() {
   assert.strictEqual(loaded.units, "auto");
   assert.strictEqual(loaded.timeoutSeconds, 120);
   assert.strictEqual(loaded.answerVibrate, true);
+  assert.strictEqual(loaded.refreshIntervalSeconds, 60);
   assert.strictEqual(Settings.save({ answerVibrate: false }, storage).answerVibrate, false);
   assert.strictEqual(Settings.load(storage).answerVibrate, false);
   assert.deepStrictEqual(Settings.parseConfigResponse(encodeURIComponent(JSON.stringify(loaded))), loaded);
+});
+
+test("screen refresh defaults to sixty seconds and round-trips only supported intervals", function() {
+  var data = {};
+  var storage = { getItem: function(key) { return data[key]; }, setItem: function(key, value) { data[key] = value; } };
+  data[Settings.STORAGE_KEY] = JSON.stringify({ doubleTap: false });
+  assert.strictEqual(Settings.load(storage).refreshIntervalSeconds, 60);
+  [0, -1, 2, 30, 60000, "invalid", null].forEach(function(value) {
+    assert.strictEqual(Settings.normalize({ refreshIntervalSeconds: value }).refreshIntervalSeconds, 60);
+  });
+  var saved = Settings.save({ refreshIntervalSeconds: "60" }, storage);
+  assert.strictEqual(Settings.load(storage).refreshIntervalSeconds, 60);
+  assert.strictEqual(Settings.parseConfigResponse(encodeURIComponent(JSON.stringify(saved))).refreshIntervalSeconds, 60);
+  var url = Settings.buildConfigUrl(saved, "refresh");
+  assert.strictEqual(JSON.parse(decodeURIComponent(url.split("#")[1])).refreshIntervalSeconds, 60);
+  Settings.save({ refreshIntervalSeconds: 1 }, storage);
+  assert.strictEqual(Settings.load(storage).refreshIntervalSeconds, 1);
+});
+
+test("phone sends the selected screen refresh on ready, save, and restart", function() {
+  var storage = {};
+  var h = loadPkjsHarness({ storageData: storage });
+  function preference() { return h.sent.filter(function(m) { return m[0] === "bridge" && m[2] === "preferences"; }).pop(); }
+  try {
+    h.handlers.appmessage({ payload: { 0: "ready" } });
+    assert.strictEqual(preference()[8], "60");
+    h.handlers.webviewclosed({ response: encodeURIComponent(JSON.stringify({ refreshIntervalSeconds: 60 })) });
+    assert.strictEqual(preference()[8], "60");
+    assert.strictEqual(JSON.parse(storage[Settings.STORAGE_KEY]).refreshIntervalSeconds, 60);
+  } finally { h.cleanup(); }
+  h = loadPkjsHarness({ storageData: storage });
+  try {
+    h.handlers.appmessage({ payload: { 0: "ready" } });
+    assert.strictEqual(preference()[8], "60");
+    h.handlers.webviewclosed({ response: encodeURIComponent(JSON.stringify({ refreshIntervalSeconds: 1 })) });
+    assert.strictEqual(preference()[8], "1");
+  } finally { h.cleanup(); }
 });
 
 test("settings recover from corrupt storage and reject canceled configuration", function() {

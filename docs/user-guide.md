@@ -129,6 +129,12 @@ Launching with that shortcut opens dictation automatically; opening codey from t
 
 ## Phone settings and conversations
 
+**Screen refresh interval** offers **60 seconds** (the default) and **1 second**.
+It controls automatic screen updates, including timer countdowns and stopwatch
+values. Choose 60 seconds to reduce display updates. Taps, buttons, screen changes,
+and timer/alarm alerts remain immediate. The choice applies when you save and
+survives app restarts; server-status and weather polling keep their existing cadence.
+
 Settings default to GPT-5.6 Luna, extra-high reasoning effort, fast mode, and live web search.
 The Fast mode toggle requests priority processing and can be turned off for standard speed.
 Explicitly saved preferences are preserved.

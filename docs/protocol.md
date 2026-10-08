@@ -503,5 +503,10 @@ the watch after creation; edits and recurring-series creation use a calendar cli
 event count in EventSequence, and check-list count in Title. Watch caches use ten keys per kind: 4480, 4490,
 4500, 4510; base+1..8 hold titles, base+9 holds the full count.
 `bridge operation=preferences` uses Flags for ripple enabled, Index for double-tap
-required (both default 1). `bridge operation=agent-dispatched` starts the blue
+required (both default 1), and Value for the screen refresh interval as a string
+(`"1"` or `"60"` seconds, default `"60"`). The watch persists the interval under key
+4395 and uses it for passive paint coalescing and shared capability ticks. Missing
+or unsupported values select 60 seconds. Automatic status and weather requests
+remain at one minute and 15 minutes respectively.
+`bridge operation=agent-dispatched` starts the blue
 request animation only after the phone submits an agent job over HTTP.

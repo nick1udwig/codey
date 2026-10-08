@@ -433,13 +433,15 @@ static uint32_t prv_now_ms(void) {
   time_t seconds; uint16_t milliseconds; time_ms(&seconds,&milliseconds);
   return (uint32_t)seconds*1000u+milliseconds;
 }
-static bool prv_input_active(AgentUi *ui) {
-  return ui->input_active && (int32_t)(ui->input_until-prv_now_ms()) >= 0;
+static uint32_t prv_refresh_delay(AgentUi *ui) {
+  uint32_t now = prv_now_ms();
+  bool input = ui->input_active && (int32_t)(ui->input_until - now) >= 0;
+  return refresh_policy_screen_delay(&ui->refresh_policy, now, input, ui->root_dirty);
 }
 static void prv_paint(void *context) {
   AgentUi *ui=context;ui->refresh_timer=NULL;
   if(!ui->loaded || !ui->complete || !ui->dirty || !ui_invalidation_visible(ui->visible,ui->root_dirty))return;
-  uint32_t delay=refresh_policy_screen_delay(&ui->refresh_policy,prv_now_ms(),prv_input_active(ui),ui->root_dirty);
+  uint32_t delay=prv_refresh_delay(ui);
   if(delay){ui->refresh_timer=app_timer_register(delay,prv_paint,ui);return;}
   bool new_screen=ui->root_dirty;
   if (ui->root_dirty) {
@@ -468,7 +470,7 @@ static void prv_invalidate(AgentUi *ui, uint8_t flags) {
   if(!ui)return;
   ui->dirty |= flags;
   if(!ui->loaded || !ui->complete || !ui_invalidation_visible(ui->visible,ui->root_dirty))return;
-  uint32_t delay=refresh_policy_screen_delay(&ui->refresh_policy,prv_now_ms(),prv_input_active(ui),ui->root_dirty);
+  uint32_t delay=prv_refresh_delay(ui);
   if(ui->refresh_timer) {
     if(delay)return; // Already have one pending flush, not a polling timer.
     app_timer_cancel(ui->refresh_timer);ui->refresh_timer=NULL;
@@ -479,8 +481,9 @@ static void prv_refresh(AgentUi *ui) { prv_invalidate(ui,UiDirtyAll); }
 
 void agent_ui_note_input(AgentUi *ui) {
   if(!ui)return;
-  ui->input_active=true;ui->input_until=prv_now_ms()+1000;
-  refresh_policy_painted(&ui->refresh_policy,prv_now_ms());
+  uint32_t now = prv_now_ms();
+  ui->input_active=true;ui->input_until=now+1000;
+  refresh_policy_painted(&ui->refresh_policy,now);
   if(ui->dirty && ui->complete && ui->loaded) {
     if(ui->refresh_timer){app_timer_cancel(ui->refresh_timer);ui->refresh_timer=NULL;}
     prv_paint(ui); // Fresh geometry before hit-testing the user's contact.
@@ -488,6 +491,15 @@ void agent_ui_note_input(AgentUi *ui) {
 }
 void agent_ui_refresh_clock(AgentUi *ui) {
   if(ui)prv_invalidate(ui,ui_invalidation_clock(!strcmp(ui->screen_id,"dashboard") || !strcmp(ui->screen_id,"calendar")));
+}
+
+void agent_ui_set_refresh_interval(AgentUi *ui, int32_t seconds) {
+  if (!ui) { return; }
+  uint32_t interval = refresh_policy_interval_ms(seconds);
+  if (ui->refresh_policy.interval_ms == interval) { return; }
+  ui->refresh_policy.interval_ms = interval;
+  if (ui->refresh_timer) { app_timer_cancel(ui->refresh_timer); ui->refresh_timer = NULL; }
+  if (ui->dirty) { prv_invalidate(ui, ui->dirty); }
 }
 
 

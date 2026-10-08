@@ -10,6 +10,7 @@
     units: "auto",
     locationLabel: "Current location",
     timeoutSeconds: 45,
+    refreshIntervalSeconds: 60,
     codexModel: "gpt-6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
     networkAccess: false, shellAccess: false, autoReview: false, answerVibrate: true, tapAnimation: true, doubleTap:true
   };
@@ -18,6 +19,7 @@
   var token = document.getElementById("token");
   var units = document.getElementById("units");
   var timeout = document.getElementById("timeout");
+  var refreshInterval = document.getElementById("refresh-interval");
   var locationLabel = document.getElementById("location-label");
   var status = document.getElementById("status");
 
@@ -75,6 +77,7 @@
   document.getElementById("token-status").textContent=current.tokenConfigured?"A bearer token is saved on your phone. Leave this field blank to keep it.":"Enter your server bearer token. After saving, this field is blank so the token is not exposed in the settings URL.";
   units.value = current.units || "auto";
   timeout.value = String(current.timeoutSeconds || 45);
+  refreshInterval.value = Number(current.refreshIntervalSeconds) === 1 ? "1" : "60";
   locationLabel.value = current.locationLabel || defaults.locationLabel;
 
   Object.keys(extraFields).forEach(function(key) {
@@ -233,7 +236,8 @@
       token: token.value.trim(),
       units: units.value,
       locationLabel: locationLabel.value.trim() || defaults.locationLabel,
-      timeoutSeconds: parseInt(timeout.value, 10) || 45
+      timeoutSeconds: parseInt(timeout.value, 10) || 45,
+      refreshIntervalSeconds: Number(refreshInterval.value) === 1 ? 1 : 60
     };
     Object.keys(extraFields).forEach(function(key) {
       settings[key] = typeof defaults[key] === "boolean" ? extraFields[key].checked : extraFields[key].value.trim();

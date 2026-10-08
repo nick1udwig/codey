@@ -554,7 +554,10 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   }
   if (!strcmp(type,"bridge") && !strcmp(operation,"preferences")) {
     agent_ui_set_tap_animation(s_ui,prv_tuple_int(iter,MESSAGE_KEY_Flags,1)!=0);
-    agent_ui_set_double_tap(s_ui,prv_tuple_int(iter,MESSAGE_KEY_Index,1)!=0);return;
+    agent_ui_set_double_tap(s_ui,prv_tuple_int(iter,MESSAGE_KEY_Index,1)!=0);
+    int32_t seconds = 60;
+    agent_protocol_parse_int32(prv_tuple_string(iter,MESSAGE_KEY_Value),NULL,&seconds);
+    agent_capabilities_set_refresh_interval(s_capabilities,seconds);return;
   }
   if (strcmp(type, "job-action") == 0) {
     // Completed actions are independent of whichever screen/request is active.

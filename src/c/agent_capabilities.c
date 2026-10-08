@@ -9,6 +9,7 @@
 
 #define COLLECTION_PREFERENCE_KEY 4399
 #define TOUR_DISMISSED_KEY 4398
+#define REFRESH_INTERVAL_KEY 4395
 
 typedef struct {
   char name[AGENT_CAPABILITY_NAME_LENGTH];
@@ -25,7 +26,8 @@ struct AgentCapabilities {
   char active_name[AGENT_CAPABILITY_NAME_LENGTH];
   char connection[72];
   char weather_temperature[12], weather_range[32], weather_meta[40];
-  uint16_t weather_ticks;
+  uint16_t refresh_interval_seconds;
+  uint16_t status_seconds, weather_seconds;
   int collection_kind;
   AppTimer *tick_timer;
   uint32_t navigation_revision;
@@ -63,19 +65,20 @@ static void prv_show_tour(AgentCapabilities *capabilities) {
 static void prv_tick(void *context) {
   AgentCapabilities *capabilities = context;
   capabilities->tick_timer = NULL;
-  for (uint8_t i = 0; i < capabilities->module_count; ++i) {
-    RegisteredModule *module = &capabilities->modules[i];
-    if (module->module.tick) { module->module.tick(module->context); }
+  agent_capabilities_refresh_now(capabilities);
+  // Display cadence does not change phone/server polling cadence.
+  capabilities->status_seconds += capabilities->refresh_interval_seconds;
+  capabilities->weather_seconds += capabilities->refresh_interval_seconds;
+  if (capabilities->status_seconds >= 60) {
+    capabilities->status_seconds = 0;
+    if(agent_capabilities_is_active(capabilities,"dashboard"))
+      agent_capabilities_emit(capabilities,"status","","refresh","");
   }
-  agent_capabilities_refresh_dashboard(capabilities);
-  agent_ui_refresh_clock(capabilities->ui);
-  if(agent_capabilities_is_active(capabilities,"dashboard"))
-    agent_capabilities_emit(capabilities,"status","","refresh","");
-  if (++capabilities->weather_ticks >= 15) {
-    capabilities->weather_ticks = 0;
+  if (capabilities->weather_seconds >= 15 * 60) {
+    capabilities->weather_seconds = 0;
     agent_capabilities_emit(capabilities, "weather", "", "refresh", "");
   }
-  capabilities->tick_timer = app_timer_register(60000, prv_tick, capabilities);
+  capabilities->tick_timer = app_timer_register(capabilities->refresh_interval_seconds * 1000u, prv_tick, capabilities);
 }
 
 void agent_capabilities_refresh_now(AgentCapabilities *capabilities) {
@@ -85,6 +88,18 @@ void agent_capabilities_refresh_now(AgentCapabilities *capabilities) {
   }
   agent_capabilities_refresh_dashboard(capabilities);
   agent_ui_refresh_clock(capabilities->ui);
+}
+
+void agent_capabilities_set_refresh_interval(AgentCapabilities *capabilities, int32_t seconds) {
+  if (!capabilities) { return; }
+  seconds = seconds == 1 ? 1 : 60;
+  if (capabilities->refresh_interval_seconds == seconds) { return; }
+  capabilities->refresh_interval_seconds = seconds;
+  persist_write_int(REFRESH_INTERVAL_KEY, seconds);
+  agent_ui_set_refresh_interval(capabilities->ui, seconds);
+  if (capabilities->tick_timer) { app_timer_cancel(capabilities->tick_timer); }
+  capabilities->tick_timer = app_timer_register(seconds * 1000u, prv_tick, capabilities);
+  agent_capabilities_refresh_now(capabilities);
 }
 
 static void prv_wakeup_handler(WakeupId wakeup_id, int32_t cookie) {
@@ -106,6 +121,8 @@ AgentCapabilities *agent_capabilities_create(AgentUi *ui, AgentCapabilityEventHa
   capabilities->ui = ui;
   capabilities->event_handler = event_handler;
   capabilities->context = context;
+  capabilities->refresh_interval_seconds = persist_read_int(REFRESH_INTERVAL_KEY) == 1 ? 1 : 60;
+  agent_ui_set_refresh_interval(ui, capabilities->refresh_interval_seconds);
   s_wakeup_capabilities = capabilities;
   wakeup_service_subscribe(prv_wakeup_handler);
   capabilities->collection_kind = persist_read_int(COLLECTION_PREFERENCE_KEY);
@@ -116,7 +133,7 @@ AgentCapabilities *agent_capabilities_create(AgentUi *ui, AgentCapabilityEventHa
   }
   agent_protocol_copy(capabilities->connection, sizeof(capabilities->connection), "Connecting to phone");
   agent_capabilities_show_dashboard(capabilities);
-  capabilities->tick_timer = app_timer_register(60000, prv_tick, capabilities);
+  capabilities->tick_timer = app_timer_register(capabilities->refresh_interval_seconds * 1000u, prv_tick, capabilities);
   return capabilities;
 }
 
@@ -167,6 +184,19 @@ bool agent_capabilities_handle_command(AgentCapabilities *capabilities,
   return false;
 }
 
+static bool prv_collection_navigation(const char *action) {
+  if (strncmp(action, "local.", 6)) { return false; }
+  action += 6;
+  if (!strcmp(action, "calendar")) { return true; }
+  static const char kinds[][6] = { "event", "note", "todo", "check" };
+  for (uint8_t i = 0; i < sizeof(kinds) / sizeof(kinds[0]); ++i) {
+    size_t length = strlen(kinds[i]);
+    if (!strncmp(action, kinds[i], length) &&
+        (action[length] == '.' || !strcmp(action + length, "s"))) { return true; }
+  }
+  return false;
+}
+
 bool agent_capabilities_handle_ui_event(AgentCapabilities *capabilities, const AgentUiEvent *event) {
   uint8_t index;
   if (!capabilities || !event) { return false; }
@@ -195,7 +225,7 @@ bool agent_capabilities_handle_ui_event(AgentCapabilities *capabilities, const A
     agent_capabilities_handle_command(capabilities, &refresh);
     return true;
   }
-  if (strcmp(event->action, "local.events") == 0 || strcmp(event->action, "local.calendar") == 0 || strncmp(event->action,"local.event.",12)==0 || strcmp(event->action, "local.notes") == 0 || strncmp(event->action, "local.note.", 11) == 0 || strcmp(event->action, "local.todos") == 0 || strncmp(event->action, "local.todo.", 11) == 0 || strcmp(event->action,"local.checks")==0 || strncmp(event->action,"local.check.",12)==0) { capabilities->navigation_revision += 1; }
+  if (prv_collection_navigation(event->action)) { capabilities->navigation_revision += 1; }
   for (index = 0; index < capabilities->module_count; index += 1) {
     RegisteredModule *registered = &capabilities->modules[index];
     if (registered->module.event &&
@@ -214,6 +244,13 @@ bool agent_capabilities_is_active(const AgentCapabilities *capabilities, const c
   return capabilities && name && strcmp(capabilities->active_name, name) == 0;
 }
 
+static void prv_dashboard_modules(AgentCapabilities *capabilities, bool refresh) {
+  for (uint8_t i = 0; i < capabilities->module_count; ++i) {
+    RegisteredModule *module = &capabilities->modules[i];
+    if (module->module.dashboard) { module->module.dashboard(capabilities, module->context, refresh); }
+  }
+}
+
 void agent_capabilities_show_dashboard(AgentCapabilities *capabilities) {
   if (!capabilities) { return; }
   capabilities->navigation_revision += 1;
@@ -226,16 +263,13 @@ void agent_capabilities_show_dashboard(AgentCapabilities *capabilities) {
   agent_capability_add_element(capabilities->ui, "item", "dictate", "Talk to codey",
                                "Hold Select", "", "local.dictate", "", 0);
   agent_capability_add_element(capabilities->ui, "item", "weather", "Weather", capabilities->weather_range, capabilities->weather_temperature, "local.weather", capabilities->weather_meta, 0);
-  agent_capability_add_element(capabilities->ui, "item", "todos", capabilities->collection_kind==1 ? "Notes" : capabilities->collection_kind==3 ? "Checks" : "Todos", "", "", capabilities->collection_kind==1 ? "local.notes" : capabilities->collection_kind==3 ? "local.checks" : "local.todos", "", 0);
+  int kind = capabilities->collection_kind;
+  const char *collection_action = kind == 1 ? "local.notes" : kind == 3 ? "local.checks" : "local.todos";
+  agent_capability_add_element(capabilities->ui, "item", "todos", kind == 1 ? "Notes" : kind == 3 ? "Checks" : "Todos", "", "", collection_action, "", 0);
   agent_capability_add_element(capabilities->ui, "item", "collection-preview", "", "", "",
-      capabilities->collection_kind == 1 ? "local.notes" : capabilities->collection_kind == 3 ? "local.checks" : "local.todos", "", 0);
+      collection_action, "", 0);
   prv_add_tour(capabilities);
-  for (uint8_t i = 0; i < capabilities->module_count; ++i) {
-    RegisteredModule *module = &capabilities->modules[i];
-    if (module->module.dashboard) {
-      module->module.dashboard(capabilities, module->context, false);
-    }
-  }
+  prv_dashboard_modules(capabilities, false);
   agent_capability_add_element(capabilities->ui, "text", "connection", "", "",
                                capabilities->connection, "", "", 0);
   agent_ui_end(capabilities->ui);
@@ -245,10 +279,7 @@ static void prv_show_notifications(AgentCapabilities *capabilities) {
   agent_capabilities_set_active(capabilities, "notifications", true);
   agent_ui_begin(capabilities->ui, "notifications", "list", "Notifications", "", "", 16);
   prv_add_tour(capabilities);
-  for (uint8_t i = 0; i < capabilities->module_count; ++i) {
-    RegisteredModule *module = &capabilities->modules[i];
-    if (module->module.dashboard) { module->module.dashboard(capabilities, module->context, false); }
-  }
+  prv_dashboard_modules(capabilities, false);
   agent_ui_end(capabilities->ui);
 }
 
@@ -279,12 +310,7 @@ void agent_capabilities_refresh_dashboard(AgentCapabilities *capabilities) {
   if (!agent_capabilities_is_active(capabilities, "dashboard") &&
       !agent_capabilities_is_active(capabilities, "notifications")) { return; }
   agent_capability_patch_value(capabilities->ui, "connection", capabilities->connection);
-  for (uint8_t i = 0; i < capabilities->module_count; ++i) {
-    RegisteredModule *module = &capabilities->modules[i];
-    if (module->module.dashboard) {
-      module->module.dashboard(capabilities, module->context, true);
-    }
-  }
+  prv_dashboard_modules(capabilities, true);
 }
 
 void agent_capabilities_set_connection(AgentCapabilities *capabilities, const char *status) {

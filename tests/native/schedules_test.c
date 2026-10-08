@@ -22,6 +22,7 @@ static AppTimer timers[16];
 struct AgentUi { char screen[32], status[100]; int count; int32_t flags;
   struct { char id[32], title[72], subtitle[100], value[320], action[48], meta[224]; int32_t flags; } elements[48]; };
 static AgentUi ui;
+static int32_t ui_refresh_seconds;
 
 time_t time(time_t *out) { if (out) { *out = now; } return now; }
 AppTimer *app_timer_register(uint32_t ms, void (*cb)(void *), void *ctx) {
@@ -94,6 +95,7 @@ bool agent_ui_patch(AgentUi *u, const AgentUiElementSpec *spec) {
 }
 void agent_ui_note_input(AgentUi *u) { (void)u; }
 void agent_ui_refresh_clock(AgentUi *u) { (void)u; }
+void agent_ui_set_refresh_interval(AgentUi *u, int32_t seconds) { (void)u; ui_refresh_seconds = seconds; }
 void agent_ui_end(AgentUi *u) { (void)u; }
 void agent_ui_set_status(AgentUi *u, const char *status, bool error, bool loading) {
   (void)error; (void)loading; agent_protocol_copy(u->status, sizeof(u->status), status);
@@ -238,11 +240,12 @@ static int timer_progress(void) {
 }
 static void test_dashboard_progress(void) {
   reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  agent_capabilities_set_refresh_interval(caps, 1);
   assert(element("schedule-0") < 0);
   command(caps, "timer", "start", "Pasta", "duration=100s show=false");
   assert(timer_progress() == 0);
   assert(strcmp(ui.elements[element("schedule-0")].title, "Pasta") == 0);
-  advance(25); assert(timer_progress() == 0);
+  advance(25); assert(timer_progress() == 25);
   agent_capabilities_refresh_now(caps); assert(timer_progress() == 25);
   command(caps, "timer", "pause", "Pasta", ""); event(caps, "local.home");
   advance(10); assert(timer_progress() == 25);
@@ -417,6 +420,7 @@ static void test_firing_notification_focus(void) {
 }
 static void test_stopwatch_dashboard(void) {
   reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  agent_capabilities_set_refresh_interval(caps, 60);
   command(caps, "stopwatch", "start", "run", ""); event(caps, "local.home"); advance(5);
   assert(timer_callbacks == 0);
   agent_capabilities_refresh_now(caps);
@@ -555,11 +559,51 @@ static void test_notes(void) {
 }
 static void test_idle_cadence(void) {
   reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  assert(ui_refresh_seconds == 60);
+  advance(3); assert(timer_callbacks == 0);
+  agent_capabilities_set_refresh_interval(caps, 1);
+  assert(ui_refresh_seconds == 1);
+  advance(3); assert(timer_callbacks == 3);
+  agent_capabilities_set_refresh_interval(caps, 60);
+  assert(ui_refresh_seconds == 60);
+  timer_callbacks = 0;
   advance(59); assert(timer_callbacks == 0);
   advance(1); assert(timer_callbacks == 1);
   advance(120); assert(timer_callbacks == 3);
   agent_capabilities_destroy(caps);
   advance(120); assert(timer_callbacks == 3);
+  caps = agent_capabilities_create(&ui, NULL, NULL);
+  assert(ui_refresh_seconds == 60); // Persisted before the phone reconnects.
+  timer_callbacks = 0;
+  advance(10); assert(timer_callbacks == 0);
+  agent_capabilities_set_refresh_interval(caps, 1);
+  assert(ui_refresh_seconds == 1);
+  command(caps, "stopwatch", "start", "run", "");
+  advance(1); assert(timer_callbacks == 1);
+  assert(!strcmp(ui.elements[element("stopwatch-display")].value, "00:01"));
+  advance(2); assert(timer_callbacks == 3);
+  assert(!strcmp(ui.elements[element("stopwatch-display")].value, "00:03"));
+  agent_capabilities_destroy(caps);
+  caps = agent_capabilities_create(&ui, NULL, NULL);
+  assert(ui_refresh_seconds == 1);
+  agent_capabilities_set_refresh_interval(caps, 5);
+  assert(ui_refresh_seconds == 60); // Invalid values return to the default.
+  agent_capabilities_destroy(caps);
+}
+static void test_collection_navigation_revisions(void) {
+  reset(); AgentCapabilities *caps = agent_capabilities_create(&ui, NULL, NULL);
+  const char *actions[] = {
+    "local.events", "local.calendar", "local.notes", "local.todos", "local.checks",
+    "local.event.one", "local.note.one", "local.todo.one", "local.check.one",
+    "local.note", "local.notes.extra", "local.calendar.extra", "local.todoist", "local.checkered", "remote.note.one"
+  };
+  for (unsigned i = 0; i < sizeof(actions) / sizeof(actions[0]); ++i) {
+    AgentUiEvent e = {0}; agent_protocol_copy(e.action, sizeof(e.action), actions[i]);
+    uint32_t before = agent_capabilities_navigation_revision(caps);
+    agent_capabilities_handle_ui_event(caps, &e);
+    assert(agent_capabilities_navigation_revision(caps) == before + (i < 9 ? 1u : 0u));
+  }
+  agent_capabilities_destroy(caps);
 }
 static void test_welcome_tour(void) {
   reset();
@@ -587,21 +631,30 @@ static void test_welcome_tour(void) {
   agent_capabilities_destroy(caps);
 }
 
-static int status_refreshes;
+static int status_refreshes, weather_refreshes;
 static void status_event(const char *type,const char *id,const char *action,const char *value,void *context) {
   (void)id;(void)action;(void)value;(void)context;
   if(!strcmp(type,"status"))status_refreshes++;
+  if(!strcmp(type,"weather"))weather_refreshes++;
 }
 static void test_status_only_on_dashboard(void) {
-  reset();status_refreshes=0;
+  reset();status_refreshes=weather_refreshes=0;
   AgentCapabilities *caps=agent_capabilities_create(&ui,status_event,NULL);
-  assert(status_refreshes==1);advance(60);assert(status_refreshes==2);
+  agent_capabilities_set_refresh_interval(caps,1);
+  assert(status_refreshes==1);advance(59);assert(status_refreshes==1);
+  advance(1);assert(status_refreshes==2);
   event(caps,"local.todos");advance(180);assert(status_refreshes==2);
   event(caps,"local.home");assert(status_refreshes==3);
+  assert(weather_refreshes==0);
+  advance(660);assert(weather_refreshes==1); // Fifteen minutes, despite one-second ticks.
+  agent_capabilities_set_refresh_interval(caps,60);
+  advance(840);assert(weather_refreshes==1);
+  advance(60);assert(weather_refreshes==2);
   agent_capabilities_destroy(caps);
 }
 
 int main(void) {
+  test_collection_navigation_revisions();
   test_status_only_on_dashboard();
   test_welcome_tour();
    test_checkbox_double_tap(); test_notes(); test_idle_cadence();

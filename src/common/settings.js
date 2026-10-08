@@ -23,6 +23,7 @@ var DEFAULTS = Object.freeze({
   networkAccess: false,
   shellAccess: false,
   autoReview: false,
+  refreshIntervalSeconds: 60,
   tapAnimation: true,
   doubleTap: true,
   answerVibrate: true
@@ -43,6 +44,7 @@ function copyDefaults(value) {
   settings.units = settings.units === "imperial" || settings.units === "metric" ? settings.units : "auto";
   settings.locationLabel = String(settings.locationLabel || DEFAULTS.locationLabel).slice(0, 64);
   settings.timeoutSeconds = Math.max(10, Math.min(120, parseInt(settings.timeoutSeconds, 10) || 45));
+  settings.refreshIntervalSeconds = Number(settings.refreshIntervalSeconds) === 1 ? 1 : 60;
   ["codexModel", "codexEffort"].forEach(function(key) {
     var value = String(settings[key] || "").trim();
     settings[key] = /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,127}$/.test(value) ? value : "";

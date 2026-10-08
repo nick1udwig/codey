@@ -128,7 +128,8 @@ var dashboardStatus=new DashboardStatus({
 });
 function sendPreferences() {
   var m={};m[Key.messageType]="bridge";m[Key.operation]="preferences";
-  m[Key.flags]=settings.tapAnimation?1:0;m[Key.index]=settings.doubleTap?1:0;watchQueue.enqueue(m);
+  m[Key.flags]=settings.tapAnimation?1:0;m[Key.index]=settings.doubleTap?1:0;
+  m[Key.value]=String(settings.refreshIntervalSeconds);watchQueue.enqueue(m);
 }
 function sendConnection() {
   var message = {};

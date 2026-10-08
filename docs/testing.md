@@ -13,7 +13,7 @@ npm run build:watch
 
 `npm test` currently includes:
 
-- 109 JavaScript tests covering PAM at every chunk boundary, byte and hierarchy limits, all layouts/elements, patches/removals, UTF-8 AppMessage splitting, queue retry/staleness, HTTP and WebSocket cancellation/timeouts, settings, weather, the capability registry, writer output, onboarding, native dashboard preservation, and dictation input through the full PebbleKit-to-agent-to-render bridge.
+- 111 JavaScript tests covering PAM at every chunk boundary, byte and hierarchy limits, all layouts/elements, patches/removals, UTF-8 AppMessage splitting, queue retry/staleness, HTTP and WebSocket cancellation/timeouts, settings, weather, the capability registry, writer output, onboarding, native dashboard preservation, and dictation input through the full PebbleKit-to-agent-to-render bridge.
 - Native C tests built with `-Wall -Wextra -Werror`, AddressSanitizer, and UndefinedBehaviorSanitizer. These cover metadata parsing and escaping, strict signed 32-bit bounds, bounded copies, and duration parsing/formatting.
 - 14 integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.
 - Go tests covering strict request/output PAM handling, output at arbitrary model-delta boundaries, invalid-model containment, persisted conversation threads, Codex RPC initialization and fallback order, real loopback HTTP and downstream WebSocket requests, and app-server stdio, WebSocket, and WebSocket-over-Unix-socket transports.
@@ -282,18 +282,33 @@ physical click handlers do not use the gate. Both Emery and Gabbro SDK builds
 compile the touch integration. Physical touchscreen behavior still requires a
 hardware smoke test.
 
-## Minute refresh efficiency regression
+## Configurable screen refresh regression
 
-The native suite checks the passive paint deadline (including clock wrap),
-immediate user refresh, one idle host callback per minute, no separate stopwatch
-callback, accurate elapsed values on interaction, unchanged-job write suppression,
+The native suite checks 60-second default and selected one-second passive paint
+deadlines (including clock wrap), immediate user refresh and screen replacement,
+runtime timer rescheduling, watch persistence, and invalid-value fallback. The
+shared host callback follows the selected interval with no separate stopwatch
+callback; one-second mode updates stopwatch and timer progress automatically.
+Status requests remain once per minute on the dashboard, and weather requests
+remain every 15 minutes across interval changes. Tests also cover accurate elapsed
+values on interaction in minute mode, unchanged-job write suppression,
 and one-shot job-check timeout behavior. Existing schedule tests retain exact
 short deadlines, repeated alerts, wakeup failure fallback, and persistence.
 Phone tests cover fresh weather reuse, duplicate packet suppression, stale-cache
 fetching, and invalidation after unit changes. The full npm suite and both watch
-builds pass. Emery screenshots confirm dashboard and Todos clock rendering and
-physical-button navigation; the emulator was shut down with `pebble kill`.
+builds cover refresh preference migration, phone storage/AppMessage round-trips,
+and settings page hydration/submission for both choices. Previous Emery
+screenshots confirm dashboard and Todos clock rendering and physical-button
+navigation; the emulator was shut down with `pebble kill`.
 Physical display timing and battery savings still require hardware.
+
+Verified on 2026-10-08 with `npm test`, the final native sanitizer suite,
+`pebble build` for Emery and Gabbro, and `npm run build:settings`. To fit the new
+preference under Gabbro's native size limit, the host shares tick/dashboard work,
+the renderer shares paint-deadline calculation, and collection navigation uses
+the same compact routing rules. Native tests cover navigation revision changes
+and rejected lookalike actions. Final SDK RAM footprints are 65,522 bytes on
+Gabbro and 64,910 on Emery. The revised 60-second default passed the same suite and builds, including migration and preservation of saved one-second choices. No emulators were started for this change.
 
 ## Notes, collection preference, and unlock ripple
 
