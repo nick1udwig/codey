@@ -40,6 +40,8 @@ Touch taps open each section:
   The upper-right panel shows an idle timer icon when empty. Otherwise it shows
   the first timer's remaining time, an agent job count, or an alarm indicator,
   with up to three compact icons beneath it.
+  Short timer previews show seconds; longer previews use a duration that fits
+  the panel. Open the timer to see its full countdown and paused status.
   Timer rings fill clockwise from 12 o’clock as elapsed time increases, freezing when paused and filling completely at completion.
   Tap the panel or press Up to open the complete live list of timers, alarms,
   reminders, agent jobs, and stopwatch controls.

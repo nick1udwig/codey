@@ -1,5 +1,6 @@
 #include "dashboard_renderer.h"
 #include "dashboard_layout.h"
+#include "dashboard_timer_preview.h"
 #include "agent_protocol.h"
 #include <string.h>
 #include <stdlib.h>
@@ -226,16 +227,12 @@ static void prv_jobs(const DashboardView *ui, GContext *ctx, GRect f) {
   agent_protocol_meta_get(first->meta, "dashboard_kind", kind, sizeof(kind));
   bool timer = !strcmp(kind, "timer");
   if (timer) {
-    // Duration text begins with the bounded native H:MM:SS or M:SS value.
-    size_t n = strcspn(first->subtitle, " ");
-    snprintf(label, sizeof(label), "%.*s", (int)AGENT_MIN(n, sizeof(label) - 1), first->subtitle);
-    if (!strcmp(label, "Finished")) agent_protocol_copy(label, sizeof(label), "0:00");
-    // Keep multi-hour timers readable in the narrow key cap.
-    char *colon = strchr(label, ':');
-    if (colon && strchr(colon + 1, ':')) {
-      char hours[12]; snprintf(hours, sizeof(hours), "%.*sh", (int)(colon - label), label);
-      agent_protocol_copy(label, sizeof(label), hours);
-    }
+    dashboard_timer_preview(label, sizeof(label), first->subtitle, false);
+    // Measure without wrapping: changing digits must never hide the countdown.
+    GSize size = graphics_text_layout_get_content_size(label, prv_font(ui->fonts, DashboardFontLabel),
+        GRect(0, 0, 200, 60), GTextOverflowModeWordWrap, GTextAlignmentLeft);
+    if (size.w > f.size.w - 26)
+      dashboard_timer_preview(label, sizeof(label), first->subtitle, true);
   } else if (!strcmp(first->action, "local.tour")) agent_protocol_copy(label, sizeof(label), "Start");
   else if (!strcmp(kind, "job")) snprintf(label, sizeof(label), "%d run%s", jobs, jobs == 1 ? "" : "s");
   else agent_protocol_copy(label, sizeof(label), !strcmp(first->id, "dashboard-stopwatch") ? first->subtitle : "Alarm");

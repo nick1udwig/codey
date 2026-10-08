@@ -18,7 +18,7 @@ npm run build:watch
 - 14 integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.
 - Go tests covering strict request/output PAM handling, output at arbitrary model-delta boundaries, invalid-model containment, persisted conversation threads, Codex RPC initialization and fallback order, real loopback HTTP and downstream WebSocket requests, and app-server stdio, WebSocket, and WebSocket-over-Unix-socket transports.
 
-The watch build compiles and links the same sources for both target platforms. The current static footprint is 64,798 bytes on Emery and 65,410 bytes on Gabbro, leaving about 64 KiB of the 128 KiB RAM budget for heap. Gabbro's native app image is close to its separate 65,535-byte virtual-size limit; additional size work is tracked as `issues/native-watch-size-headroom` in the KB.
+The watch build compiles and links the same sources for both target platforms. The current static footprint is 64,878 bytes on Emery and 65,490 bytes on Gabbro, leaving about 64 KiB of the 128 KiB RAM budget for heap. Gabbro's native app image is close to its separate 65,535-byte virtual-size limit; additional size work is tracked as `issues/native-watch-size-headroom` in the KB.
 
 ### Almanac 5b dashboard
 
@@ -53,6 +53,17 @@ round display and cached first-title previews for To-dos, Notes, and Checks,
 including empty and invalidated caches. Physical touch and dictation remain
 hardware checks. The installed dashboard was also visually inspected on physical
 Emery after deployment. Both emulators are stopped after validation.
+
+Timer preview regressions cover the reported `00:22` / `00:21` difference,
+every sub-minute value, minute/hour transitions, wide digits, paused/finished
+subtitles, and the seven-day timer limit. The renderer measures the preferred
+duration before choosing compact units. Monochrome font bounds for all seconds,
+compact minutes and compact hours are at most 23 / 18, 30 / 24, and 32 / 26
+pixels on Emery / Gabbro, within their 36 / 27-pixel timer text boxes. Paused
+fixtures on both emulators verify useful seconds and longer duration previews;
+timer details retain the full countdown. Example captures are
+`docs/screenshots/dashboard-timer-preview-emery.png` and
+`docs/screenshots/dashboard-timer-preview-gabbro.png`.
 
 ### Streaming efficiency regressions
 

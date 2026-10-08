@@ -281,6 +281,12 @@ round mascot is bounded to 34 × 34 pixels to fit inside its cap. Small icon
 rows share their parent control's center pixel on both platforms. Selected
 tabs use black fill with white icons.
 
+Timer previews show exact seconds below one minute. Longer timers use minutes
+and seconds or hours and minutes when they fit. The renderer measures the full
+candidate before drawing and falls back to compact minute/hour units for the
+available width. Compact minutes round up; compact hours retain whole hours.
+Timer details keep the full countdown and paused/completed status.
+
 The bundled [pam-ui guidance](internal/agent/skills/pam-ui/SKILL.md) covers agent-authored forms, sliders, and winding dials.
 The server installs it beside its state on startup; restart an updated server to activate changes.
 
