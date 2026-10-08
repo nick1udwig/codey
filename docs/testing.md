@@ -18,7 +18,7 @@ npm run build:watch
 - 14 integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.
 - Go tests covering strict request/output PAM handling, output at arbitrary model-delta boundaries, invalid-model containment, persisted conversation threads, Codex RPC initialization and fallback order, real loopback HTTP and downstream WebSocket requests, and app-server stdio, WebSocket, and WebSocket-over-Unix-socket transports.
 
-The watch build compiles and links the same sources for both target platforms. The current static footprint is 64,822 bytes on Emery and 65,450 bytes on Gabbro, leaving about 64 KiB of the 128 KiB RAM budget for heap. Gabbro's native app image is close to its separate 65,535-byte virtual-size limit; additional size work is tracked as `issues/native-watch-size-headroom` in the KB.
+The watch build compiles and links the same sources for both target platforms. The current static footprint is 64,798 bytes on Emery and 65,410 bytes on Gabbro, leaving about 64 KiB of the 128 KiB RAM budget for heap. Gabbro's native app image is close to its separate 65,535-byte virtual-size limit; additional size work is tracked as `issues/native-watch-size-headroom` in the KB.
 
 ### Almanac 5b dashboard
 
@@ -26,20 +26,26 @@ The Instrument Serif dashboard was visually checked in Emery and Gabbro
 emulators, including the round-safe date/time layout and visible mascot after
 navigation. Screenshots are `docs/screenshots/dashboard-almanac-5b-emery.png`
 and `docs/screenshots/dashboard-almanac-5b-gabbro.png`. The corrected layout
-uses a single uppercase date token, a raised clock, vertically aligned battery
-and weather labels, centered small icon rows, yellow controls with curved black
-outlines, and an unframed mascot. Three consecutive Up/Back cycles preserve the
-complete date on each platform. The earlier spaced date lost its month/day
-after redraws on Emery; the unbroken token (`WED,OCT7`) remains on one line.
+uses a larger upright uppercase date with two nonbreaking spaces before the
+day, a slightly smaller clock, vertically aligned battery and larger high/low
+labels, centered small icon rows, and matching curved black outlines around
+all three yellow controls, including Codey. Three consecutive Up/Back cycles
+preserve the complete date on each platform. The earlier date with ordinary
+spaces lost its month/day after redraws on Emery; `WED,OCT  7` remains on one
+line with nonbreaking spacing. The underlying layout issue remains tracked
+in `issues/emery-header-redraw`.
 Weather, quota, timers, and collection counts in these captures are emulator
 fixtures. Monochrome font-advance checks cover every 24-hour time and all English
-weekday/month/day combinations: clocks need at most 125 / 116 pixels within
+weekday/month/day combinations: clocks need at most 116 / 103 pixels within
 128 / 117-pixel boxes on Emery / Gabbro, and uppercase dates need at most
-62 / 54 pixels within 83 / 68-pixel boxes.
+92 / 77 pixels within 94 / 79-pixel boxes. High/low labels from −99 to 150
+need at most 24 / 21 pixels in their 26-pixel boxes; battery values 0–100 fit
+within 16 pixels on both platforms.
 
 Emery buttons verified Up opens Notifications, Down opens the selected collection,
-and hold Down opens To Do / Notes / Checks. Selecting Checks updates the count,
-highlighted tab, and preview prompt on returning home. The unconfigured emulator
+and hold Down opens To Do / Notes / Checks. Each of the three selections was
+visually checked with black fill and a white icon, along with its count and
+preview prompt on returning home. The unconfigured emulator
 reports a missing collection-server URL when opening a live list.
 
 Native sanitizer tests cover usable, nonoverlapping touch targets within the

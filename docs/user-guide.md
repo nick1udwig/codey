@@ -22,9 +22,10 @@ Relative durations support 1 second through 7 days.
 
 On the dashboard, Up opens Notifications, Down opens the selected collection, and Select starts dictation.
 The Almanac dashboard uses Instrument Serif on pale yellow, with curved black
-outlines around the Notifications and collection buttons and an unframed Codey
-mascot beside Select. The left side shows an uppercase date on one line, the
-time, weather, and the first cached item in the selected collection.
+outlines around Notifications, Codey, and the collection buttons. The left
+side shows a larger upright uppercase date on one line, with space before the
+day, followed by the time, weather, and the first cached item in the selected
+collection. The clock is slightly smaller to give the date more room.
 Touch taps open each section:
 
 - **Clock / Calendar:** opens your upcoming calendar agenda.
@@ -44,7 +45,8 @@ Touch taps open each section:
   reminders, agent jobs, and stopwatch controls.
 - **Talk to codey:** Codey sleeps with zero active threads and thinks with one or more active threads. Tap the middle panel to dictate into the current conversation.
 - **Collections:** the bottom panel shows the selected collection's count and
-  To-do, Notes, and Checks tabs. Its highlighted icon identifies the selection.
+  To-do, Notes, and Checks tabs. The selected tab has a black background and
+  white icon.
   The italic preview beside it shows the first cached title, or “Open your list” when no title is cached.
   Tap either area or press Down to open the selected collection.
   For To-dos, the count is the number of undone tasks.

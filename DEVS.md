@@ -271,11 +271,15 @@ The reference canvas is 200 × 228;
 `src/c/dashboard_layout.h` adapts its hit targets to Emery and a round-safe
 square on Gabbro. Collection previews use the first title in the watch cache.
 The clock layer paints the calendar separately from the dashboard body. Its
-uppercase date is one unbroken token (`WED,OCT7`) so the font layouter keeps the
-month/day on the same line across redraws. Text frames account for the bundled
-fonts' space above their ink. Job and collection caps have yellow backgrounds
-and curved black outlines; Codey has no surrounding border. Small icon rows
-share their parent control's center pixel on both platforms.
+uppercase date uses two nonbreaking spaces before the day (`WED,OCT  7`) so the
+month/day stays on the same line across redraws. Its upright 19 / 16-pixel font
+takes priority over the clock, which uses 56 / 50 pixels on Emery / Gabbro.
+Eight lazily loaded font roles include separate 18 / 16-pixel high/low labels.
+Text frames account for the bundled fonts' space above their ink. Job, Codey,
+and collection caps share yellow backgrounds and curved black outlines; the
+round mascot is bounded to 34 × 34 pixels to fit inside its cap. Small icon
+rows share their parent control's center pixel on both platforms. Selected
+tabs use black fill with white icons.
 
 The bundled [pam-ui guidance](internal/agent/skills/pam-ui/SKILL.md) covers agent-authored forms, sliders, and winding dials.
 The server installs it beside its state on startup; restart an updated server to activate changes.

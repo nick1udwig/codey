@@ -106,7 +106,7 @@
         },
         {
           "type": "font",
-          "name": "FONT_DASH_TIME_60",
+          "name": "FONT_DASH_TIME_56",
           "file": "fonts/InstrumentSerif-Regular.ttf",
           "characterRegex": "[0-9:\u00b0\u2212?+.-]|\u2026",
           "targetPlatforms": [
@@ -133,9 +133,9 @@
         },
         {
           "type": "font",
-          "name": "FONT_DASH_DATE_14",
-          "file": "fonts/InstrumentSerif-Italic.ttf",
-          "characterRegex": "[A-Za-z0-9, .-]|\u2026",
+          "name": "FONT_DASH_DATE_19",
+          "file": "fonts/InstrumentSerif-Regular.ttf",
+          "characterRegex": "[A-Za-z0-9, .-]|\u00a0|\u2026",
           "targetPlatforms": [
             "emery"
           ]
@@ -169,7 +169,16 @@
         },
         {
           "type": "font",
-          "name": "FONT_DASH_TIME_56",
+          "name": "FONT_DASH_RANGE_18",
+          "file": "fonts/InstrumentSerif-Regular.ttf",
+          "characterRegex": "[0-9?.-]|\u2026",
+          "targetPlatforms": [
+            "emery"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_DASH_TIME_50",
           "file": "fonts/InstrumentSerif-Regular.ttf",
           "characterRegex": "[0-9:\u00b0\u2212?+.-]|\u2026",
           "targetPlatforms": [
@@ -196,9 +205,9 @@
         },
         {
           "type": "font",
-          "name": "FONT_DASH_DATE_12",
-          "file": "fonts/InstrumentSerif-Italic.ttf",
-          "characterRegex": "[A-Za-z0-9, .-]|\u2026",
+          "name": "FONT_DASH_DATE_16",
+          "file": "fonts/InstrumentSerif-Regular.ttf",
+          "characterRegex": "[A-Za-z0-9, .-]|\u00a0|\u2026",
           "targetPlatforms": [
             "gabbro"
           ]
@@ -226,6 +235,15 @@
           "name": "FONT_DASH_COUNT_24",
           "file": "fonts/InstrumentSerif-Regular.ttf",
           "characterRegex": "[0-9:\u00b0\u2212?+.-]|\u2026",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_DASH_RANGE_16",
+          "file": "fonts/InstrumentSerif-Regular.ttf",
+          "characterRegex": "[0-9?.-]|\u2026",
           "targetPlatforms": [
             "gabbro"
           ]

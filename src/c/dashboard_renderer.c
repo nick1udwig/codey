@@ -10,15 +10,17 @@
 
 static GFont prv_font(DashboardFonts *fonts, DashboardFont font) {
 #if defined(PBL_ROUND)
-  static const uint32_t resources[] = {RESOURCE_ID_FONT_DASH_TIME_56,
+  static const uint32_t resources[] = {RESOURCE_ID_FONT_DASH_TIME_50,
     RESOURCE_ID_FONT_DASH_TEMPERATURE_38, RESOURCE_ID_FONT_DASH_SMALL_12,
-    RESOURCE_ID_FONT_DASH_DATE_12, RESOURCE_ID_FONT_DASH_PREVIEW_18,
-    RESOURCE_ID_FONT_DASH_LABEL_16, RESOURCE_ID_FONT_DASH_COUNT_24};
+    RESOURCE_ID_FONT_DASH_DATE_16, RESOURCE_ID_FONT_DASH_PREVIEW_18,
+    RESOURCE_ID_FONT_DASH_LABEL_16, RESOURCE_ID_FONT_DASH_COUNT_24,
+    RESOURCE_ID_FONT_DASH_RANGE_16};
 #else
-  static const uint32_t resources[] = {RESOURCE_ID_FONT_DASH_TIME_60,
+  static const uint32_t resources[] = {RESOURCE_ID_FONT_DASH_TIME_56,
     RESOURCE_ID_FONT_DASH_TEMPERATURE_44, RESOURCE_ID_FONT_DASH_SMALL_14,
-    RESOURCE_ID_FONT_DASH_DATE_14, RESOURCE_ID_FONT_DASH_PREVIEW_21,
-    RESOURCE_ID_FONT_DASH_LABEL_19, RESOURCE_ID_FONT_DASH_COUNT_28};
+    RESOURCE_ID_FONT_DASH_DATE_19, RESOURCE_ID_FONT_DASH_PREVIEW_21,
+    RESOURCE_ID_FONT_DASH_LABEL_19, RESOURCE_ID_FONT_DASH_COUNT_28,
+    RESOURCE_ID_FONT_DASH_RANGE_18};
 #endif
   if (!fonts->slots[font]) fonts->slots[font] = fonts_load_custom_font(resource_get_handle(resources[font]));
   return fonts->slots[font];
@@ -114,30 +116,30 @@ void dashboard_draw_calendar(DashboardFonts *fonts, GContext *ctx, GRect f) {
     strftime(clock, sizeof(clock), clock_is_24h_style() ? "%H:%M" : "%I:%M", local);
     if (!clock_is_24h_style() && clock[0] == '0') memmove(clock, clock + 1, strlen(clock));
     char prefix[16];
-    // An unbroken date token prevents the font layouter wrapping the month/day
-    // below the header during later redraws.
+    // Keep visible, nonbreaking spacing before the day so it cannot wrap below
+    // the header during later redraws.
     strftime(prefix, sizeof(prefix), "%a,%b", local);
-    snprintf(date, sizeof(date), "%s%d", prefix, local->tm_mday);
+    snprintf(date, sizeof(date), "%s\xc2\xa0\xc2\xa0%d", prefix, local->tm_mday);
     for (char *p = date; *p; ++p) if (*p >= 'a' && *p <= 'z') *p -= 'a' - 'A';
   }
   int x = f.origin.x, y = f.origin.y, w = f.size.w;
-  // Font line boxes include space above the ink; lift the clock clear of the rule.
-  int clock_height = PBL_IF_ROUND_ELSE(56, 60);
+  // Give the larger date its own row while keeping clock ink above the rule.
+  int clock_height = PBL_IF_ROUND_ELSE(50, 56);
   int header_y = y + 1;
   prv_text(fonts, ctx, clock, DashboardFontTime,
-      GRect(x + PBL_IF_ROUND_ELSE(4, 8), y + PBL_IF_ROUND_ELSE(-2, 5),
+      GRect(x + PBL_IF_ROUND_ELSE(4, 8), y + PBL_IF_ROUND_ELSE(6, 10),
           w - PBL_IF_ROUND_ELSE(4, 8), clock_height), GColorBlack, GTextAlignmentLeft);
   BatteryChargeState charge = battery_state_service_peek();
   snprintf(battery, sizeof(battery), "%d", charge.charge_percent);
-  int bx = x + w - 43;
+  int bx = x + w - 32;
   graphics_context_set_stroke_color(ctx, GColorBlack);
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_draw_rect(ctx, GRect(bx, header_y + 8, 12, 7));
   graphics_fill_rect(ctx, GRect(bx + 12, header_y + 10, 2, 3), 0, GCornerNone);
   graphics_fill_rect(ctx, GRect(bx + 2, header_y + 10, 8 * charge.charge_percent / 100, 3), 0, GCornerNone);
-  prv_text(fonts, ctx, battery, DashboardFontSmall, GRect(bx + 17, header_y + 3, 22, 22), GColorBlack, GTextAlignmentLeft);
+  prv_text(fonts, ctx, battery, DashboardFontSmall, GRect(bx + 16, header_y + 3, 16, 22), GColorBlack, GTextAlignmentLeft);
   prv_text(fonts, ctx, date, DashboardFontDate,
-      GRect(x + 8, header_y, bx - x - 10, 22), GColorBlack, GTextAlignmentLeft);
+      GRect(x + 8, header_y, bx - x - 10, 26), GColorBlack, GTextAlignmentLeft);
 }
 
 static void prv_weather(const DashboardView *ui, GContext *ctx, const AgentUiElement *e) {
@@ -157,7 +159,7 @@ static void prv_weather(const DashboardView *ui, GContext *ctx, const AgentUiEle
   else agent_protocol_copy(temperature, sizeof(temperature), "--°");
   int x = f.origin.x, cy = f.origin.y + f.size.h / 2;
   prv_weather_icon(ctx, icon, x + 8, cy - 9);
-  int range_width = 22, temp_width = f.size.w - 40 - range_width;
+  int range_width = 26, temp_width = f.size.w - 40 - range_width;
   GSize size = graphics_text_layout_get_content_size(temperature, prv_font(ui->fonts, DashboardFontTemperature),
       GRect(0, 0, 200, 60), GTextOverflowModeWordWrap, GTextAlignmentLeft);
   DashboardFont font = size.w > temp_width ? DashboardFontCount : DashboardFontTemperature;
@@ -166,17 +168,18 @@ static void prv_weather(const DashboardView *ui, GContext *ctx, const AgentUiEle
   int rx = x + f.size.w - range_width - 5;
   prv_glyph(ctx, "..#.." ".###." "#####", 5, 3, rx - 7, cy - 8, 1, GColorBlack);
   prv_glyph(ctx, "#####" ".###." "..#..", 5, 3, rx - 7, cy + 9, 1, GColorBlack);
-  prv_text(ui->fonts, ctx, high, DashboardFontSmall, GRect(rx, cy - 14, range_width, 22), GColorBlack, GTextAlignmentLeft);
-  prv_text(ui->fonts, ctx, low, DashboardFontSmall, GRect(rx, cy + 3, range_width, 22), GColorBlack, GTextAlignmentLeft);
+  int range_y = cy - PBL_IF_ROUND_ELSE(16, 18);
+  prv_text(ui->fonts, ctx, high, DashboardFontRange, GRect(rx, range_y, range_width, 26), GColorBlack, GTextAlignmentLeft);
+  prv_text(ui->fonts, ctx, low, DashboardFontRange, GRect(rx, range_y + 17, range_width, 26), GColorBlack, GTextAlignmentLeft);
 }
 
 static void prv_tab(GContext *ctx, GRect f, bool selected, const char *pixels, int columns, int rows) {
-  graphics_context_set_fill_color(ctx, PAPER);
+  graphics_context_set_fill_color(ctx, selected ? GColorBlack : PAPER);
   graphics_fill_rect(ctx, f, 0, GCornerNone);
   graphics_context_set_stroke_color(ctx, selected ? GColorBlack : GColorDarkGray);
   graphics_draw_rect(ctx, f);
   prv_glyph(ctx, pixels, columns, rows, f.origin.x + (f.size.w - columns) / 2,
-      f.origin.y + (f.size.h - rows) / 2, 1, selected ? GColorBlack : GColorDarkGray);
+      f.origin.y + (f.size.h - rows) / 2, 1, selected ? GColorWhite : GColorDarkGray);
 }
 
 static void prv_collection(const DashboardView *ui, GContext *ctx, const AgentUiElement *e) {
@@ -264,6 +267,7 @@ void dashboard_draw(const DashboardView *ui, GContext *ctx) {
   graphics_fill_rect(ctx, board, 0, GCornerNone);
   // Thin rules divide the left-hand almanac into date/time, weather, and preview.
   graphics_context_set_stroke_color(ctx, GColorBlack);
+  graphics_context_set_stroke_width(ctx, 1);
   for (int row = 1; row <= 2; ++row) {
     GRect line = dashboard_layout_rect(board, 0, row * 76, 136, 1);
     graphics_draw_line(ctx, line.origin, GPoint(line.origin.x + line.size.w - 1, line.origin.y));
@@ -272,14 +276,12 @@ void dashboard_draw(const DashboardView *ui, GContext *ctx) {
     const AgentUiElement *e = &ui->elements[i];
     if (!e->used || !e->frame.size.h) continue;
     GRect f = e->frame;
-    bool cap = !strcmp(e->id, "dashboard-summary") || !strcmp(e->id, "todos");
+    bool cap = !strcmp(e->id, "dashboard-summary") || !strcmp(e->id, "dictate") || !strcmp(e->id, "todos");
     bool selected = ui->selected_element == i;
     if (cap) {
       graphics_context_set_stroke_color(ctx, GColorBlack);
-      graphics_context_set_stroke_width(ctx, selected ? 2 : 1);
       graphics_draw_round_rect(ctx, grect_inset(f, GEdgeInsets(1)), PBL_IF_ROUND_ELSE(10, 12));
-      graphics_context_set_stroke_width(ctx, 1);
-    } else if (selected && strcmp(e->id, "dictate")) {
+    } else if (selected) {
       graphics_context_set_fill_color(ctx, GColorLightGray);
       graphics_fill_rect(ctx, f, 0, GCornerNone);
     }
@@ -295,7 +297,7 @@ void dashboard_draw(const DashboardView *ui, GContext *ctx) {
     else if (!strcmp(e->id, "todos")) prv_collection(ui, ctx, e);
     else if (!strcmp(e->id, "dictate")) {
       int quota_height = PBL_IF_ROUND_ELSE(18, 20);
-      GRect mascot = f; mascot.size.h -= quota_height;
+      GRect mascot = f; mascot.origin.y += 3; mascot.size.h -= quota_height + 3;
       prv_dashboard_codey(ui, ctx, mascot);
       char quota[8];
       if (ui->codex_remaining < 0) agent_protocol_copy(quota, sizeof(quota), "--");

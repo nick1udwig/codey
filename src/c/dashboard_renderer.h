@@ -5,6 +5,7 @@
 typedef enum {
   DashboardFontTime, DashboardFontTemperature, DashboardFontSmall,
   DashboardFontDate, DashboardFontPreview, DashboardFontLabel, DashboardFontCount,
+  DashboardFontRange,
   DashboardFontCountTotal
 } DashboardFont;
 typedef struct { GFont slots[DashboardFontCountTotal]; } DashboardFonts;
