@@ -133,7 +133,7 @@
         },
         {
           "type": "font",
-          "name": "FONT_DASH_DATE_11",
+          "name": "FONT_DASH_DATE_14",
           "file": "fonts/InstrumentSerif-Italic.ttf",
           "characterRegex": "[A-Za-z0-9, .-]|\u2026",
           "targetPlatforms": [

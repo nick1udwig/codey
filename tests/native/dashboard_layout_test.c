@@ -32,6 +32,12 @@ static void check(int width, int height, bool round) {
   assert(frames[3].origin.x == frames[4].origin.x && frames[4].origin.x == frames[5].origin.x);
   assert(frames[2].origin.x < frames[5].origin.x);
   assert(!dashboard_layout_frame(board, "schedule-0").size.h);
+  // Odd-width collection rows share the cap's center pixel on both platforms.
+  int tab_width = round ? 14 : 15;
+  int extent = 3 * tab_width + 4;
+  int left = dashboard_row_left(frames[5], 3, tab_width, 2);
+  assert(left + extent / 2 == frames[5].origin.x + frames[5].size.w / 2);
+  assert(left > frames[5].origin.x && left + extent < frames[5].origin.x + frames[5].size.w);
 }
 int main(void) {
   check(200, 228, false);

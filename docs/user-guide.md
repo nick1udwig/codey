@@ -21,10 +21,10 @@ Relative durations support 1 second through 7 days.
 ## Dashboard
 
 On the dashboard, Up opens Notifications, Down opens the selected collection, and Select starts dictation.
-The Almanac dashboard uses Instrument Serif on pale yellow, with three black
-panels beside those buttons. The left side shows the date and time, weather,
-and the first cached item in the selected collection. Emery uses a compact
-month/day and weekday header; Gabbro uses the full date on one line.
+The Almanac dashboard uses Instrument Serif on pale yellow, with curved black
+outlines around the Notifications and collection buttons and an unframed Codey
+mascot beside Select. The left side shows an uppercase date on one line, the
+time, weather, and the first cached item in the selected collection.
 Touch taps open each section:
 
 - **Clock / Calendar:** opens your upcoming calendar agenda.

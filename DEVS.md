@@ -270,9 +270,12 @@ after changing font filters; the SDK can otherwise reuse previous font resources
 The reference canvas is 200 × 228;
 `src/c/dashboard_layout.h` adapts its hit targets to Emery and a round-safe
 square on Gabbro. Collection previews use the first title in the watch cache.
-The clock layer paints the calendar separately from the dashboard body. Emery
-keeps a compact date in its leftmost tile and the clock below the top strip,
-which avoids the SDK emulator's intermittent month/day redraw artifact.
+The clock layer paints the calendar separately from the dashboard body. Its
+uppercase date is one unbroken token (`WED,OCT7`) so the font layouter keeps the
+month/day on the same line across redraws. Text frames account for the bundled
+fonts' space above their ink. Job and collection caps have yellow backgrounds
+and curved black outlines; Codey has no surrounding border. Small icon rows
+share their parent control's center pixel on both platforms.
 
 The bundled [pam-ui guidance](internal/agent/skills/pam-ui/SKILL.md) covers agent-authored forms, sliders, and winding dials.
 The server installs it beside its state on startup; restart an updated server to activate changes.

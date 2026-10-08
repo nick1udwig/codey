@@ -26,3 +26,8 @@ static inline GRect dashboard_layout_frame(GRect board, const char *id) {
   if (!strcmp(id, "todos")) return dashboard_layout_rect(board, 138, 156, 62, 68);
   return GRectZero;
 }
+
+static inline int dashboard_row_left(GRect frame, int count, int width, int gap) {
+  int extent = count * width + (count - 1) * gap;
+  return frame.origin.x + frame.size.w / 2 - extent / 2;
+}

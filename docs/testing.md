@@ -18,21 +18,24 @@ npm run build:watch
 - 14 integration tests covering every demo-agent route, actual loopback HTTP response streaming, HTTP error behavior, and configuration-page hydration/submission through both Pebble close mechanisms.
 - Go tests covering strict request/output PAM handling, output at arbitrary model-delta boundaries, invalid-model containment, persisted conversation threads, Codex RPC initialization and fallback order, real loopback HTTP and downstream WebSocket requests, and app-server stdio, WebSocket, and WebSocket-over-Unix-socket transports.
 
-The watch build compiles and links the same sources for both target platforms. The current static footprint is 64,922 bytes on Emery and 65,458 bytes on Gabbro, leaving about 64 KiB of the 128 KiB RAM budget for heap. Gabbro's native app image is close to its separate 65,535-byte virtual-size limit; additional size work is tracked as `issues/native-watch-size-headroom` in the KB.
+The watch build compiles and links the same sources for both target platforms. The current static footprint is 64,822 bytes on Emery and 65,450 bytes on Gabbro, leaving about 64 KiB of the 128 KiB RAM budget for heap. Gabbro's native app image is close to its separate 65,535-byte virtual-size limit; additional size work is tracked as `issues/native-watch-size-headroom` in the KB.
 
 ### Almanac 5b dashboard
 
 The Instrument Serif dashboard was visually checked in Emery and Gabbro
 emulators, including the round-safe date/time layout and visible mascot after
 navigation. Screenshots are `docs/screenshots/dashboard-almanac-5b-emery.png`
-and `docs/screenshots/dashboard-almanac-5b-gabbro.png`. Emery uses a compact
-month/day and weekday header to avoid an intermittent SDK top-strip redraw
-artifact. Direct QEMU framebuffer captures confirmed repeated Up/Back navigation.
-Quota and collection counts in these captures are synthetic emulator inputs.
-Monochrome font-advance checks cover every 24-hour time and all English
-month/day labels: clocks need at most 125 / 116 pixels within 132 / 117-pixel
-boxes on Emery / Gabbro, and the compact Emery date needs at most 26 pixels
-within its 28-pixel box.
+and `docs/screenshots/dashboard-almanac-5b-gabbro.png`. The corrected layout
+uses a single uppercase date token, a raised clock, vertically aligned battery
+and weather labels, centered small icon rows, yellow controls with curved black
+outlines, and an unframed mascot. Three consecutive Up/Back cycles preserve the
+complete date on each platform. The earlier spaced date lost its month/day
+after redraws on Emery; the unbroken token (`WED,OCT7`) remains on one line.
+Weather, quota, timers, and collection counts in these captures are emulator
+fixtures. Monochrome font-advance checks cover every 24-hour time and all English
+weekday/month/day combinations: clocks need at most 125 / 116 pixels within
+128 / 117-pixel boxes on Emery / Gabbro, and uppercase dates need at most
+62 / 54 pixels within 83 / 68-pixel boxes.
 
 Emery buttons verified Up opens Notifications, Down opens the selected collection,
 and hold Down opens To Do / Notes / Checks. Selecting Checks updates the count,
