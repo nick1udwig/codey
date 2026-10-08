@@ -51,7 +51,8 @@ reports a missing collection-server URL when opening a live list.
 Native sanitizer tests cover usable, nonoverlapping touch targets within the
 round display and cached first-title previews for To-dos, Notes, and Checks,
 including empty and invalidated caches. Physical touch and dictation remain
-hardware checks. Both emulators are stopped after validation.
+hardware checks. The installed dashboard was also visually inspected on physical
+Emery after deployment. Both emulators are stopped after validation.
 
 ### Streaming efficiency regressions
 
