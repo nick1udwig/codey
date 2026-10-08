@@ -65,6 +65,21 @@ timer details retain the full countdown. Example captures are
 `docs/screenshots/dashboard-timer-preview-emery.png` and
 `docs/screenshots/dashboard-timer-preview-gabbro.png`.
 
+Dashboard, mascot and conversation-menu captures were refreshed on 2026-10-08
+from the deployed watch source `95fd764`. The `dashboard-*.png` and
+`codey-dashboard-*.png` filenames contain the same current resting dashboard
+as `dashboard-almanac-5b-*.png`. The resting/thinking captures use synthetic
+58F moon weather (low 46, high 68), quota 84 and collection counts of 3.
+`dashboard-weather-emery.png` shows that same weather fixture. Timer-preview
+captures already contain the current countdown fix.
+
+| State | Emery | Gabbro |
+| --- | --- | --- |
+| Dashboard | [Almanac](screenshots/dashboard-almanac-5b-emery.png) | [Almanac](screenshots/dashboard-almanac-5b-gabbro.png) |
+| Thinking mascot | [Thinking](screenshots/codey-thinking-emery.png) | [Thinking](screenshots/codey-thinking-gabbro.png) |
+| Conversation menu | [Menu](screenshots/agent-menu-emery.png) | [Menu](screenshots/agent-menu-gabbro.png) |
+| Timer preview | [22 seconds](screenshots/dashboard-timer-preview-emery.png) | [22 seconds](screenshots/dashboard-timer-preview-gabbro.png) |
+
 ### Streaming efficiency regressions
 
 Phone tests verify that UTF-8 truncation stops after the requested prefix while
