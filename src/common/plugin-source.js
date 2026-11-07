@@ -12,7 +12,7 @@ function number(property, shape) {
 
 function sourceError(category, error) {
   var name = category === "calendar" ? "Calendar" : "Weather";
-  if (error && error.code === "PERMISSION_DENIED") return new Error("Allow " + name + " access for codey in the Pebble app.");
+  if (error && error.code === "PERMISSION_DENIED") return new Error("Allow " + (category === "weather" ? "Location" : name) + " access for codey in the Pebble app.");
   if (error && error.code === "TIMEOUT") return new Error(name + " plugin timed out. Try again.");
   return new Error(name + " plugin unavailable. Enable Plugins / permissions preview in the Pebble app.");
 }

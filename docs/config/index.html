@@ -101,14 +101,6 @@
 
         <div class="split">
           <label>
-            <span>Weather units</span>
-            <select id="units" name="units">
-              <option value="auto">Automatic</option>
-              <option value="metric">Metric</option>
-              <option value="imperial">Imperial</option>
-            </select>
-          </label>
-          <label>
             <span>Completion notification window</span>
             <select id="timeout" name="timeout">
               <option value="30">30 seconds</option>
@@ -121,11 +113,7 @@
 
         <p class="hint">Agent requests keep running after this window. Open Notifications on the watch to check or cancel them.</p>
 
-        <label>
-          <span>Weather location label</span>
-          <input id="location-label" name="locationLabel" type="text"
-                 maxlength="64" placeholder="Current location" />
-        </label>
+        <p>Set weather locations, units, and your preferred provider in the Pebble app. Enable Plugins / permissions preview and allow Location access for codey.</p>
 
         <button type="submit">Save &amp; close</button>
         <p id="status" role="status">Hold Select on the watch after saving.</p>

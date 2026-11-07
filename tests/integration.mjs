@@ -64,7 +64,7 @@ function request(port, { method = "POST", body = "" } = {}) {
 }
 
 function runConfig(hash, bridge, XHR) {
-  const ids = ["settings", "endpoint", "token", "units", "timeout", "location-label", "status", "codex-model", "codex-effort", "fast-mode", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review", "answer-vibrate", "tap-animation", "double-tap"];
+  const ids = ["settings", "endpoint", "token", "timeout", "status", "codex-model", "codex-effort", "fast-mode", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review", "answer-vibrate", "tap-animation", "double-tap"];
   const elements = {};
   ids.push("refresh-interval");
   ids.push("todo-sync-provider","note-sync-provider","todo-sync-help","note-sync-help","token-status","new-session","collection-development-http","recover-collections");
@@ -187,22 +187,16 @@ test("configuration page hydrates state and closes with normalized form values",
   const initial = {
     endpoint: "https://old.test/respond",
     token: "old-token",
-    units: "imperial",
-    locationLabel: "Seattle",
     timeoutSeconds: 60
   };
   const harness = runConfig("#" + encodeURIComponent(JSON.stringify(initial)));
   assert.equal(harness.elements.endpoint.value, initial.endpoint);
   assert.equal(harness.elements.token.value, "");
-  assert.equal(harness.elements.units.value, "imperial");
   assert.equal(harness.elements.timeout.value, "60");
-  assert.equal(harness.elements["location-label"].value, "Seattle");
 
   harness.elements.endpoint.value = "  https://new.test/agent  ";
   harness.elements.token.value = "  secret  ";
-  harness.elements.units.value = "metric";
   harness.elements.timeout.value = "90";
-  harness.elements["location-label"].value = "   ";
   let prevented = false;
   harness.submit({ preventDefault() { prevented = true; } });
   assert.equal(prevented, true);
@@ -213,8 +207,6 @@ test("configuration page hydrates state and closes with normalized form values",
     endpoint: "https://new.test/agent",
     todoSyncProvider:"server",noteSyncProvider:"server",collectionDevelopmentHTTP:false,
     token: "secret",
-    units: "metric",
-    locationLabel: "Current location",
     timeoutSeconds: 90,
     refreshIntervalSeconds: 60,
     codexModel: "gpt-6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
@@ -277,7 +269,6 @@ test("configuration page recovers from a bad hash and supports the native bridge
   let submitted;
   const harness = runConfig("#%not-json", { submit(settings) { submitted = settings; } });
   assert.equal(harness.elements.endpoint.value, "");
-  assert.equal(harness.elements.units.value, "auto");
   assert.equal(harness.elements.timeout.value, "45");
   assert.equal(harness.elements["codex-model"].value, "gpt-6-luna");
   assert.equal(harness.elements["codex-effort"].value, "xhigh");
@@ -290,9 +281,7 @@ test("configuration page recovers from a bad hash and supports the native bridge
   harness.elements["double-tap"].checked=false;
   harness.elements["answer-vibrate"].checked = false;
   assert.equal(harness.elements["web-search"].value, "live");
-  assert.equal(harness.elements["location-label"].value, "Current location");
   harness.elements.endpoint.value = "wss://agent.test/socket";
-  harness.elements.units.value = "auto";
   harness.elements.timeout.value = "30";
   harness.submit({ preventDefault() {} });
   assert.equal(submitted.endpoint, "wss://agent.test/socket");

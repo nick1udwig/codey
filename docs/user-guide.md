@@ -10,7 +10,7 @@ Only unmatched dictation is sent to the configured Codex agent.
 **Thinking** can appear briefly while the phone processes the transcription.
 
 Local examples: “timer 5 minutes,” “start a five-minute timer,” “set a timer for one hour and thirty minutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up tomorrow at seven am,” “remind me in an hour to check the oven,” “pause the stopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”
-These commands need no agent endpoint; weather still uses the phone's location and weather service.
+These commands need no agent endpoint; weather reads the preferred phone plugin.
 
 Clock alarms use the phone's local timezone.
 AM/PM, noon/midnight, or 24-hour HH:MM notation is required; without a date they mean the next occurrence.
@@ -175,8 +175,10 @@ Open codey's gear icon in the paired phone app, save a valid endpoint, then reop
 Check microphone/voice permissions and the phone/watch connection, then retry.
 Voice recognition depends on the system dictation service.
 
-**Weather cannot get a location.**
-Allow location access for the Pebble mobile app and make sure the phone has network access.
+**Weather is unavailable.**
+Enable Plugins / permissions preview in the Pebble app, allow Location access for codey, and set up a weather location.
+Choose weather units, locations, and the provider in the Pebble app.
+Codey displays the first location returned by the preferred Weather plugin.
 
 **The settings page will not open.**
 Confirm the phone is online.
@@ -202,7 +204,7 @@ phone cache immediately while delivery continues in the background.
 
 Say “turn off double tap,” “turn on ripple,” “turn off answer vibration,” or
 “turn on fast mode” to change a preference immediately. You can also say
-“set weather units to metric,” “set reasoning effort to high,” “set web search
+“set reasoning effort to high,” “set web search
 to cached,” and “set model to default.” Codey shows the saved value. Credentials
 and backend account setup remain in phone settings.
 

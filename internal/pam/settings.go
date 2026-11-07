@@ -7,7 +7,6 @@ var settingValues = map[string]map[string]bool{
 	"tap_animation":  set("true", "false"),
 	"answer_vibrate": set("true", "false"),
 	"fast_mode":      set("true", "false"),
-	"units":          set("auto", "metric", "imperial"),
 	"effort":         set("default", "low", "medium", "high", "xhigh", "max", "ultra"),
 	"web_search":     set("disabled", "cached", "live"),
 }

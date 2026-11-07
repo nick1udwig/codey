@@ -140,9 +140,11 @@ use one-shot timeout timers rather than a per-second polling counter. Completed
 job responses can buzz immediately while their visual changes wait for a paint.
 
 No-op element/status patches avoid layout work, and unchanged job records avoid
-flash writes. The phone reuses weather for 15 minutes and suppresses identical
-weather packets; unit/location-setting changes invalidate the cache. These reduce
-scheduled CPU work, storage writes, and radio/network traffic. Battery-life
+flash writes.
+The phone subscribes to the preferred weather plugin and suppresses identical weather packets.
+Plugin values stay in memory until their validity deadline, or for five minutes if no deadline is supplied.
+The watch requests a weather refresh every 15 minutes; expired values trigger a new subscription.
+These reduce scheduled CPU work, storage writes, and radio/network traffic. Battery-life
 improvements have not been measured on hardware.
 
 ## Collection integration boundary

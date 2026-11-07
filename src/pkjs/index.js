@@ -157,9 +157,8 @@ function nextRequestId() {
 }
 
 var weatherBusy = false;
-var weatherHandler = Weather.createWeatherHandler();
+var weatherHandler = Weather.createWeatherHandler({Pebble:Pebble, onSummary:function(summary) { if (watchReady) sendWeather(summary); }});
 var lastWeatherMessage = "";
-var weatherCacheKey = "pebble-agent.weather.v1";
 function sendWeather(summary) {
   var message = {};
   message[Key.messageType] = "bridge";
@@ -173,31 +172,18 @@ function sendWeather(summary) {
     watchQueue.enqueue(message);
   }
 }
-function saveWeather(summary) {
-  try { localStorage.setItem(weatherCacheKey, JSON.stringify(summary)); } catch (_) {}
-  sendWeather(summary);
-}
 function refreshWeather() {
-  if (!watchReady || weatherBusy) { return; }
-  try {
-    var cached = JSON.parse(localStorage.getItem(weatherCacheKey) || "null");
-    sendWeather(cached && Date.now() - cached.updated < 60 * 60 * 1000 ? cached : null);
-    if (cached && Date.now() >= cached.updated && Date.now() - cached.updated < 15 * 60 * 1000) { return; }
-  } catch (_) { sendWeather(null); }
+  if (!watchReady || weatherBusy) return;
   weatherBusy = true;
-  weatherHandler({ command: "current" }, {
-    settings: settings,
-    summary: saveWeather,
-    status: function() {},
-    renderPam: function() { weatherBusy = false; },
-    error: function(reason) { weatherBusy = false; log("Dashboard weather unavailable", reason); }
+  weatherHandler.refresh(function(error) {
+    weatherBusy = false;
+    if (error) log("Dashboard weather unavailable", error.message);
   });
 }
 
 function capabilityContext(requestId, complete, isFailed, job, commandIndex) {
   return {
     settings: settings,
-    summary: saveWeather,
     phoneNote: function(attrs) { collectionController.command(attrs,requestId,complete,job,commandIndex); },
     changeSetting: function(attrs) {
       if (requestId !== activeRequestId || (isFailed && isFailed())) { return; }
@@ -259,10 +245,6 @@ function savePreference(preference) {
   Object.keys(preference.patch).forEach(function(key) { updated[key] = preference.patch[key]; });
   settings = Settings.save(updated);
   sendPreferences();
-  if (preference.patch.units !== undefined) {
-    localStorage.setItem(weatherCacheKey, "null");
-    refreshWeather();
-  }
 }
 
 function applySetting(attrs) {
@@ -560,9 +542,6 @@ Pebble.addEventListener("webviewclosed", function(event) {
   var updated = Settings.parseConfigResponse(event ? event.response : null);
   if (!updated) {
     return;
-  }
-  if (updated.units !== settings.units || updated.locationLabel !== settings.locationLabel) {
-    localStorage.setItem(weatherCacheKey, "null");
   }
   if (!updated.token) updated.token=settings.token;
   settings = Settings.save(updated);

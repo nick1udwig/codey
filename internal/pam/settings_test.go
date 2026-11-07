@@ -14,7 +14,7 @@ func TestSettingsCapability(t *testing.T) {
 		{"key=tap_animation value=true", true},
 		{"key=answer_vibrate value=false", true},
 		{"key=fast_mode value=true", true},
-		{"key=units value=imperial", true},
+		{"key=units value=imperial", false},
 		{"key=model value=vendor/Model:1", true},
 		{"key=model value=default", true},
 		{"key=effort value=default", true},
@@ -62,6 +62,25 @@ func TestSettingsRequestReachesAgentWithoutAuth(t *testing.T) {
 	for _, replacement := range []string{"settings token=secret", "settings double_tap=false\n  settings units=auto"} {
 		if _, err := ParseRequest([]byte(strings.Replace(source, "settings double_tap=false model=default effort=minimal", replacement, 1))); err == nil {
 			t.Fatal("accepted invalid settings request")
+		}
+	}
+}
+
+func TestPluginReadCapabilities(t *testing.T) {
+	for _, tc := range []struct {
+		attrs string
+		valid bool
+	}{
+		{"type=calendar command=list", true},
+		{"type=calendar command=add title=Lunch", false},
+		{"type=weather command=current", true},
+		{"type=weather command=show temperature=70", false},
+	} {
+		v := NewOutputValidator()
+		_, _ = v.Accept("pam version=1")
+		_, err := v.Accept("capability " + tc.attrs)
+		if (err == nil) != tc.valid {
+			t.Fatalf("%s: valid=%v, error=%v", tc.attrs, tc.valid, err)
 		}
 	}
 }

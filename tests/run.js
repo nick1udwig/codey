@@ -675,7 +675,7 @@ test("settings normalize and round-trip", function() {
   Settings.save({ endpoint: "  https://agent.test  ", units: "bogus", timeoutSeconds: 500 }, storage);
   var loaded = Settings.load(storage);
   assert.strictEqual(loaded.endpoint, "https://agent.test");
-  assert.strictEqual(loaded.units, "auto");
+  assert.strictEqual(loaded.units, undefined);
   assert.strictEqual(loaded.timeoutSeconds, 120);
   assert.strictEqual(loaded.answerVibrate, true);
   assert.strictEqual(loaded.refreshIntervalSeconds, 60);
@@ -749,7 +749,7 @@ test("configuration URL embeds normalized state without exposing it in the query
   assert.strictEqual(state.token, "");
   assert.strictEqual(state.tokenConfigured, true);
   assert.ok(!url.includes("secret"));
-  assert.strictEqual(state.locationLabel.length, 64);
+  assert.strictEqual(state.locationLabel, undefined);
   assert.strictEqual(state.timeoutSeconds, 10);
 });
 
@@ -769,132 +769,59 @@ test("capability registry validates registrations and reports unknown modules", 
   assert.strictEqual(registry.handle({ node: { attrs: { type: "missing" } } }, {}), false);
 });
 
-test("inline weather capability emits a complete card", function() {
-  var rendered = "";
-  Weather.renderInline({
-    id: "wx",
-    location: "Portland",
-    temperature: "70",
-    unit: "°F",
-    condition: "Clear",
-    high: "74",
-    low: "53"
-  }, {
-    settings: { locationLabel: "Here" },
-    renderPam: function(source) { rendered = source; }
-  });
-  var nodes = parse(rendered);
-  assert.strictEqual(nodes[1].attrs.layout, "card");
-  assert.strictEqual(nodes[2].attrs.value, "70°F");
-  assert.strictEqual(nodes[nodes.length - 1].kind, "done");
+function weatherData(unit) {
+  var now=Date.now()/1000, start=Math.floor(now/86400)*86400;
+  return {instances:[{instanceId:"home",properties:{
+    name:{longText:{text:"Portland"}},temperature:{numericValue:{value:12.6,unit:unit||"°C"}},
+    condition:{longText:{text:"Partly cloudy"}},condition_code:{shortText:{text:"partly_cloudy"}},
+    high:{numericValue:{value:18.2,unit:unit||"°C"}},low:{numericValue:{value:8.4,unit:unit||"°C"}},
+    daily_high:{series:{start:start,stepSec:86400,numericValue:{values:[18.2,16.9,15.1],unit:unit||"°C"}}},
+    daily_low:{series:{start:start,stepSec:86400,numericValue:{values:[8.4,7.1,6.2],unit:unit||"°C"}}},
+    daily_condition:{series:{start:start,stepSec:86400,longText:{values:["Partly cloudy","Rain","Snow"]}}}
+  }}]};
+}
+
+test("weather plugin renders provider units, location, and daily series", function() {
+  var request, rendered, summaries=[];
+  var handler=Weather.createWeatherHandler({Pebble:{subscribeToSource:function(options){request=options;return {}; }},onSummary:function(value){summaries.push(value);}});
+  handler({command:"current",id:"wx"},{status:function(){},error:function(e){throw Error(e);},renderPam:function(value){rendered=value;}});
+  assert.equal(request.category,"weather");assert.equal(request.item,"location");assert.equal(request.plugin,undefined);
+  request.onData(weatherData("°F"));
+  var nodes=parse(rendered), summary=summaries.pop();
+  assert.equal(nodes[1].attrs.title,"Portland");assert.equal(nodes[2].attrs.value,"13°F");
+  assert.equal(summary.unit,"F");assert.equal(summary.temperature,"13");assert.equal(summary.high,"18");assert.equal(summary.low,"8");
+  assert.equal(nodes.filter(function(n){return n.kind==="item";}).length,3);
+  var textData=weatherData();textData.instances[0].properties.temperature={shortText:{text:"0°C"}};
+  request.onData(textData);assert.equal(summaries.pop().temperature,"0");
+  handler.source.stop();
 });
 
-test("weather fetch builds a metric request and renders a validated forecast", function() {
-  var requests = [];
-  function FakeXHR() { requests.push(this); }
-  FakeXHR.prototype.open = function(method, url) { this.method = method; this.url = url; };
-  FakeXHR.prototype.send = function() { this.sent = true; };
-  var statuses = [];
-  var errors = [];
-  var rendered = "";
-  var summary;
-  var handler = Weather.createWeatherHandler({ XMLHttpRequest: FakeXHR });
-  handler({ command: "current", id: "wx", latitude: "45.5", longitude: "-122.6" }, {
-    settings: { units: "metric", locationLabel: "Portland" },
-    summary: function(value) { summary = value; },
-    status: function(value) { statuses.push(value); },
-    error: function(value) { errors.push(value); },
-    renderPam: function(value) { rendered = value; }
-  });
-  assert.strictEqual(requests.length, 1);
-  assert.match(requests[0].url, /latitude=45.5/);
-  assert.match(requests[0].url, /longitude=-122.6/);
-  assert.doesNotMatch(requests[0].url, /temperature_unit=fahrenheit/);
-  assert.deepStrictEqual(statuses, ["Loading weather"]);
-  requests[0].status = 200;
-  requests[0].responseText = JSON.stringify({
-    current: { temperature_2m: 12.6, apparent_temperature: 11.2, weather_code: 2, wind_speed_10m: 9.8 },
-    current_units: { temperature_2m: "°C", wind_speed_10m: "km/h" },
-    daily: {
-      time: ["2026-08-30", "2026-08-31", "2026-09-01"],
-      weather_code: [2, 61, 95],
-      temperature_2m_max: [18.2, 16.9, 15.1],
-      temperature_2m_min: [8.4, 7.1, 6.2]
-    }
-  });
-  requests[0].onload();
-  assert.deepStrictEqual(errors, []);
-  assert.strictEqual(summary.temperature, "13");
-  assert.strictEqual(summary.high, "18");
-  assert.strictEqual(summary.low, "8");
-  assert.strictEqual(summary.unit, "C");
-  assert.strictEqual(summary.icon, "partly-cloudy");
-  var nodes = parse(rendered);
-  assert.strictEqual(nodes[1].attrs.title, "Portland");
-  assert.strictEqual(nodes[2].attrs.value, "13°C");
-  assert.strictEqual(nodes[3].attrs.value, "Partly cloudy");
-  assert.strictEqual(nodes.filter(function(node) { return node.kind === "item"; }).length, 3);
+test("weather plugin tolerates missing fields and indexes forecasts from their timestamps", function() {
+  var request, rendered;
+  var handler=Weather.createWeatherHandler({Pebble:{subscribeToSource:function(options){request=options;return {}; }}});
+  var context={status:function(){},error:function(e){throw Error(e);},renderPam:function(value){rendered=value;}};
+  handler({command:"current"},context);
+  var data=weatherData(), p=data.instances[0].properties;
+  delete p.temperature;delete p.high;delete p.low;
+  p.daily_high.series.start-=86400;p.daily_high.series.numericValue.values=[99,18,17,16];
+  request.onData(data);
+  var nodes=parse(rendered);
+  assert.equal(nodes[2].attrs.value,"--");assert.match(nodes.filter(function(n){return n.kind==="item";})[0].attrs.subtitle,/18°C/);
+  assert.ok(!rendered.includes("99"));
+  handler.source.stop();
 });
 
-test("weather uses geolocation, imperial units, and reports permission errors", function() {
-  var requests = [];
-  var geolocation = {
-    getCurrentPosition: function(success) {
-      success({ coords: { latitude: 37.7, longitude: -122.4 } });
-    }
-  };
-  function FakeXHR() { requests.push(this); }
-  FakeXHR.prototype.open = function(method, url) { this.url = url; };
-  FakeXHR.prototype.send = function() {};
-  var statuses = [];
-  var errors = [];
-  var handler = Weather.createWeatherHandler({ XMLHttpRequest: FakeXHR, geolocation: geolocation });
-  handler({ command: "fetch", units: "imperial" }, {
-    settings: { units: "auto", locationLabel: "Here" },
-    status: function(value) { statuses.push(value); },
-    error: function(value) { errors.push(value); },
-    renderPam: function() {}
-  });
-  assert.deepStrictEqual(statuses, ["Finding location", "Loading weather"]);
-  assert.match(requests[0].url, /temperature_unit=fahrenheit/);
-  assert.match(requests[0].url, /wind_speed_unit=mph/);
-
-  handler = Weather.createWeatherHandler({
-    XMLHttpRequest: FakeXHR,
-    geolocation: { getCurrentPosition: function(success, failure) { failure(); } }
-  });
-  handler({ command: "current" }, {
-    settings: { units: "metric" },
-    status: function() {},
-    error: function(value) { errors.push(value); },
-    renderPam: function() {}
-  });
-  assert.strictEqual(errors[0], "Location permission is required for weather");
-});
-
-test("weather rejects unsupported commands and malformed network responses", function() {
-  var errors = [];
-  var requests = [];
-  function FakeXHR() { requests.push(this); }
-  FakeXHR.prototype.open = function() {};
-  FakeXHR.prototype.send = function() {};
-  var context = {
-    settings: { units: "metric" },
-    status: function() {},
-    error: function(value) { errors.push(value); },
-    renderPam: function() { throw new Error("should not render"); }
-  };
-  var handler = Weather.createWeatherHandler({ XMLHttpRequest: FakeXHR });
-  handler({ command: "delete", latitude: "1", longitude: "2" }, context);
-  assert.strictEqual(errors.pop(), "Unsupported weather command");
-  handler({ command: "current", latitude: "1", longitude: "2" }, context);
-  requests[0].status = 200;
-  requests[0].responseText = "{}";
-  requests[0].onload();
-  assert.strictEqual(errors.pop(), "Weather response was incomplete");
-  handler({ command: "current", latitude: "1", longitude: "2" }, context);
-  requests[1].onerror();
-  assert.strictEqual(errors.pop(), "Could not load weather");
+test("weather rejects unsupported commands and reports disabled or denied plugins", function() {
+  var errors=[],request;
+  var context={status:function(){},error:function(value){errors.push(value);},renderPam:function(){throw Error("should not render");}};
+  var handler=Weather.createWeatherHandler({});
+  handler({command:"show",temperature:"70"},context);assert.equal(errors.pop(),"Unsupported weather command");
+  handler({command:"current",latitude:"1",longitude:"2"},context);assert.match(errors.pop(),/Choose weather locations/);
+  handler({command:"current"},context);assert.match(errors.pop(),/Enable Plugins/);
+  handler=Weather.createWeatherHandler({Pebble:{subscribeToSource:function(options){request=options;return {}; }}});
+  handler({command:"current"},context);request.onError({code:"PERMISSION_DENIED"});assert.match(errors.pop(),/Location access/);
+  handler({command:"current"},context);request.onData({instances:[]});assert.match(errors.pop(),/No weather locations/);
+  handler.source.stop();
 });
 
 test("writer API produces valid streaming screens and capabilities", function() {
@@ -1144,30 +1071,16 @@ test("New Chat resets the session before acknowledging dictation and carries no 
   } finally { h.cleanup(); }
 });
 
-test("Weather dashboard action opens the built-in local weather capability without contacting the agent", function() {
-  var requests = [];
-  function FakeXHR() { this.responseText = ""; requests.push(this); }
-  FakeXHR.prototype.open = function(method, url) { this.method = method; this.url = url; };
-  FakeXHR.prototype.setRequestHeader = function() {};
-  FakeXHR.prototype.send = function(body) { this.body = body; };
-  FakeXHR.prototype.abort = function() {};
-  var storage = {};
-  storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test/respond", units: "metric", locationLabel: "Here" });
-  global.navigator = { geolocation: { getCurrentPosition: function(success) {
-    success({ coords: { latitude: 45.5, longitude: -122.6 } });
-  } } };
-  var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
+test("Weather dashboard action reads the plugin without contacting the agent", function() {
+  var request,requests=[];
+  function XHR(){requests.push(this);}
+  var h=loadPkjsHarness({XMLHttpRequest:XHR,subscribeToSource:function(options){request=options;return {};}});
   try {
-    h.handlers.appmessage({ payload: { 0: "input", 1: 4, 2: "dictation", 8: "weather", 9: "local.weather" } });
-    assert.strictEqual(requests.length, 1);
-    assert.strictEqual(requests[0].method, "GET");
-    assert.match(requests[0].url, /^https:\/\/api\.open-meteo\.com\/v1\/forecast\?/);
-    assert.match(requests[0].url, /latitude=45\.5/);
-    assert.doesNotMatch(requests[0].url, /agent\.test/);
-    assert.ok(h.sent.some(function(message) {
-      return message[Watch.Key.messageType] === "status" && message[Watch.Key.value] === "Loading weather";
-    }));
-  } finally { h.cleanup(); }
+    h.handlers.appmessage({payload:{0:"input",2:"dictation",8:"weather",9:"local.weather"}});
+    assert.equal(request.category,"weather");assert.equal(requests.length,0);
+    request.onData(weatherData());
+    assert.ok(h.sent.some(function(m){return m[0]==="render";}));
+  }finally{h.cleanup();}
 });
 
 test("Agent jobs notify without replacing the dashboard, render on tap, and acknowledge watch delivery", function() {
@@ -1288,8 +1201,8 @@ test("todo phrases accept creation verbs and preserve the complete task", functi
   });
 });
 test("weather icons distinguish day, night, clouds and precipitation", function() {
-  [[0,1,"sun"],[0,0,"moon"],[2,1,"partly-cloudy"],[2,0,"night-cloud"],[3,1,"cloud"],
-    [63,1,"rain"],[73,1,"snow"],[95,0,"storm"],[999,1,"unknown"]].forEach(function(row) {
+  [["sun",false,"sun"],["sun",true,"moon"],["partly_cloudy",false,"partly-cloudy"],["partly_cloudy",true,"night-cloud"],["cloudy",false,"cloud"],
+    ["heavy_rain",false,"rain"],["light_snow",false,"snow"],["rain_and_snow",false,"rain"],["unknown",false,"unknown"]].forEach(function(row) {
       assert.strictEqual(Weather.weatherIcon(row[0], row[1]), row[2]);
     });
 });
@@ -1343,7 +1256,7 @@ test("Background completion honors vibration settings and keeps independent jobs
 
 test("answer arrival waits for phone weather and suppresses failed weather", function() {
   [true, false].forEach(function(success) {
-    var requests = [];
+    var requests = [], subscription;
     function FakeXHR() { this.responseText = ""; requests.push(this); }
     FakeXHR.prototype.open = function() {};
     FakeXHR.prototype.setRequestHeader = function() {};
@@ -1351,19 +1264,16 @@ test("answer arrival waits for phone weather and suppresses failed weather", fun
     FakeXHR.prototype.abort = function() {};
     var storage = {};
     storage[Settings.STORAGE_KEY] = JSON.stringify({ endpoint: "https://agent.test" });
-    var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
+    var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR, subscribeToSource:function(options){subscription=options;return {};} });
     function completions() { return h.sent.filter(function(m) { return m[Watch.Key.messageType] === "job-result"; }); }
     try {
       h.handlers.appmessage({ payload: { 0: "input", 2: "dictation", 8: "look up Portland conditions" } });
-      requests[0].responseText = 'pam version=1\ncapability type=weather command=current latitude=45.5 longitude=-122.6\ndone\n';
+      requests[0].responseText = 'pam version=1\ncapability type=weather command=current\ndone\n';
       jobReply(h, requests[0], requests[0].responseText);
-      assert.strictEqual(requests.length, 2);
+      assert.strictEqual(requests.length, 1);
       assert.strictEqual(completions().length, 0);
-      if (success) {
-        requests[1].status = 200;
-        requests[1].responseText = JSON.stringify({ current: { temperature_2m: 12, apparent_temperature: 11, weather_code: 2, wind_speed_10m: 9 }, current_units: { temperature_2m: "C" }, daily: { time: [], temperature_2m_max: [], temperature_2m_min: [], weather_code: [] } });
-        requests[1].onload();
-      } else { requests[1].onerror(); }
+      if (success) subscription.onData(weatherData());
+      else subscription.onError({code:"PLUGIN_UNAVAILABLE"});
       assert.strictEqual(completions().length, success ? 1 : 0);
     } finally { h.cleanup(); }
   });
@@ -1395,44 +1305,24 @@ test("completed actions execute automatically with durable IDs and watch receipt
   }finally{h.cleanup();}
 });
 
-test("background weather updates only the tile and caches the forecast", function() {
-  var requests = [], storage = {};
-  function FakeXHR() { requests.push(this); }
-  FakeXHR.prototype.open = function(method, url) { this.url = url; };
-  FakeXHR.prototype.send = function() {};
-  global.navigator = { geolocation: { getCurrentPosition: function(success) {
-    success({ coords: { latitude: 45, longitude: -122 } });
-  } } };
-  var h = loadPkjsHarness({ storageData: storage, XMLHttpRequest: FakeXHR });
+test("background weather plugin pushes update only the tile and suppress duplicate packets", function() {
+  var request,calls=0,storage={};
+  var h=loadPkjsHarness({storageData:storage,subscribeToSource:function(options){request=options;calls++;return {};}});
   try {
-    h.handlers.appmessage({ payload: { 0: "ready" } });
-    assert.strictEqual(requests.length, 1);
-    requests[0].status = 200;
-    requests[0].responseText = JSON.stringify({ current: { temperature_2m: 12, weather_code: 0, is_day: 0 },
-      daily: { time: ["2026-09-12"], temperature_2m_max: [18], temperature_2m_min: [8], weather_code: [0] } });
-    requests[0].onload();
-    assert.ok(h.sent.every(function(m) { return m[0] === "notes" || m[0] === "bridge" || (m[0] === "job" && m[2] === "reset"); }));
-    var last = h.sent[h.sent.length - 1];
-    assert.strictEqual(last[10], "icon=moon");
-    assert.strictEqual(last[7], "L 8 H 18");
-    assert.strictEqual(JSON.parse(storage["pebble-agent.weather.v1"]).temperature, "12");
-    var sentBefore=h.sent.length;
-    h.handlers.appmessage({ payload: { 0: "capability_event", 2: "weather", 9: "refresh" } });
-    assert.strictEqual(requests.length, 1,"fresh cache avoids another network request");
-    assert.strictEqual(h.sent.length,sentBefore,"unchanged weather avoids another watch message");
-    var stale=JSON.parse(storage["pebble-agent.weather.v1"]);stale.updated=Date.now()-16*60*1000;
-    storage["pebble-agent.weather.v1"]=JSON.stringify(stale);
-    h.handlers.appmessage({ payload: { 0: "capability_event", 2: "weather", 9: "refresh" } });
-    assert.strictEqual(requests.length, 2);
-    requests[1].ontimeout();
-    stale.updated=Date.now();
-    storage["pebble-agent.weather.v1"]=JSON.stringify(stale);
-    h.handlers.webviewclosed({response:JSON.stringify({units:"imperial"})});
-    assert.strictEqual(requests.length,3,"changing units invalidates even a fresh weather cache");
-    assert.strictEqual(JSON.parse(storage["pebble-agent.weather.v1"]),null);
-    requests[2].ontimeout();
-    assert.ok(h.sent.every(function(m) { return m[0] === "notes" || m[0] === "bridge" || (m[0] === "job" && m[2] === "reset"); }));
-  } finally { h.cleanup(); }
+    h.handlers.appmessage({payload:{0:"ready"}});assert.equal(calls,1);
+    var data=weatherData(),p=data.instances[0].properties,now=Date.now()/1000;
+    p.condition_code.shortText.text="sun";p.sunrise={timestamp:{value:now-7200}};p.sunset={timestamp:{value:now-3600}};
+    request.onData(data);
+    var last=h.sent[h.sent.length-1];assert.equal(last[10],"icon=moon");assert.equal(last[7],"L 8 H 18");
+    var sentBefore=h.sent.length;request.onData(data);assert.equal(h.sent.length,sentBefore);
+    h.handlers.appmessage({payload:{0:"capability_event",2:"weather",9:"refresh"}});
+    assert.equal(calls,1);assert.equal(h.sent.length,sentBefore);
+    p.temperature.numericValue.value=20;request.onData(data);assert.equal(h.sent[h.sent.length-1][8],"20C");
+    request.onError({code:"PERMISSION_DENIED"});assert.equal(h.sent[h.sent.length-1][8],"");
+    request.onData(data);assert.equal(h.sent[h.sent.length-1][8],"20C");
+    assert.ok(!h.sent.some(function(m){return m[0]==="render";}));
+    assert.equal(storage["pebble-agent.weather.v1"],undefined);
+  }finally{h.cleanup();}
 });
 
 test("dictated form answers bypass local regexes and retain question context", function() {
@@ -1583,9 +1473,9 @@ require("./job-actions")(test);
 test("dictated settings persist locally and send updated watch preferences", function() {
   var h=loadPkjsHarness({storageData:{}});
   try {
-    ["turn off double tap","Settings: turn off ripple","set weather units to metric","set reasoning effort to high"].forEach(function(text){h.handlers.appmessage({payload:{0:"input",2:"dictation",8:text}});});
+    ["turn off double tap","Settings: turn off ripple","set reasoning effort to high"].forEach(function(text){h.handlers.appmessage({payload:{0:"input",2:"dictation",8:text}});});
     var saved=Settings.load();
-    assert.equal(saved.doubleTap,false);assert.equal(saved.tapAnimation,false);assert.equal(saved.units,"metric");assert.equal(saved.codexEffort,"high");
+    assert.equal(saved.doubleTap,false);assert.equal(saved.tapAnimation,false);assert.equal(saved.units,undefined);assert.equal(saved.codexEffort,"high");
     assert.ok(h.sent.some(function(m){return m[Watch.Key.value]==="Saved · reasoning effort: high";}));
     ["don't turn off double tap","turn off double tap and start a timer","set weather units to bananas","set token to secret"].forEach(function(text){assert.equal(Settings.parseDictation(text),null);});
   } finally {h.cleanup();}
@@ -1598,7 +1488,6 @@ test("PAM settings validate values and expose only editable preferences", functi
     ["tap_animation", "false", "tapAnimation", false],
     ["answer_vibrate", "false", "answerVibrate", false],
     ["fast_mode", "false", "fastMode", false],
-    ["units", "imperial", "units", "imperial"],
     ["model", "vendor/Model:1", "codexModel", "vendor/Model:1"],
     ["model", "default", "codexModel", ""],
     ["effort", "default", "codexEffort", ""],
@@ -1610,7 +1499,7 @@ test("PAM settings validate values and expose only editable preferences", functi
     Object.assign(updated, preference.patch);
   });
   var visible = Settings.agentPreferences(updated);
-  assert.equal(Object.keys(visible).length, 8);
+  assert.equal(Object.keys(visible).length, 7);
   assert.equal(visible.model, "default");
   assert.equal(visible.double_tap, "false");
   assert.ok(!JSON.stringify(visible).includes("secret"));

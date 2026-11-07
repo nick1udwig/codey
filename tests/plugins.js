@@ -43,4 +43,17 @@ module.exports = function(test) {
     assert.equal(called,2);
     source.stop();
   });
+  test("plugin reads time out once and can receive a later update", function() {
+    var originalSet=global.setTimeout, originalClear=global.clearTimeout, fire, request, calls=0;
+    global.setTimeout=function(callback){fire=callback;return 1;};
+    global.clearTimeout=function(){};
+    var source=new Source({subscribeToSource:function(options){request=options;return {}; }},"weather","location",[]);
+    try {
+      source.read(function(error){calls++;assert.match(error.message,/timed out/);});
+      fire();fire();assert.equal(calls,1);
+      source.read(function(error,data){calls++;assert.ifError(error);assert.equal(data.instances.length,0);});
+      request.onData({instances:[]});fire();assert.equal(calls,2);
+    } finally {source.stop();global.setTimeout=originalSet;global.clearTimeout=originalClear;}
+  });
+
 };

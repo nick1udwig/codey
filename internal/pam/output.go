@@ -20,12 +20,12 @@ var inputs = set("up", "select", "down", "back", "tap", "swipe-left", "swipe-rig
 var capabilityCommands = map[string]map[string]bool{
 	"settings":  set("set"),
 	"todo":      set("add", "list", "archive"),
-	"calendar":  set("add", "list"),
+	"calendar":  set("list"),
 	"note":      set("add", "edit", "list"),
 	"check":     set("new", "add", "list"),
 	"timer":     set("start", "pause", "resume", "cancel", "show", "list", "ack", "cancel_all"),
 	"stopwatch": set("start", "pause", "resume", "lap", "reset", "show"),
-	"weather":   set("current", "show"),
+	"weather":   set("current"),
 	"reminder":  set("schedule", "show", "list", "cancel", "ack", "cancel_all"),
 	"alarm":     set("schedule", "show", "list", "cancel", "ack", "cancel_all"),
 }

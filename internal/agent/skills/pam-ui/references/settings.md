@@ -13,7 +13,6 @@ Use one capability per setting and explicit values, never toggle commands.
 | `tap_animation` | `true`, `false` | First-tap ripple animation |
 | `answer_vibrate` | `true`, `false` | Vibrate when an answer arrives |
 | `fast_mode` | `true`, `false` | Backend fast mode |
-| `units` | `auto`, `metric`, `imperial` | Weather units |
 | `model` | Model ID or `default` | Requested backend model |
 | `effort` | `default`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra` | Requested reasoning effort |
 | `web_search` | `disabled`, `cached`, `live` | Backend web search mode |
@@ -42,7 +41,8 @@ done
 ```
 
 The phone validates and saves each setting when the result arrives, updates
-watch preferences, and refreshes weather when units change. Opening the result
+watch preferences.
+Weather units and locations are managed in the Pebble app. Opening the result
 shows the saved value without reapplying completed changes. Each line is a
 separate update, not an atomic batch. Let the phone show success or failure;
 do not emit a simulated success screen after the capability.

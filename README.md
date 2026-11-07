@@ -39,13 +39,15 @@ See [server setup](docs/server.md) for networking, manual startup, and configura
 The phone needs internet access to open the settings page.
 Use HTTPS or WSS; unencrypted connections are only suitable for trusted private development networks.
 
-## Calendar plugins
+## Calendar and weather plugins
 
-Enable **Settings → Plugins → Plugins / permissions preview** in the Pebble mobile app and allow Calendar access for codey.
+Enable **Settings → Plugins → Plugins / permissions preview** in the Pebble mobile app and allow Calendar and Location access for codey.
 Calendar reads `calendar/event` from the preferred plugin, with the built-in phone calendar as the default.
 The built-in plugin currently exposes up to ten upcoming events over seven days.
 Create and edit events in your phone calendar app; the plugin exposes no calendar write action.
 Existing server events remain stored, but codey no longer reads them or syncs CalDAV.
+Weather reads `weather/location` from the preferred plugin.
+Set its provider, locations, and units in the Pebble app; codey displays the first location.
 
 ## Backend sync setup
 
@@ -156,5 +158,6 @@ For backend configuration and deployment, use [server setup](docs/server.md).
 
 Agent requests go through your server to Codex.
 Server logs at `~/.pebble-agent/server.log` include prompts and responses; treat them and their backups as sensitive.
-Weather sends the phone's coordinates to Open-Meteo.
+Weather and calendar data come from the phone's Pebble plugins.
+The selected weather provider controls weather requests; codey no longer sends coordinates to Open-Meteo.
 The bearer token is stored on the phone, so use an endpoint you trust.

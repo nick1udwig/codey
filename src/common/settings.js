@@ -11,8 +11,6 @@ var DEFAULTS = Object.freeze({
   noteSyncProvider: "server",
   collectionDevelopmentHTTP: false,
   token: "",
-  units: "auto",
-  locationLabel: "Current location",
   timeoutSeconds: 45,
   codexModel: "gpt-6-luna",
   codexEffort: "xhigh",
@@ -39,8 +37,6 @@ function copyDefaults(value) {
   settings.todoSyncProvider = ["server", "todoist", "googletasks"].indexOf(source.todoSyncProvider)>=0?source.todoSyncProvider:"server";
   settings.noteSyncProvider = ["server", "nextcloudnotes"].indexOf(source.noteSyncProvider)>=0?source.noteSyncProvider:"server";
   settings.token = String(settings.token || "").trim();
-  settings.units = settings.units === "imperial" || settings.units === "metric" ? settings.units : "auto";
-  settings.locationLabel = String(settings.locationLabel || DEFAULTS.locationLabel).slice(0, 64);
   settings.timeoutSeconds = Math.max(10, Math.min(120, parseInt(settings.timeoutSeconds, 10) || 45));
   settings.refreshIntervalSeconds = Number(settings.refreshIntervalSeconds) === 1 ? 1 : 60;
   ["codexModel", "codexEffort"].forEach(function(key) {
@@ -120,7 +116,7 @@ function parseDictation(input) {
   else {
     match=/^(?:set|change) (.+?) (?:to )?([^ ]+)$/.exec(text);
     if(!match) { return null; }
-    var choices={"weather units":["units",["auto","automatic","metric","imperial"]],"units":["units",["auto","automatic","metric","imperial"]],"reasoning effort":["codexEffort",["default","low","medium","high","xhigh","max","ultra"]],"web search":["webSearch",["off","disabled","cached","live"]]};
+    var choices={"reasoning effort":["codexEffort",["default","low","medium","high","xhigh","max","ultra"]],"web search":["webSearch",["off","disabled","cached","live"]]};
     var choice=choices[match[1]];
     if(choice && choice[1].indexOf(match[2])>=0){key=choice[0];value=match[2];if(value==="automatic")value="auto";if(value==="default")value="";if(value==="off")value="disabled";}
     else if((match[1]==="model"||match[1]==="codex model") && /^(?:default|[a-z0-9][a-z0-9._:/-]{0,127})$/.test(match[2])) { key="codexModel";value=match[2]==="default"?"":match[2]; }
@@ -138,7 +134,6 @@ var PAM_SETTINGS = {
   tap_animation: ["tapAnimation", "Ripple", ["true", "false"]],
   answer_vibrate: ["answerVibrate", "Answer vibration", ["true", "false"]],
   fast_mode: ["fastMode", "Fast mode", ["true", "false"]],
-  units: ["units", "Weather units", ["auto", "metric", "imperial"]],
   model: ["codexModel", "Model"],
   effort: ["codexEffort", "Reasoning effort", ["default", "low", "medium", "high", "xhigh", "max", "ultra"]],
   web_search: ["webSearch", "Web search", ["disabled", "cached", "live"]]

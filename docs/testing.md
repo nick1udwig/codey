@@ -184,7 +184,7 @@ until exercised on the updated app.
 
 - A successful real microphone/dictation session, including cancellation, noisy speech, Unicode transcription, and permission/connectivity failures.
 - Physical tap targeting, drag scrolling, every swipe direction, action-rail taps, touch-disabled fallback, and edge behavior on both touch displays.
-- Bluetooth disconnect/reconnect, Android and iOS background behavior, configuration through the real phone app, HTTP buffering differences, WebSocket reconnects, authorization, and geolocation permission flows.
+- Bluetooth disconnect/reconnect, Android and iOS background behavior, configuration through the real phone app, HTTP buffering differences, WebSocket reconnects, authorization, and Calendar and Location plugin permission flows.
 - Haptic feel, reminder audibility/visibility, real wakeup accuracy across sleep/reboot/time-zone changes, and timer/reminder coexistence with other apps.
 - Battery use, long-running stopwatch drift, memory behavior over many conversations, and sunlight/low-light readability.
 
@@ -210,7 +210,7 @@ refreshing the separate Notifications list, returning home, and concurrent expir
 Both Emery and Gabbro dashboards were visually checked with the generated assets
 and fully visible cards. On Emery, Calendar,
 Notifications (with existing due timers/reminders), and Todos open via buttons.
-Real microphone transcription, physical touch, phone geolocation, and New Chat's
+Real microphone transcription, physical touch, phone plugin delivery, and New Chat's
 end-to-end device handshake remain hardware checks.
 
 If the phone simulator reports a successful installation but leaves the app menu
@@ -371,10 +371,8 @@ on hardware. Local server timings do not measure phone networking or Bluetooth.
 
 ### Collection and calendar regressions
 
-CalDAV fixtures cover discovery, Basic auth, calendar-query expansion, distinct
-recurrence identities, all-day/timed creates, lost PUT responses and conditional
-retries, external-edit conflicts, cross-origin href rejection, and incomplete
-recurrence data. Store tests check chronological paging, exact counts, event
+CalDAV fixtures were removed with the provider; plugin coverage replaces calendar network tests.
+Store tests check chronological paging, exact counts, event
 validation and reconciliation restricted to the observed window. Phone tests
 check immediate task completion from cached pages, event summaries/details, and
 agent animation only after remote dispatch. Setup tests exercise four-step
@@ -418,9 +416,9 @@ API-call counts and synthetic host timings do not measure physical battery use.
 
 ## Interaction fixes (2026-09-17)
 
-Regressions cover read-only CalDAV URL rejection and DAV privilege filtering;
-setup credential retry, authoritative active-service hydration, automatic
-single-destination preview, and unfinished-setup protection; calendar and bare
+The original CalDAV and calendar-creation regressions were retired with plugin migration.
+Current regressions cover setup credential retry, authoritative active-service hydration, automatic
+single-destination preview, and unfinished-setup protection; agenda and bare
 timer shortcuts; and persisted voice preferences. Native tests cover stopwatch
 background/cancel/restart, latest-due notification selection, and silent action
 delivery without stealing the active screen.
@@ -433,3 +431,12 @@ choices, restart receipts, and failed receipt writes. Plain answer retrieval
 retains its existing manual flow. Both watch targets compile the job-action
 protocol and smiley resource. Physical Bluetooth and microphone acceptance
 remain device checks; the SDK supplies no palm/cover signal.
+
+## Plugin integration
+
+`tests/plugins.js` and the phone bridge tests cover source errors, recovery, all-day dates, pinned calendar pages, weather units, forecast series, missing properties, and dashboard updates.
+The release build runs bridge tests against the minified bundle.
+Both PBWs must include appinfo `manifestVersion: 2` and Calendar/Location permissions.
+On a paired phone, enable Plugins / permissions preview, grant codey access, and verify the enabled calendars and first weather location.
+Change the preferred provider and temperature units in the Pebble app and confirm updates on the watch.
+Revoke access, restore access, and test phone reconnects on Android and iOS.
