@@ -39,18 +39,27 @@ See [server setup](docs/server.md) for networking, manual startup, and configura
 The phone needs internet access to open the settings page.
 Use HTTPS or WSS; unencrypted connections are only suitable for trusted private development networks.
 
+## Calendar and weather plugins
+
+Enable **Settings → Plugins → Plugins / permissions preview** in the Pebble mobile app and allow Calendar and Location access for codey.
+Calendar reads `calendar/event` from the preferred plugin, with the built-in phone calendar as the default.
+The built-in plugin currently exposes up to ten upcoming events over seven days.
+Create and edit events in your phone calendar app; the plugin exposes no calendar write action.
+Existing server events remain stored, but codey no longer reads them or syncs CalDAV.
+Weather reads `weather/location` from the preferred plugin.
+Set its provider, locations, and units in the Pebble app; codey displays the first location.
+
 ## Backend sync setup
 
-Notes, to-dos, and calendars default to **Server only**: they are stored in `~/.codey/data`
+Notes and to-dos default to **Server only**: they are stored in `~/.codey/data`
 without an external account. Configure them independently in phone settings:
 
 | Collection | Choices | Authentication |
 | --- | --- | --- |
 | To-dos | Server only, Todoist, Google Tasks | None, Todoist API token, Google OAuth |
 | Notes | Server only, Nextcloud Notes | None, Nextcloud username and app password |
-| Calendar | Server only, CalDAV | None, calendar username and app password |
 
-Select a service under **To-do sync setup**, **Notes sync setup**, or **Calendar sync setup**. Selecting
+Select a service under **To-do sync setup** or **Notes sync setup**. Selecting
 Nextcloud Notes reveals its HTTPS URL, username, and app-password fields in the
 same settings page. Todoist reveals an API-token field. **Connect**, choose a
 destination, **Preview connection**, then **Activate this destination**. Errors
@@ -76,18 +85,6 @@ preferences; activation/disconnection takes effect immediately on the server.
   a category, preview, and activate. The Nextcloud Notes app must be available.
   For a private Nextcloud hostname, add `"private_hosts": ["cloud.example"]` to
   `~/.codey/integrations.json` and restart codey.
-- **CalDAV:** enter the HTTPS calendar URL or calendar-home URL supplied by your
-  calendar app (for example, `https://cloud.example/remote.php/dav/calendars/USER/`),
-  username, and app password. Connect, select an event calendar, preview, and
-  activate. The server imports the next 90 days, including recurring events and
-  exceptions, and sends newly created events to that calendar. Edits/deletions
-  made in your calendar app appear on the next sync (normally within a minute).
-  Use the same CalDAV account in an Android or iOS calendar app to see the events
-  there. For a private hostname, add it to `private_hosts` in
-  `~/.codey/integrations.json` and restart codey. The server must support CalDAV
-  calendar-query recurrence expansion; setup reports incompatible servers.
-  Event editing, invitations, and creating recurring series use your calendar
-  app. Codey shows its own agenda; it does not publish Pebble OS Timeline pins.
 - **Google Tasks:** obtain a Google OAuth web client with access to the Tasks API
   and register the exact callback `<your-codey-HTTPS-base>/integrations/oauth/callback`.
   Put the following in `~/.codey/integrations.json` (merge with any existing config),
@@ -161,5 +158,6 @@ For backend configuration and deployment, use [server setup](docs/server.md).
 
 Agent requests go through your server to Codex.
 Server logs at `~/.pebble-agent/server.log` include prompts and responses; treat them and their backups as sensitive.
-Weather sends the phone's coordinates to Open-Meteo.
+Weather and calendar data come from the phone's Pebble plugins.
+The selected weather provider controls weather requests; codey no longer sends coordinates to Open-Meteo.
 The bearer token is stored on the phone, so use an endpoint you trust.

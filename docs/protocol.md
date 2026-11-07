@@ -236,19 +236,16 @@ capability type=stopwatch command=show id=run
 
 ### Weather
 
-Fetch at the phone's current location:
+Read the first location returned by the preferred Weather plugin:
 
 ```pam
-capability type=weather command=current id=weather location="Current location"
+capability type=weather command=current id=weather
 ```
 
-Or let the agent supply already-known data without a second network request:
-
-```pam
-capability type=weather command=show id=weather location="London" temperature=18 unit="°C" condition=Rain high=20 low=14 wind="12 km/h"
-```
-
-Latitude and longitude can be supplied as `latitude` and `longitude`. Weather networking runs in a phone registry module and emits a normal card screen.
+The phone subscribes to `weather/location` and renders a card from plugin properties.
+Set provider, locations, and units in the Pebble app.
+Calendar and weather require the plugin preview and their Calendar/Location permissions.
+Inline weather values and direct coordinate lookups are no longer supported.
 
 ### Reminder
 
@@ -357,8 +354,9 @@ host caches these fields independently of the current screen and patches only
 the dashboard weather tile. This channel neither starts nor completes an agent
 request. A native `capability_event operation=weather action=refresh` every 15
 minutes requests a background update; startup and saved settings also refresh.
-The phone caches validated fetched data for up to an hour. Weather failures leave
-the current screen alone. Current Open-Meteo `is_day` selects day/night icons.
+Plugin updates also refresh the tile immediately.
+Weather failures clear its values and leave the current screen alone.
+Plugin condition codes and sunrise/sunset timestamps select the weather icon.
 
 Todos and Calendar enable the native time status bar. Todos have no add control:
 whole-phrase local regex matching accepts add/create/make/set/put down plus
@@ -484,24 +482,17 @@ and displayed inline. The `webviewclosed` handler never opens another page.
 
 ### Calendar and interaction preferences
 
-The third collection is `col_event`, kind `event`. `event.create` accepts title,
-start, end, optional location and description. Times require RFC3339 offsets, or
-two YYYY-MM-DD values for an all-day event with exclusive end. Read APIs retain
-start/end/location in summaries and return the description through body pages.
-Active event snapshots are chronological and exclude ended events. Snapshot
-creation accepts `utc_offset_minutes`; collection listing accepts the same query
-parameter, so all-day dates and counts follow the phone's local date.
-
-PAM uses `capability type=calendar command=list` and
-`capability type=calendar command=add title="Lunch" start="2026-09-16T12:00:00-07:00" end="2026-09-16T13:00:00-07:00"`.
-Phone journal/receipt semantics match notes and tasks. CalDAV performs deterministic
-conditional creates and 90-day expanded calendar-query reads. Absence reconciliation
-is restricted to the successfully read time window. Records remain read-only on
-the watch after creation; edits and recurring-series creation use a calendar client.
+Calendar uses `capability type=calendar command=list` and reads `calendar/event` on the phone.
+Plugin timestamps `starts_at` and `ends_at` are epoch seconds.
+`all_day.boolean.value` preserves date-only events; `name`, `location`, and `calendar` supply text.
+Pages contain at most eight events and use an in-memory snapshot so updates cannot retarget a selected row.
+Calendar has no create or edit capability.
+The legacy `col_event` server records remain stored for compatibility, but the watch no longer reads them and CalDAV is removed.
 
 `bridge operation=collection-counts` sends task count in Index, note count in Flags,
 event count in EventSequence, and check-list count in Title. Watch caches use ten keys per kind: 4480, 4490,
 4500, 4510; base+1..8 hold titles, base+9 holds the full count.
+Calendar no longer reads or writes its old flash preview.
 `bridge operation=preferences` uses Flags for ripple enabled, Index for double-tap
 required (both default 1), and Value for the screen refresh interval as a string
 (`"1"` or `"60"` seconds, default `"60"`). The watch persists the interval under key

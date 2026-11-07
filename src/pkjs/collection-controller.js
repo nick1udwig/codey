@@ -10,11 +10,14 @@ var CollectionClient = require("../common/collections/client").Client;
 
 var CollectionViews = require("../common/collection-views");
 
+var Calendar = require("../common/calendar");
+
 var Key = WatchProtocol.Key;
 
 // Owns collection state; request ownership and transport remain with the bridge.
 module.exports = function(options) {
   var collections = null, collectionViews = null, collectionError = "", collectionCounts = {};
+  var calendarViews = new CollectionViews(new Calendar(options.Pebble));
   function collectionBase() {
     return (Endpoints.normalize(options.settings().endpoint) || "").replace(/\/v1\/agent$/, "").replace(/^ws:/, "http:").replace(/^wss:/, "https:");
   }
@@ -58,11 +61,11 @@ module.exports = function(options) {
       var counts = {
         task: 0,
         note: 0,
-        event: 0,
+        event: collectionCounts.event || 0,
         check: 0
       }, changed = false;
       collections.collections.forEach(function(c) {
-        counts[c.kind] = c.count || 0;
+        if (c.kind !== "event") counts[c.kind] = c.count || 0;
       });
       Object.keys(counts).forEach(function(kind) {
         if (counts[kind] !== collectionCounts[kind]) changed = true;
@@ -120,9 +123,10 @@ module.exports = function(options) {
       if (list.kind === "event") m[Key.title] = list.timeline.join("\n");
       m[Key.flags] = (list.state === "completed" ? 1 : 0) | (list.next ? 2 : 0) | (list.stale ? 4 : 0) | (list.partial ? 8 : 0) | (list.first ? 16 : 0);
       if (list.kind === "event") m[Key.flags] |= (list.previous ? 32 : 0) | Math.max(0, Math.min(7, list.focus || 0)) << 8;
-      m[Key.subtitle] = list.stale ? "Cached · Server unavailable" : list.pending ? list.pending + " pending server" : list.partial ? "First 8 · More after sync" : "Saved on server";
+      m[Key.subtitle] = list.source || (list.stale ? "Cached · Server unavailable" : list.pending ? list.pending + " pending server" : list.partial ? "First 8 · More after sync" : "Saved on server");
       // A list may change the watch count optimistically, or be superseded before delivery.
-      if (list.state !== "completed" && collectionCounts[list.kind] !== list.total) delete collectionCounts[list.kind];
+      if (list.kind === "event") collectionCounts.event = list.total;
+      else if (list.state !== "completed" && collectionCounts[list.kind] !== list.total) delete collectionCounts[list.kind];
       options.enqueue(m);
     } else {
       m[Key.messageType] = "collection-view";
@@ -134,10 +138,11 @@ module.exports = function(options) {
   function handleCollectionRequest(kind, action, id, value, token, payload) {
     var requestId = options.beginRequest();
     options.sendAnswerNotification(requestId, "begin", true, token);
-    if (!collections) {
+    if (!collections && kind !== "event") {
       options.sendStatus(collectionError || "Collections unavailable", "error", requestId);
       return;
     }
+    var views = kind === "event" ? calendarViews : collectionViews;
     var started = Date.now(), viewToken = String(options.read(payload, Key.viewToken, "ViewToken") || ""), done = function(e, v) {
       options.log("collection read " + kind + " " + action + " ms=" + (Date.now() - started));
       renderCollection(requestId, e, v);
@@ -145,16 +150,22 @@ module.exports = function(options) {
     try {
       if (action === "list" || action === "archive") {
         if ((value === "return" || value === "previous") && (kind === "event" || kind === "check")) {
-          var previous = collectionViews.resolve(viewToken, value === "return" ? "back" : "previous");
-          collectionViews.list(kind, previous.state, previous.snapshot, previous.cursor, function(e, v) {
+          var previous = views.resolve(viewToken, value === "return" ? "back" : "previous");
+          views.list(kind, previous.state, previous.snapshot, previous.cursor, function(e, v) {
             if (v) v.list.focus = value === "previous" ? Math.max(0, v.list.titles.length - 1) : previous.focus;
             done(e, v);
           });
         } else if (value === "next") {
-          var page = collectionViews.resolve(viewToken, "next");
-          collectionViews.list(kind, page.state, page.snapshot, page.cursor, done);
-        } else collectionViews.list(kind, action === "archive" ? "completed" : "active", "", "", done);
-        collections.drain();
+          var page = views.resolve(viewToken, "next");
+          views.list(kind, page.state, page.snapshot, page.cursor, done);
+        } else views.list(kind, action === "archive" ? "completed" : "active", "", "", done);
+        if (kind !== "event") collections.drain();
+        return;
+      }
+      if (kind === "event") {
+        if (action !== "read") throw new Error("Calendar is read-only. Use your phone calendar app to make changes.");
+        var event = views.resolve(viewToken, id);
+        views.body(event.record, "", done);
         return;
       }
       var session = String(options.read(payload, Key.bridgeSession, "BridgeSession") || ""), seq = Number(options.read(payload, Key.eventSequence, "EventSequence") || 0), ingress = "watch:" + session + ":" + seq;
@@ -175,10 +186,10 @@ module.exports = function(options) {
         collections.drain();
         return;
       }
-      var target = collectionViews.resolve(viewToken, id);
+      var target = views.resolve(viewToken, id);
       if (action === "read") {
-        if (kind === "check") collectionViews.check(target.record, target.cursor || "", done);
-        else collectionViews.body(target.record, target.cursor || "", done);
+        if (kind === "check") views.check(target.record, target.cursor || "", done);
+        else views.body(target.record, target.cursor || "", done);
         return;
       }
       if (session !== collections.journal.data.bridge || seq <= 0) throw new Error("Stale collection session.");
@@ -214,7 +225,7 @@ module.exports = function(options) {
           return r.operation_id === accepted.id && r.durably_recorded;
         })) collectionAck(payload, "needs_attention", "Needs attention in server settings");
       });
-      collectionViews.list(kind, target.state || "active", target.snapshot || "", target.cursor || "", function(e, v) {
+      views.list(kind, target.state || "active", target.snapshot || "", target.cursor || "", function(e, v) {
         if (e) {
           options.sendStatus("Saved on phone · Pending server. List unavailable.", "show", requestId);
           options.sendAnswerNotification(requestId, "complete", true);
@@ -226,6 +237,16 @@ module.exports = function(options) {
     }
   }
   function phoneCollection(attrs, requestId, complete, job, commandIndex, background) {
+    if (attrs.type === "calendar") {
+      if (attrs.command !== "list") {
+        options.sendStatus("Calendar is read-only. Use your phone calendar app to make changes.", "error", requestId);
+        if (complete) complete(false);
+      } else calendarViews.list("event", "active", "", "", function(error, view) {
+        renderCollection(requestId, error, view);
+        if (complete) complete(!error);
+      });
+      return;
+    }
     if (attrs.type === "check" && attrs.command === "add" && !attrs.occurred_at) {
       var scope = collections && collections.journal.data.scope;
       var prior = job && scope && collections.journal.data.receipts["agent:" + scope.server_instance_id + ":" + job.id + ":" + commandIndex];
@@ -236,7 +257,7 @@ module.exports = function(options) {
       if (complete) complete(false);
       return;
     }
-    var kind = attrs.type === "calendar" ? "event" : attrs.type === "todo" ? "task" : attrs.type === "check" ? "check" : "note";
+    var kind = attrs.type === "todo" ? "task" : attrs.type === "check" ? "check" : "note";
     collections.ensure(function(e) {
       if (e) {
         options.sendStatus(e.message, "error", requestId);
@@ -247,7 +268,7 @@ module.exports = function(options) {
     }, kind);
   }
   function phoneCollectionReady(attrs, requestId, complete, job, commandIndex, background) {
-    var kind = attrs.type === "calendar" ? "event" : attrs.type === "todo" ? "task" : attrs.type === "check" ? "check" : "note";
+    var kind = attrs.type === "todo" ? "task" : attrs.type === "check" ? "check" : "note";
     function finish(e, op) {
       if (background) {
         if (e) {
@@ -340,13 +361,7 @@ module.exports = function(options) {
         collection_id: col.id,
         generation: col.binding_generation,
         type: kind + ".create",
-        payload: kind === "event" ? {
-          title: String(attrs.title || attrs.value || ""),
-          start: String(attrs.start || ""),
-          end: String(attrs.end || ""),
-          location: String(attrs.location || ""),
-          description: String(attrs.description || "")
-        } : kind === "note" ? {
+        payload: kind === "note" ? {
           title: WatchProtocol.truncateUtf8(String(attrs.title || attrs.value).replace(/\s+/g, " "), 71),
           body: String(attrs.value || ""),
           body_format: "plain"

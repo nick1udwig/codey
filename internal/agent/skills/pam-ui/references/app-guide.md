@@ -23,13 +23,13 @@
 - **Checks:** Hold Down or tap then hold the collection tile to select Checks.
   Say “check new baby” to create an empty list and “check baby” for each event.
   The list shows lifetime totals; opening one shows times grouped by local day.
-- **Calendar:** Open the top-left date tile.
-  View upcoming events and dictate new events with a start and end. Optional CalDAV
-  syncing is configured independently in phone settings; see the protocol for
-  calendar add/list capabilities. Remote recurrences are displayed, but creation
-  of recurring series and editing/invitations happen in the calendar app.
+- **Calendar:** Open the top-left date tile to read the preferred Calendar plugin.
+  Enable Plugins / permissions preview and allow Calendar access in the Pebble app.
+  Create and edit events in the phone calendar app; calendar writes are unavailable in codey.
 - **Weather:** Open the Weather tile for a forecast without an agent request.
-  Requires phone location permission and connectivity; refreshes every 15 minutes.
+  Reads the preferred phone Weather plugin.
+  Enable the plugin preview and allow Location access for codey.
+  Set locations, units, and provider in the Pebble app.
 - **Controls:** Drag scrollable text and lists directly. Up/Down scroll when
   there is no assigned action or next control to select. Other touch interactions
   need an arming tap: tap twice to activate, or tap then hold/drag/swipe on the

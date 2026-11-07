@@ -64,11 +64,11 @@ function request(port, { method = "POST", body = "" } = {}) {
 }
 
 function runConfig(hash, bridge, XHR) {
-  const ids = ["settings", "endpoint", "token", "units", "timeout", "location-label", "status", "codex-model", "codex-effort", "fast-mode", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review", "answer-vibrate", "tap-animation", "double-tap"];
+  const ids = ["settings", "endpoint", "token", "timeout", "status", "codex-model", "codex-effort", "fast-mode", "codex-models", "load-models", "model-status", "web-search", "file-access", "network-access", "shell-access", "auto-review", "answer-vibrate", "tap-animation", "double-tap"];
   const elements = {};
   ids.push("refresh-interval");
-  ids.push("calendar-sync-provider","calendar-sync-help","todo-sync-provider","note-sync-provider","todo-sync-help","note-sync-help","token-status","new-session","collection-development-http","recover-collections");
-  ["todo","note","calendar"].forEach(kind=>["back","progress","next","destination-title","secret-title","form","active","credentials","endpoint-label","username-label","secret-label","endpoint","username","secret","connect","destination","container","export","preview","stop","status","activate"].forEach(name=>ids.push(kind+"-sync-"+name)));
+  ids.push("todo-sync-provider","note-sync-provider","todo-sync-help","note-sync-help","token-status","new-session","collection-development-http","recover-collections");
+  ["todo","note"].forEach(kind=>["back","progress","next","destination-title","secret-title","form","active","credentials","endpoint-label","username-label","secret-label","endpoint","username","secret","connect","destination","container","export","preview","stop","status","activate"].forEach(name=>ids.push(kind+"-sync-"+name)));
   let submit;
   ids.forEach(id => {
     elements[id] = {
@@ -187,22 +187,16 @@ test("configuration page hydrates state and closes with normalized form values",
   const initial = {
     endpoint: "https://old.test/respond",
     token: "old-token",
-    units: "imperial",
-    locationLabel: "Seattle",
     timeoutSeconds: 60
   };
   const harness = runConfig("#" + encodeURIComponent(JSON.stringify(initial)));
   assert.equal(harness.elements.endpoint.value, initial.endpoint);
   assert.equal(harness.elements.token.value, "");
-  assert.equal(harness.elements.units.value, "imperial");
   assert.equal(harness.elements.timeout.value, "60");
-  assert.equal(harness.elements["location-label"].value, "Seattle");
 
   harness.elements.endpoint.value = "  https://new.test/agent  ";
   harness.elements.token.value = "  secret  ";
-  harness.elements.units.value = "metric";
   harness.elements.timeout.value = "90";
-  harness.elements["location-label"].value = "   ";
   let prevented = false;
   harness.submit({ preventDefault() { prevented = true; } });
   assert.equal(prevented, true);
@@ -211,10 +205,8 @@ test("configuration page hydrates state and closes with normalized form values",
   const saved = JSON.parse(decodeURIComponent(harness.location.href.split("#")[1]));
   assert.deepEqual(saved, {
     endpoint: "https://new.test/agent",
-    todoSyncProvider:"server",noteSyncProvider:"server",calendarSyncProvider:"server",collectionDevelopmentHTTP:false,
+    todoSyncProvider:"server",noteSyncProvider:"server",collectionDevelopmentHTTP:false,
     token: "secret",
-    units: "metric",
-    locationLabel: "Current location",
     timeoutSeconds: 90,
     refreshIntervalSeconds: 60,
     codexModel: "gpt-6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
@@ -246,7 +238,7 @@ test("Nextcloud setup connects, previews, and activates without closing settings
  h.submit({preventDefault(){}});assert.equal(saved.noteSyncProvider,"nextcloudnotes");assert.equal(saved.integrationSetup,undefined);assert.ok(!JSON.stringify(saved).includes("password"));
 });
 
-test("each task and calendar service has its own fields and numbered flow", () => {
+test("each task service has its own fields and numbered flow", () => {
  const requests=[];
  function XHR(){}XHR.prototype.open=function(m,u){this.url=u;};XHR.prototype.setRequestHeader=function(){};XHR.prototype.send=function(body){this.body=body;requests.push(this);};
  const h=runConfig("#"+encodeURIComponent(JSON.stringify({endpoint:"https://agent.test",integrationSetup:{url:"https://agent.test/integrations/setup-api",token:"temporary"}})),{},XHR);
@@ -255,18 +247,17 @@ test("each task and calendar service has its own fields and numbered flow", () =
  reply(state);
  for(const provider of ["todoist","googletasks"]){h.elements["todo-sync-provider"].value=provider;h.elements["todo-sync-provider"].handlers.change();assert.ok(!h.elements["todo-sync-help"].textContent.includes("Nextcloud"));assert.equal(h.elements["todo-sync-endpoint-label"].hidden,true);assert.equal(h.elements["todo-sync-credentials"].hidden,provider==="googletasks");assert.match(h.elements["todo-sync-progress"].textContent,/Step 1 of 4/);}
  h.elements["todo-sync-provider"].value="todoist";h.elements["todo-sync-provider"].handlers.change();assert.equal(h.elements["todo-sync-secret-title"].textContent,"Todoist API token");h.elements["todo-sync-secret"].value="api-token";h.elements["todo-sync-connect"].handlers.click();assert.match(requests[0].body,/provider=todoist/);reply({...state,candidate_id:"tasks",containers:[{id:"project",name:"Inbox"}]});assert.equal(h.elements["todo-sync-destination-title"].textContent,"Project");reply({...state,preview:"Tasks ready"});
- h.elements["calendar-sync-provider"].value="caldav";h.elements["calendar-sync-provider"].handlers.change();assert.equal(h.elements["calendar-sync-endpoint-label"].hidden,false);h.elements["calendar-sync-endpoint"].value="https://cal.test/home/";h.elements["calendar-sync-username"].value="user";h.elements["calendar-sync-secret"].value="app-pass";h.elements["calendar-sync-connect"].handlers.click();assert.match(requests[0].body,/collection=col_event/);reply({...state,candidate_id:"events",containers:[{id:"calendar",name:"Personal"}]});assert.equal(h.elements["calendar-sync-destination-title"].textContent,"Calendar");
- reply({...state,preview:"Two events"});assert.match(h.elements["calendar-sync-progress"].textContent,/Step 3 of 4/);h.elements["calendar-sync-back"].handlers.click();assert.match(h.elements["calendar-sync-progress"].textContent,/Step 2 of 4/);assert.equal(h.elements["calendar-sync-activate"].hidden,true);
+
 });
 
 test("setup hydrates the active service instead of stale phone preferences", () => {
  const requests=[];
  function XHR(){} XHR.prototype.open=function(){};XHR.prototype.setRequestHeader=function(){};XHR.prototype.send=function(){requests.push(this);};
  const h=runConfig("#"+encodeURIComponent(JSON.stringify({endpoint:"https://agent.test",integrationSetup:{url:"https://agent.test/integrations/setup-api",token:"temporary"}})),{},XHR);
- requests[0].status=200;requests[0].responseText=JSON.stringify({collections:[],active:{col_event:"caldav"}});requests[0].onload();
- assert.equal(h.elements["calendar-sync-provider"].value,"caldav");
- assert.match(h.elements["calendar-sync-progress"].textContent,/Step 4 of 4/);
- assert.equal(h.elements["calendar-sync-credentials"].hidden,true);
+ requests[0].status=200;requests[0].responseText=JSON.stringify({collections:[],active:{col_note:"nextcloudnotes"}});requests[0].onload();
+ assert.equal(h.elements["note-sync-provider"].value,"nextcloudnotes");
+ assert.match(h.elements["note-sync-progress"].textContent,/Step 4 of 4/);
+ assert.equal(h.elements["note-sync-credentials"].hidden,true);
 });
 
 test("missing setup sessions show inline instructions and never close settings", () => {
@@ -278,7 +269,6 @@ test("configuration page recovers from a bad hash and supports the native bridge
   let submitted;
   const harness = runConfig("#%not-json", { submit(settings) { submitted = settings; } });
   assert.equal(harness.elements.endpoint.value, "");
-  assert.equal(harness.elements.units.value, "auto");
   assert.equal(harness.elements.timeout.value, "45");
   assert.equal(harness.elements["codex-model"].value, "gpt-6-luna");
   assert.equal(harness.elements["codex-effort"].value, "xhigh");
@@ -291,9 +281,7 @@ test("configuration page recovers from a bad hash and supports the native bridge
   harness.elements["double-tap"].checked=false;
   harness.elements["answer-vibrate"].checked = false;
   assert.equal(harness.elements["web-search"].value, "live");
-  assert.equal(harness.elements["location-label"].value, "Current location");
   harness.elements.endpoint.value = "wss://agent.test/socket";
-  harness.elements.units.value = "auto";
   harness.elements.timeout.value = "30";
   harness.submit({ preventDefault() {} });
   assert.equal(submitted.endpoint, "wss://agent.test/socket");

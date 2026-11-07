@@ -1,212 +1,103 @@
 "use strict";
 
 var Pam = require("./pam");
+var Plugin = require("./plugin-source");
 
-var WEATHER_CODES = {
-  0: "Clear",
-  1: "Mostly clear",
-  2: "Partly cloudy",
-  3: "Overcast",
-  45: "Fog",
-  48: "Icy fog",
-  51: "Light drizzle",
-  53: "Drizzle",
-  55: "Heavy drizzle",
-  56: "Freezing drizzle",
-  57: "Heavy freezing drizzle",
-  61: "Light rain",
-  63: "Rain",
-  65: "Heavy rain",
-  66: "Freezing rain",
-  67: "Heavy freezing rain",
-  71: "Light snow",
-  73: "Snow",
-  75: "Heavy snow",
-  77: "Snow grains",
-  80: "Light showers",
-  81: "Showers",
-  82: "Heavy showers",
-  85: "Snow showers",
-  86: "Heavy snow showers",
-  95: "Thunderstorm",
-  96: "Storm with hail",
-  99: "Heavy hail storm"
-};
-
-function weatherIcon(code, isDay) {
-  if (code === 0 || code === 1) { return isDay === 0 ? "moon" : "sun"; }
-  if (code === 2) { return isDay === 0 ? "night-cloud" : "partly-cloudy"; }
-  if (code === 3 || code === 45 || code === 48) { return "cloud"; }
-  if (code === 95 || code === 96 || code === 99) { return "storm"; }
-  if ((code >= 71 && code <= 77) || code === 85 || code === 86) { return "snow"; }
-  if (code >= 51 && code <= 82) { return "rain"; }
+function weatherIcon(code, night) {
+  if (code === "sun") return night ? "moon" : "sun";
+  if (code === "partly_cloudy") return night ? "night-cloud" : "partly-cloudy";
+  if (code === "cloudy") return "cloud";
+  if (code === "light_rain" || code === "heavy_rain" || code === "rain_and_snow") return "rain";
+  if (code === "light_snow" || code === "heavy_snow") return "snow";
   return "unknown";
 }
 
-function bool(value) {
-  return value === "true" || value === "1" || value === "yes";
-}
-
-function quotedLine(kind, attrs, depth) {
-  var suffix = Pam.formatAttributes(attrs);
-  return new Array((depth || 0) * 2 + 1).join(" ") + kind + (suffix ? " " + suffix : "") + "\n";
-}
-
-function rounded(value) {
-  var number = Number(value);
-  return isFinite(number) ? String(Math.round(number)) : "--";
-}
-
-function renderInline(attrs, context) {
-  var id = attrs.id || "weather";
-  var location = attrs.location || attrs.title || context.settings.locationLabel || "Weather";
-  var unit = attrs.unit || "°";
-  var pam = "pam version=1\n";
-  pam += quotedLine("screen", { id: id, layout: "card", title: location, status: "true" });
-  pam += quotedLine("metric", { id: id + "-temp", label: "Now", value: String(attrs.temperature || "--") + unit }, 1);
-  pam += quotedLine("text", { id: id + "-condition", value: attrs.condition || "Weather" }, 1);
-  if (attrs.feels) {
-    pam += quotedLine("metric", { id: id + "-feels", label: "Feels", value: attrs.feels + unit }, 1);
+function numeric(property) {
+  var value = Plugin.number(property);
+  if (value === null) {
+    var match = /^([+-]?\d+(?:\.\d+)?)\s*°?[CF]?$/.exec(Plugin.text(property));
+    if (match) value = Number(match[1]);
   }
-  if (attrs.high || attrs.low) {
-    pam += quotedLine("item", { id: id + "-range", title: "Today", subtitle: (attrs.high || "--") + " / " + (attrs.low || "--") + unit }, 1);
+  return value === null ? "--" : String(Math.round(value));
+}
+function reading(property) {
+  var value = Plugin.number(property);
+  return value === null ? Plugin.text(property) || "--" : String(Math.round(value)) + (property.numericValue.unit || "");
+}
+function seriesAt(property, time) {
+  var series = property && property.series;
+  if (!series || typeof series.start !== "number" || !(series.stepSec > 0)) return null;
+  var index = Math.floor((time - series.start) / series.stepSec), result = {};
+  if (index < 0) return null;
+  ["numericValue", "shortText", "longText"].forEach(function(shape) {
+    var data = series[shape], value = data && data.values && data.values[index];
+    if (value == null) return;
+    result[shape] = shape === "numericValue" ? {value:value, unit:data.unit || ""} : {text:value};
+  });
+  return Object.keys(result).length ? result : null;
+}
+function properties(data) {
+  var first = data && data.instances && data.instances[0];
+  return first && first.properties || null;
+}
+function summary(data) {
+  var p = properties(data);
+  if (!p) return null;
+  var now = Date.now() / 1000, rise = Plugin.number(p.sunrise, "timestamp"), set = Plugin.number(p.sunset, "timestamp");
+  var unit = p.temperature && p.temperature.numericValue && p.temperature.numericValue.unit || "";
+  if (!unit) {
+    var match = /°?([CF])$/.exec(Plugin.text(p.temperature));
+    if (match) unit = match[1];
   }
-  if (attrs.wind) {
-    pam += quotedLine("metric", { id: id + "-wind", label: "Wind", value: attrs.wind }, 1);
+  return {temperature:numeric(p.temperature), unit:unit.replace("°", ""),
+    high:numeric(p.high || seriesAt(p.daily_high, now)), low:numeric(p.low || seriesAt(p.daily_low, now)),
+    icon:weatherIcon(Plugin.text(p.condition_code), rise !== null && set !== null && (now < rise || now >= set))};
+}
+function line(kind, attrs) { return "  " + kind + " " + Pam.formatAttributes(attrs) + "\n"; }
+function render(data, attrs) {
+  var p = properties(data), id = attrs.id || "weather", now = Date.now() / 1000;
+  var result = "pam version=1\nscreen " + Pam.formatAttributes({id:id, layout:"card", title:Plugin.text(p.name) || "Weather", status:true}) + "\n";
+  result += line("metric", {id:id+"-temp", label:"Now", value:reading(p.temperature)});
+  result += line("text", {id:id+"-condition", value:Plugin.text(p.condition) || "Conditions unavailable"});
+  if (p.feels_like) result += line("metric", {id:id+"-feels", label:"Feels", value:reading(p.feels_like)});
+  if (p.wind_speed) result += line("metric", {id:id+"-wind", label:"Wind", value:reading(p.wind_speed)});
+  var offset = Plugin.number(p.utc_offset) || 0;
+  for (var day = 0; day < 3; day++) {
+    var time = now + day * 86400;
+    var high = day === 0 && p.high || seriesAt(p.daily_high, time);
+    var low = day === 0 && p.low || seriesAt(p.daily_low, time);
+    var condition = seriesAt(p.daily_condition, time);
+    if (!high && !low && !condition) continue;
+    result += line("item", {id:id+"-day-"+day, title:day === 0 ? "Today" : new Date((time+offset*60)*1000).toISOString().slice(5,10),
+      subtitle:reading(high)+" / "+reading(low)+(Plugin.text(condition) ? " · "+Plugin.text(condition) : "")});
   }
-  pam += "done\n";
-  context.renderPam(pam);
+  return result + "done\n";
 }
 
 function createWeatherHandler(dependencies) {
   dependencies = dependencies || {};
-  var XHR = dependencies.XMLHttpRequest || (typeof XMLHttpRequest !== "undefined" ? XMLHttpRequest : null);
-  var geolocation = dependencies.geolocation || (typeof navigator !== "undefined" ? navigator.geolocation : null);
-
-  return function weatherCapability(attrs, context) {
-    var units = attrs.units || context.settings.units || "auto";
-    var language = typeof navigator !== "undefined" ? navigator.language || "" : "";
-    var country = language.toUpperCase().split(/[-_]/)[1] || "";
-    var imperial = units === "imperial" || (units === "auto" && /^(US|LR|MM)$/.test(country));
-    var latitude = Number(attrs.latitude);
-    var longitude = Number(attrs.longitude);
-
-    if (attrs.command && attrs.command !== "current" && attrs.command !== "fetch" &&
-        attrs.command !== "show") {
-      context.error("Unsupported weather command");
-      return;
-    }
-    if (attrs.temperature != null) {
-      renderInline(attrs, context);
-      return;
-    }
-    if (!XHR) {
-      context.error("Weather networking is unavailable");
-      return;
-    }
-
-    function fetchForecast(lat, lon) {
-      var request = new XHR();
-      var params = [
-        "latitude=" + encodeURIComponent(String(lat)),
-        "longitude=" + encodeURIComponent(String(lon)),
-        "current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,is_day",
-        "daily=weather_code,temperature_2m_max,temperature_2m_min",
-        "timezone=auto",
-        "forecast_days=3"
-      ];
-      if (imperial) {
-        params.push("temperature_unit=fahrenheit", "wind_speed_unit=mph");
-      }
-      context.status("Loading weather");
-      request.open("GET", "https://api.open-meteo.com/v1/forecast?" + params.join("&"), true);
-      request.onload = function() {
-        var data;
-        var current;
-        var daily;
-        var unit;
-        var pam;
-        var id;
-        var index;
-        try {
-          if (request.status < 200 || request.status >= 300) {
-            throw new Error("Weather HTTP " + request.status);
-          }
-          data = JSON.parse(request.responseText);
-          current = data.current;
-          daily = data.daily;
-          if (!current || !daily) {
-            throw new Error("Weather response was incomplete");
-          }
-          id = attrs.id || "weather";
-          unit = data.current_units && data.current_units.temperature_2m || (imperial ? "°F" : "°C");
-          pam = "pam version=1\n";
-          pam += quotedLine("screen", {
-            id: id,
-            layout: "card",
-            title: attrs.location || context.settings.locationLabel || "Weather",
-            status: "true"
-          });
-          pam += quotedLine("metric", { id: id + "-temp", label: "Now", value: rounded(current.temperature_2m) + unit }, 1);
-          pam += quotedLine("text", { id: id + "-condition", value: WEATHER_CODES[current.weather_code] || "Weather" }, 1);
-          pam += quotedLine("metric", { id: id + "-feels", label: "Feels", value: rounded(current.apparent_temperature) + unit }, 1);
-          pam += quotedLine("metric", {
-            id: id + "-wind",
-            label: "Wind",
-            value: rounded(current.wind_speed_10m) + " " + (data.current_units && data.current_units.wind_speed_10m || "")
-          }, 1);
-          for (index = 0; index < Math.min(3, daily.time.length); index += 1) {
-            pam += quotedLine("item", {
-              id: id + "-day-" + index,
-              title: index === 0 ? "Today" : daily.time[index].slice(5),
-              subtitle: rounded(daily.temperature_2m_max[index]) + " / " + rounded(daily.temperature_2m_min[index]) + unit +
-                " · " + (WEATHER_CODES[daily.weather_code[index]] || "Weather")
-            }, 1);
-          }
-          pam += "done\n";
-          if (context.summary && typeof current.temperature_2m === "number" && isFinite(current.temperature_2m) &&
-              typeof daily.temperature_2m_max[0] === "number" && typeof daily.temperature_2m_min[0] === "number") {
-            context.summary({ temperature: rounded(current.temperature_2m), high: rounded(daily.temperature_2m_max[0]),
-              low: rounded(daily.temperature_2m_min[0]), unit: imperial ? "F" : "C",
-              icon: weatherIcon(current.weather_code, current.is_day), updated: Date.now() });
-          }
-          context.renderPam(pam);
-        } catch (error) {
-          context.error(error.message || "Weather failed");
-        }
-      };
-      request.timeout = 15000;
-      request.ontimeout = function() { context.error("Weather request timed out"); };
-      request.onerror = function() {
-        context.error("Could not load weather");
-      };
-      request.send();
-    }
-
-    if (isFinite(latitude) && isFinite(longitude)) {
-      fetchForecast(latitude, longitude);
-      return;
-    }
-    if (!geolocation || typeof geolocation.getCurrentPosition !== "function") {
-      context.error("Current location is unavailable");
-      return;
-    }
-    context.status("Finding location");
-    geolocation.getCurrentPosition(function(position) {
-      fetchForecast(position.coords.latitude, position.coords.longitude);
-    }, function() {
-      context.error("Location permission is required for weather");
-    }, {
-      enableHighAccuracy: false,
-      maximumAge: 15 * 60 * 1000,
-      timeout: 15000
+  var publish = dependencies.onSummary || function() {};
+  var source = new Plugin.Source(dependencies.Pebble, "weather", "location", ["name", "temperature", "feels_like", "condition", "condition_code", "high", "low", "wind_speed", "utc_offset", "sunrise", "sunset", "daily_high", "daily_low", "daily_condition"], function(error, data) {
+    publish(error ? null : summary(data));
+  });
+  function read(done) {
+    source.read(function(error, data) {
+      if (!error && !properties(data)) error = new Error("No weather locations. Set up Weather in the Pebble app.");
+      publish(error ? null : summary(data));
+      done(error, data);
     });
-  };
+  }
+  function handler(attrs, context) {
+    if (attrs.command && attrs.command !== "current" && attrs.command !== "fetch") { context.error("Unsupported weather command"); return; }
+    if (attrs.latitude != null || attrs.longitude != null || attrs.location) { context.error("Choose weather locations in the Pebble app."); return; }
+    context.status("Loading weather");
+    read(function(error, data) {
+      if (error) context.error(error.message);
+      else context.renderPam(render(data, attrs));
+    });
+  }
+  handler.refresh = read;
+  handler.source = source;
+  return handler;
 }
-
-module.exports = {
-  WEATHER_CODES: WEATHER_CODES,
-  weatherIcon: weatherIcon,
-  createWeatherHandler: createWeatherHandler,
-  renderInline: renderInline
-};
+module.exports = {createWeatherHandler:createWeatherHandler, weatherIcon:weatherIcon};

@@ -101,7 +101,7 @@ func (m *Manager) action(w http.ResponseWriter, r *http.Request, sid string, s s
 		if creds.Token == "" {
 			return fmt.Errorf("Credentials are required")
 		}
-		if provider == "nextcloudnotes" || provider == "caldav" {
+		if provider == "nextcloudnotes" {
 			if e := p.Endpoint(binding.Endpoint); e != nil {
 				return e
 			}

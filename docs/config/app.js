@@ -3,12 +3,10 @@
 
   var Endpoints = window.CodeyEndpoints;
   var defaults = {
-    todoSyncProvider:"server", noteSyncProvider:"server", calendarSyncProvider:"server",
+    todoSyncProvider:"server", noteSyncProvider:"server",
     endpoint: "",
     collectionDevelopmentHTTP:false,
     token: "",
-    units: "auto",
-    locationLabel: "Current location",
     timeoutSeconds: 45,
     refreshIntervalSeconds: 60,
     codexModel: "gpt-6-luna", codexEffort: "xhigh", fastMode: true, webSearch: "live", fileAccess: "none",
@@ -17,16 +15,13 @@
   var form = document.getElementById("settings");
   var endpoint = document.getElementById("endpoint");
   var token = document.getElementById("token");
-  var units = document.getElementById("units");
   var timeout = document.getElementById("timeout");
   var refreshInterval = document.getElementById("refresh-interval");
-  var locationLabel = document.getElementById("location-label");
   var status = document.getElementById("status");
 
   var extraFields = {
     todoSyncProvider:document.getElementById("todo-sync-provider"),
     noteSyncProvider:document.getElementById("note-sync-provider"),
-    calendarSyncProvider:document.getElementById("calendar-sync-provider"),
     collectionDevelopmentHTTP:document.getElementById("collection-development-http"),
     tapAnimation: document.getElementById("tap-animation"),
     doubleTap: document.getElementById("double-tap"),
@@ -75,10 +70,8 @@
   token.value = "";
   token.placeholder=current.tokenConfigured?"Token saved — leave blank to keep":"Bearer token";
   document.getElementById("token-status").textContent=current.tokenConfigured?"A bearer token is saved on your phone. Leave this field blank to keep it.":"Enter your server bearer token. After saving, this field is blank so the token is not exposed in the settings URL.";
-  units.value = current.units || "auto";
   timeout.value = String(current.timeoutSeconds || 45);
   refreshInterval.value = Number(current.refreshIntervalSeconds) === 1 ? "1" : "60";
-  locationLabel.value = current.locationLabel || defaults.locationLabel;
 
   Object.keys(extraFields).forEach(function(key) {
     if (typeof defaults[key] === "boolean") { extraFields[key].checked = current[key] === true; }
@@ -175,22 +168,22 @@
     xhr.send(values?Object.keys(values).map(function(k){return encodeURIComponent(k)+"="+encodeURIComponent(values[k]);}).join("&"):null);
   }
   var panels={};
-  function updateActive(data){setupState=data;Object.keys(panels).forEach(function(k){var p=panels[k];var id=(data.active||{})[p.collection]||"server";if(!p.edited){p.selected.value=id;p.update();}p.active.textContent="Active backend: "+({server:"Server only",todoist:"Todoist",googletasks:"Google Tasks",nextcloudnotes:"Nextcloud Notes",caldav:"CalDAV Calendar"}[id]||id);if(id!=="server"&&p.selected.value===id&&!p.candidate)p.setStep(4);});}
-  ["todo","note","calendar"].forEach(function(kind){
+  function updateActive(data){setupState=data;Object.keys(panels).forEach(function(k){var p=panels[k];var id=(data.active||{})[p.collection]||"server";if(!p.edited){p.selected.value=id;p.update();}p.active.textContent="Active backend: "+({server:"Server only",todoist:"Todoist",googletasks:"Google Tasks",nextcloudnotes:"Nextcloud Notes"}[id]||id);if(id!=="server"&&p.selected.value===id&&!p.candidate)p.setStep(4);});}
+  ["todo","note"].forEach(function(kind){
     function el(name){return document.getElementById(kind+"-sync-"+name);}
     var select=extraFields[kind+"SyncProvider"];
-    var p=panels[kind]={collection:kind==="todo"?"col_task":kind==="note"?"col_note":"col_event",selected:select,setStep:step,active:el("active"),status:el("status"),candidate:null,preview:null,busy:false,sequence:0,edited:false,update:update};
+    var p=panels[kind]={collection:kind==="todo"?"col_task":"col_note",selected:select,setStep:step,active:el("active"),status:el("status"),candidate:null,preview:null,busy:false,sequence:0,edited:false,update:update};
     function step(n){
-      p.step=n;var dest=select.value==="todoist"?"project":select.value==="googletasks"?"task list":select.value==="caldav"?"calendar":"category";
+      p.step=n;var dest=select.value==="todoist"?"project":select.value==="googletasks"?"task list":"category";
       el("progress").textContent=select.value==="server"?"Server only · No account setup needed":"Step "+n+" of 4 · "+["Connect account","Choose "+dest,"Review and activate","Active"][n-1]+" · "+(4-n)+" remaining";
-      el("next").textContent=select.value==="server"?"Use the button below to apply this choice. Your saved items stay on the server.":n===1?"Next: choose a "+dest+", review what will sync, then activate.":n===2?"Choose the "+dest+" to sync, then preview the connection. Nothing is activated yet.":n===3?"Review the counts below. Activate to start syncing this destination.":"Setup is complete. Open "+(kind==="todo"?"To Do":kind==="note"?"Notes":"Calendar")+" on the watch; allow the first sync to finish, then tap Refresh. Save and close to keep any other settings changes.";
+      el("next").textContent=select.value==="server"?"Use the button below to apply this choice. Your saved items stay on the server.":n===1?"Next: choose a "+dest+", review what will sync, then activate.":n===2?"Choose the "+dest+" to sync, then preview the connection. Nothing is activated yet.":n===3?"Review the counts below. Activate to start syncing this destination.":"Setup is complete. Open "+(kind==="todo"?"To Do":"Notes")+" on the watch; allow the first sync to finish, then tap Refresh. Save and close to keep any other settings changes.";
       el("credentials").hidden=n>1||select.value==="server"||select.value==="googletasks";el("connect").hidden=n===2||n===3;if(n===4)el("connect").textContent="Change account or destination";el("back").hidden=n!==3;el("destination").hidden=n!==2;el("activate").hidden=n!==3;
       el("destination-title").textContent=dest.charAt(0).toUpperCase()+dest.slice(1);
     }
     function reset(){p.sequence++;p.candidate=null;p.preview=null;el("destination").hidden=true;el("activate").hidden=true;el("secret").value="";el("export").checked=false;el("stop").checked=false;step(1);}
-    function update(){reset();var provider=select.value;el("credentials").hidden=provider==="server"||provider==="googletasks";el("endpoint-label").hidden=el("username-label").hidden=provider!=="nextcloudnotes"&&provider!=="caldav";
+    function update(){reset();var provider=select.value;el("credentials").hidden=provider==="server"||provider==="googletasks";el("endpoint-label").hidden=el("username-label").hidden=provider!=="nextcloudnotes";
       el("connect").textContent=provider==="server"?"Use Server only":provider==="googletasks"?"Continue to Google authorization":"Connect";
-      document.getElementById(kind+"-sync-help").textContent=provider==="server"?"No external account is needed. Use Server only below to disconnect an existing backend; records are preserved.":provider==="nextcloudnotes"?"Enter the Nextcloud base URL, username, and app password. We will find your categories and guide you through choosing one.":provider==="caldav"?"Use your private CalDAV address, username, and app password. Public sharing links are read-only. In Nextcloud, find the primary CalDAV address in Calendar settings.":provider==="todoist"?"Enter your Todoist API token. Connect to discover projects, then preview and activate.":"Google requires OAuth client credentials in ~/.codey/integrations.json (see README). Continue in this webview to authorize Google; this does not close Pebble settings.";
+      document.getElementById(kind+"-sync-help").textContent=provider==="server"?"No external account is needed. Use Server only below to disconnect an existing backend; records are preserved.":provider==="nextcloudnotes"?"Enter the Nextcloud base URL, username, and app password. We will find your categories and guide you through choosing one.":provider==="todoist"?"Enter your Todoist API token. Connect to discover projects, then preview and activate.":"Google requires OAuth client credentials in ~/.codey/integrations.json (see README). Continue in this webview to authorize Google; this does not close Pebble settings.";
       el("secret-title").textContent=provider==="todoist"?"Todoist API token":"App password";
       p.status.textContent="";
     }
@@ -208,7 +201,7 @@
       p.edited=true;if(p.step===4){update();return;}
       if(!generation()){p.status.textContent="Setup is not ready. Reopen settings if the server could not be reached.";return;}
       var provider=select.value,values={action:provider==="server"?"disconnect":provider==="googletasks"?"authorize":"connect",collection:p.collection,generation:generation(),provider:provider,stop:el("stop").checked?"yes":""};
-      if(values.action==="connect"){values.token=el("secret").value.trim();values.username=el("username").value.trim();values.endpoint=el("endpoint").value.trim();if(!values.token||((provider==="nextcloudnotes"||provider==="caldav")&&(!values.username||!values.endpoint))){p.status.textContent="Fill in the required connection fields.";return;}}
+      if(values.action==="connect"){values.token=el("secret").value.trim();values.username=el("username").value.trim();values.endpoint=el("endpoint").value.trim();if(!values.token||(provider==="nextcloudnotes"&&(!values.username||!values.endpoint))){p.status.textContent="Fill in the required connection fields.";return;}}
       p.sequence++;p.candidate=null;p.preview=null;send(values,function(data){
         if(values.action==="disconnect"){p.status.textContent="Server only is active. Open your collection on the watch.";return;}
         if(data.url){var base=setup.url.replace(/\/integrations\/setup-api$/,"");if(data.url.indexOf(base+"/integrations?ticket=")!==0){p.status.textContent="Invalid authorization destination";return;}window.location.href=data.url;return;}
@@ -234,8 +227,6 @@
     settings = {
       endpoint: normalizedEndpoint,
       token: token.value.trim(),
-      units: units.value,
-      locationLabel: locationLabel.value.trim() || defaults.locationLabel,
       timeoutSeconds: parseInt(timeout.value, 10) || 45,
       refreshIntervalSeconds: Number(refreshInterval.value) === 1 ? 1 : 60
     };

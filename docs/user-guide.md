@@ -10,7 +10,7 @@ Only unmatched dictation is sent to the configured Codex agent.
 **Thinking** can appear briefly while the phone processes the transcription.
 
 Local examples: “timer 5 minutes,” “start a five-minute timer,” “set a timer for one hour and thirty minutes,” “set an alarm in ten minutes,” “set an alarm for 7:30 pm,” “wake me up tomorrow at seven am,” “remind me in an hour to check the oven,” “pause the stopwatch,” “show my timers,” “cancel all alarms,” and “what's the weather?”
-These commands need no agent endpoint; weather still uses the phone's location and weather service.
+These commands need no agent endpoint; weather reads the preferred phone plugin.
 
 Clock alarms use the phone's local timezone.
 AM/PM, noon/midnight, or 24-hour HH:MM notation is required; without a date they mean the next occurrence.
@@ -77,7 +77,7 @@ On other screens, hold Select to dictate into the current conversation.
 Notes, to-dos, and checks are saved on the server. The phone queues accepted changes during server outages; the watch needs its phone connection to save. Cached pages are marked stale when the server is unavailable. See [collection setup and recovery](collections.md).
 Agent requests animate into **Notifications** when the phone submits them. Local
 dictation shortcuts do not show this animation.
-Completed action commands run as soon as their result reaches the phone. Timers, alarms, reminders, and stopwatches appear in Notifications without opening the job; notes, to-dos, checks, and calendar events enter the durable collection queue. The job disappears after watch execution or durable phone acceptance. Delivery failures remain available to retry, using the same command identity. Plain answers and forms stay in the job list for you to open.
+Completed action commands run as soon as their result reaches the phone. Timers, alarms, reminders, and stopwatches appear in Notifications without opening the job; notes, to-dos, and checks enter the durable collection queue. The job disappears after watch execution or durable phone acceptance. Delivery failures remain available to retry, using the same command identity. Plain answers and forms stay in the job list for you to open.
 A completed plain answer buzzes during the configured notification window (45 seconds by default), without replacing the current screen.
 After that window there is no automatic polling.
 Opening Notifications immediately marks ongoing requests as **Checking** and refreshes them once.
@@ -175,8 +175,10 @@ Open codey's gear icon in the paired phone app, save a valid endpoint, then reop
 Check microphone/voice permissions and the phone/watch connection, then retry.
 Voice recognition depends on the system dictation service.
 
-**Weather cannot get a location.**
-Allow location access for the Pebble mobile app and make sure the phone has network access.
+**Weather is unavailable.**
+Enable Plugins / permissions preview in the Pebble app, allow Location access for codey, and set up a weather location.
+Choose weather units, locations, and the provider in the Pebble app.
+Codey displays the first location returned by the preferred Weather plugin.
 
 **The settings page will not open.**
 Confirm the phone is online.
@@ -185,21 +187,14 @@ The hosted page is [nick1udwig.github.io/codey/config/](https://nick1udwig.githu
 
 ## Calendar
 
-Tap the top-left date tile to see calendar events in time order. The watch
-caches the first eight dated titles; opening the list refreshes them through the
-phone. The Timeline-style view expands the selected event, previews the next,
-and separates dates with day headings. Up/Down move between events and load
-adjacent pages at the boundaries. Select opens the event; Back returns to the
-same page and selection. Dragging the list snaps to an event when released.
-Open an event for its end time, location, and description. Date-only events
-are all day; their end date is exclusive.
-
-Say “Add a calendar event: lunch tomorrow from noon to one at Café Central.”
-Codey asks for missing dates or times, then saves the event through the phone.
-Calendar defaults to Server only. For syncing, choose CalDAV in phone settings,
-use your private CalDAV calendar or calendar-home URL, username, and app password. Public sharing links cannot accept events. The setup flow automatically previews a sole destination; choose Activate to finish. Failed connections retain entered credentials for retry. See [backend setup](../README.md#backend-sync-setup). The agenda imports the
-next 90 days and recurring occurrences. Manage edits, invitations, and recurring
-series in your calendar app. This agenda lives in codey, separate from OS Timeline.
+Tap the top-left date tile to read upcoming events from the preferred Calendar plugin.
+Enable Plugins / permissions preview in the Pebble app and allow Calendar access for codey.
+The built-in plugin reads the enabled phone calendars and currently returns up to ten events over seven days.
+Up/Down browse events and pages; Select opens an event; Back returns to the same page and selection.
+Details show the end time, location, and calendar name when available.
+All-day events keep their calendar date, with an exclusive end date.
+Create and edit events in your phone calendar app.
+Calendar no longer reads server events or syncs CalDAV.
 
 The lower-right dashboard tile counts all active tasks or notes, including
 items beyond the cached first page. Completing a task updates the list from the
@@ -209,7 +204,7 @@ phone cache immediately while delivery continues in the background.
 
 Say “turn off double tap,” “turn on ripple,” “turn off answer vibration,” or
 “turn on fast mode” to change a preference immediately. You can also say
-“set weather units to metric,” “set reasoning effort to high,” “set web search
+“set reasoning effort to high,” “set web search
 to cached,” and “set model to default.” Codey shows the saved value. Credentials
 and backend account setup remain in phone settings.
 
@@ -219,11 +214,8 @@ are saved when the result arrives; open the result to see the saved value. Model
 effort, fast mode, and search changes apply to subsequent requests. File, network,
 shell, and approval permissions still require phone settings.
 
-“Calendar: Lunch tomorrow at noon for an hour” and “make an event: Lunch
-tomorrow at noon for an hour” save locally parsed events. Use today, tomorrow,
-or an explicit YYYY-MM-DD date, an explicit clock time, and a duration.
-“Calendar: Holiday on 2026-09-20 all day” creates an all-day event. Missing or
-ambiguous times go to Codex for clarification. “Open my calendar” opens the agenda.
+“Open my calendar” opens the plugin agenda.
+Calendar creation is unavailable through the current plugin API.
 
 The watch app list shows the smiling Codey mascot. Firmware-marked non-navigational touch
 contacts are ignored; true palm/cover detection requires a firmware signal

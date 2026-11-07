@@ -23,7 +23,7 @@ Views.prototype.list=function(kind,state,snapshot,cursor,done,preferCache){
   if(request!==self.requestSequence)return done(new Error("View superseded"));
   if(e)return done(e);
   var view=self.begin(kind),titles=[],states=[],timeline=[];
-  self.pages[kind]={state:state,snapshot:snapshot||"",cursor:cursor||"",ids:p.records.map(function(r){return r.id;})};
+  self.pages[kind]={state:state,snapshot:(kind==="event"?p.snapshot_id:snapshot)||"",cursor:cursor||"",ids:p.records.map(function(r){return r.id;})};
   if(kind==="event") {
    if(!cursor)self.eventPages=[];
    var pageIndex=-1;
@@ -40,7 +40,7 @@ Views.prototype.list=function(kind,state,snapshot,cursor,done,preferCache){
    states.push(r.pending?"p":r.provider_state==="synced"?"s":r.provider_state==="pending"?"b":"d");
   });
   if(p.next_cursor)view.aliases.next={snapshot:p.snapshot_id,cursor:p.next_cursor,state:state};
-  done(null,{token:view.token,list:{kind:kind,state:state,total:p.total,titles:titles,timeline:timeline,states:states.join(""),previous:!!view.aliases.previous,next:!!p.next_cursor,stale:!!p.stale,partial:!!p.partial,first:!snapshot&&state==="active",pending:p.pending_count||0}});
+  done(null,{token:view.token,list:{kind:kind,state:state,source:p.source,total:p.total,titles:titles,timeline:timeline,states:states.join(""),previous:!!view.aliases.previous,next:!!p.next_cursor,stale:!!p.stale,partial:!!p.partial,first:!snapshot&&state==="active",pending:p.pending_count||0}});
  },preferCache);
 };
 function checkDay(date) { return date.getFullYear()+"-"+("0"+(date.getMonth()+1)).slice(-2)+"-"+("0"+date.getDate()).slice(-2); }

@@ -22,7 +22,8 @@ token, and provider-management endpoints always require one.
 Collections always use that same URL, stripping a trailing `/v1/agent` and
 converting WebSocket schemes to HTTP(S). There is no separate collection URL.
 HTTPS is required unless **Allow HTTP for local development collections** is
-explicitly enabled. The server creates To-dos, Notes, Calendar, and Checks collections.
+explicitly enabled. The server retains To-dos, Notes, legacy Calendar, and Checks collections.
+The watch reads Calendar from the phone plugin; legacy server events remain stored for compatibility.
 Collection APIs remain available when Codex is unavailable.
 
 Choose **To-do sync setup** or **Notes sync setup** independently; both default
@@ -160,14 +161,12 @@ See [server operations](collections-server-operations.md), the
 
 ## Calendar
 
-Calendar is a third, independent collection, defaulting to Server only. Choose
-CalDAV in phone settings to connect a calendar with its URL, username, and app
-password. Setup shows four numbered steps and a completion message. The same
-phone journal, server receipts, encrypted credentials, and cached watch titles
-apply. The agenda imports 90 days of events with server-expanded recurrences;
-new single events sync outward using conditional, deterministic resource URLs.
-Use your calendar app for edits, invitations, and recurring-series creation.
-See [README setup](../README.md#backend-sync-setup) and [protocol](protocol.md).
+Calendar reads `calendar/event` from the preferred phone plugin.
+It uses the existing watch list/detail wire format with in-memory page snapshots.
+It does not use the server journal, provider sync, or watch flash previews.
+The legacy server event collection remains stored for compatibility.
+Create and edit events in the phone calendar app.
+See [plugin setup](../README.md#calendar-and-weather-plugins) and [protocol](protocol.md).
 
 Background collection metadata and unchanged provider scans back off from one
 minute to at most five minutes. Pending phone operations retain the short retry
