@@ -23,7 +23,7 @@ var sessionId = loadSessionId();
 var commandSequence = loadCommandSequence();
 var serverFeatures = new ServerFeatures.ServerFeatures(typeof XMLHttpRequest !== "undefined" ? XMLHttpRequest : null);
 var collectionController = require("./collection-controller")({
- storage:localStorage, XMLHttpRequest:typeof XMLHttpRequest!=="undefined"?XMLHttpRequest:null,
+ Pebble:Pebble, storage:localStorage, XMLHttpRequest:typeof XMLHttpRequest!=="undefined"?XMLHttpRequest:null,
  settings:function(){return settings;}, enqueue:function(message){watchQueue.enqueue(message);},
  beginRequest:function(){activeRequestId=nextRequestId();return activeRequestId;},
  isCurrent:function(id){return id===activeRequestId;},

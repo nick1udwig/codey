@@ -6,7 +6,6 @@
 #define ROWS 8
 #define TITLE_BYTES 72
 #define CACHE_KEY 4480
-#define TIMELINE_META_KEY 4520
 #define META_BYTES 192
 
 static int key(int kind) { return CACHE_KEY + kind * 10; }
@@ -20,7 +19,7 @@ static void draw(AgentCapabilities *host, int kind, char titles[ROWS][TITLE_BYTE
     char id[12];snprintf(id,sizeof(id),"r%d",i);
     const char *action=preview?"":calendar?"local.event.open":notes?"local.note.open":checks?"local.check.open":(flags&1)?"local.todo.restore":"local.todo.complete";
     char state=i<(int)strlen(states)?states[i]:'d';
-    const char *subtitle=preview?"Cached preview":state=='p'?"Pending server":state=='s'?"Synced":state=='b'?"Backend pending":"Saved on server";
+    const char *subtitle=preview?"Cached preview":calendar?"Phone calendar":state=='p'?"Pending server":state=='s'?"Synced":state=='b'?"Backend pending":"Saved on server";
     agent_capability_add_element(ui,kind?"item":"choice",id,kind?titles[i]:"",subtitle,kind?"":titles[i],action,calendar?metadata[i]:kind?"":"todo=true",(preview?1:0)|((flags&1)?2:0)|(calendar&&i==((flags>>8)&7)?64:0));
   }
   if(!count)agent_capability_add_element(ui,"text","empty","","",checks?"No checks yet. Say 'check new baby'.":"No items","","",0);
@@ -47,19 +46,17 @@ static void receive(AgentCapabilities *host, int kind, const char *packed, int f
     if(n<META_BYTES)memcpy(metadata[i],meta,n);
     meta+=n;if(*meta=='\n')meta++;
   }
-  if(flags&16){
+  if((flags&16)&&kind!=2){
     int base=key(kind);unsigned dirty=0;
     for(int i=0;i<count;i++){
       char old[TITLE_BYTES];
       if(persist_read_data(base+1+i,old,sizeof(old))!=TITLE_BYTES||memcmp(old,titles[i],TITLE_BYTES))dirty|=1u<<i;
-      if(kind==2){char old_meta[META_BYTES];if(persist_read_data(TIMELINE_META_KEY+i,old_meta,sizeof(old_meta))!=META_BYTES||memcmp(old_meta,metadata[i],META_BYTES))dirty|=1u<<i;}
     }
     if(dirty||persist_read_int(base)!=count+1){
       // Invalidate first so interrupted writes cannot expose a mixed page.
       bool ok=persist_write_int(base,0)==(int)sizeof(int32_t);
       for(int i=0;ok&&i<count;i++)if(dirty&(1u<<i)){
         ok=persist_write_data(base+1+i,titles[i],TITLE_BYTES)==TITLE_BYTES;
-        if(ok&&kind==2)ok=persist_write_data(TIMELINE_META_KEY+i,metadata[i],META_BYTES)==META_BYTES;
       }
       if(ok)persist_write_int(base,count+1); // one means a cached empty collection
     }
@@ -69,6 +66,7 @@ static void receive(AgentCapabilities *host, int kind, const char *packed, int f
 void collection_preview_receive(AgentCapabilities *host,int kind,const char *packed,int flags,const char *status,const char *states){receive(host,kind,packed,flags,status,states,"");}
 void collection_preview_receive_timeline(AgentCapabilities *host,const char *packed,int flags,const char *status,const char *states,const char *metadata){receive(host,2,packed,flags,status,states,metadata);}
 bool collection_preview_show(AgentCapabilities *host,int kind){
+  if(kind==2)return false;
   int base=key(kind),count=persist_read_int(base)-1;
   if(count<0||count>ROWS)return false;
   char titles[ROWS][TITLE_BYTES]={{0}};
@@ -76,7 +74,6 @@ bool collection_preview_show(AgentCapabilities *host,int kind){
   for(int i=0;i<count;i++){
     if(persist_read_data(base+1+i,titles[i],TITLE_BYTES)!=TITLE_BYTES)return false;
     titles[i][TITLE_BYTES-1]=0;
-    if(kind==2){if(persist_read_data(TIMELINE_META_KEY+i,metadata[i],META_BYTES)!=META_BYTES)metadata[i][0]=0;metadata[i][META_BYTES-1]=0;}
   }
   draw(host,kind,titles,metadata,count,0,"Cached · Refreshing…","",true);return true;
 }

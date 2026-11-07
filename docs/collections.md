@@ -22,7 +22,8 @@ token, and provider-management endpoints always require one.
 Collections always use that same URL, stripping a trailing `/v1/agent` and
 converting WebSocket schemes to HTTP(S). There is no separate collection URL.
 HTTPS is required unless **Allow HTTP for local development collections** is
-explicitly enabled. The server creates To-dos, Notes, Calendar, and Checks collections.
+explicitly enabled. The server retains To-dos, Notes, legacy Calendar, and Checks collections.
+The watch reads Calendar from the phone plugin; legacy server events remain stored for compatibility.
 Collection APIs remain available when Codex is unavailable.
 
 Choose **To-do sync setup** or **Notes sync setup** independently; both default

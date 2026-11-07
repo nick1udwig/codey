@@ -1000,6 +1000,7 @@ function loadPkjsHarness(options) {
   }
   if (options.WebSocket) { global.WebSocket = options.WebSocket; }
   global.Pebble = {
+    subscribeToSource: options.subscribeToSource,
     addEventListener: function(name, handler) { handlers[name] = handler; },
     sendAppMessage: function(message, success) {
       sent.push(message);
@@ -1512,23 +1513,33 @@ test("unchanged counts skip Bluetooth but changed lists and reconnects refresh t
  }finally{h.cleanup();}
 });
 
-test("agent calendar command automatically creates an event without opening its job", function(){
+test("agent calendar writes fail without creating server events", function(){
  var requests=[],storage={};storage[Settings.STORAGE_KEY]=JSON.stringify({endpoint:"https://agent.test",token:"t"});
  function XHR(){}XHR.prototype.open=function(method,url){this.url=url;};XHR.prototype.setRequestHeader=function(){};XHR.prototype.send=function(body){this.body=body;requests.push(this);};
  var h=loadPkjsHarness({storageData:storage,XMLHttpRequest:XHR});
- function reply(value,status){var r=requests.shift();r.status=status||200;r.responseText=JSON.stringify(value);r.onload();}
  try{
   h.handlers.appmessage({payload:{0:"input",2:"dictation",8:"Add lunch tomorrow from noon to one"}});
-  jobReply(h,requests.shift(),'pam version=1\ncapability type=calendar command=add title="Lunch" start="2099-09-16T12:00:00-07:00" end="2099-09-16T13:00:00-07:00" location="Cafe"\ndone\n');
-  assert.match(requests[0].url,/sync\/info$/);reply({protocol_version:1,server_instance_id:"s",store_epoch:"e",principal:"operator"});
-  reply({client_id:"c",server_instance_id:"s",store_epoch:"e",principal:"operator"});reply([{id:"col_event",kind:"event",binding_generation:"1"}]);
-  assert.match(requests[0].url,/sync\/ingress\//);reply({message:"Not found"},404);
-  assert.match(requests[0].url,/sync\/mutations$/);var op=JSON.parse(requests[0].body).operations[0];assert.strictEqual(op.type,"event.create");assert.strictEqual(op.collection_id,"col_event");assert.strictEqual(op.payload.start,"2099-09-16T12:00:00-07:00");assert.strictEqual(op.payload.location,"Cafe");
-  var record={id:op.record_id,collection_id:"col_event",kind:"event",revision:"1",title:"Lunch",start:op.payload.start,end:op.payload.end,location:"Cafe",capabilities:[]};
-  reply({results:[{operation_id:op.id,outcome:"applied",durably_recorded:true,record:record,revision:"1"}]});
-  assert.ok(requests.some(function(r){return /\/ack$/.test(r.url);}));
-  assert.ok(!h.sent.some(function(m){return m[0]==="collection-list"||m[0]==="job-result";}));
-  assert.ok(h.sent.some(function(m){return m[0]==="job"&&m[2]==="remove";}));
+  jobReply(h,requests.shift(),'pam version=1\ncapability type=calendar command=add title="Lunch" start="2099-09-16T12:00:00-07:00" end="2099-09-16T13:00:00-07:00"\ndone\n');
+  assert.ok(!requests.some(function(r){return /sync\//.test(r.url);}));
+  assert.ok(h.sent.some(function(m){return m[0]==="status" && /Calendar is read-only/.test(m[8]);}));
+ }finally{h.cleanup();}
+});
+
+test("calendar plugin opens, pages and reads events without a server", function(){
+ var subscription;
+ var h=loadPkjsHarness({subscribeToSource:function(options){subscription=options;return {unsubscribe:function(){}};}});
+ function request(action,id,value,token){h.handlers.appmessage({payload:{0:"capability_event",2:"calendar",9:action,4:id||"",8:value||"",16:token||""}});}
+ function latest(type){return h.sent.filter(function(m){return m[0]===type;}).slice(-1)[0];}
+ try{
+  request("list");assert.equal(subscription.category,"calendar");assert.equal(subscription.item,"event");
+  var start=Date.UTC(2099,0,1)/1000;
+  subscription.onData({instances:Array.from({length:10},function(_,i){return {instanceId:String(i),properties:{name:{longText:{text:"Event "+i}},starts_at:{timestamp:{value:start+i*3600}},ends_at:{timestamp:{value:start+(i+1)*3600}},location:{longText:{text:"Room A"}},calendar:{shortText:{text:"Work"}}}};})});
+  var list=latest("collection-list");assert.equal(list[3],undefined);assert.equal(list[2],"event");assert.equal(list[12],10);assert.equal(list[7],"Phone calendar");assert.equal(list[8].split("\n").length,8);
+  request("list","","next",list[16]);list=latest("collection-list");assert.equal(list[8],"Event 8\nEvent 9");assert.ok(list[11]&32);
+  subscription.onData({instances:[]});
+  request("read","r0","",list[16]);var detail=latest("collection-view");assert.ok(h.sent.some(function(m){return /Room A/.test(JSON.stringify(m));}));
+  request("list","","return",detail[16]);list=latest("collection-list");assert.equal(list[8],"Event 8\nEvent 9");
+  request("list","","previous",list[16]);assert.match(latest("collection-list")[8],/^Event 0/);
  }finally{h.cleanup();}
 });
 
@@ -1564,6 +1575,7 @@ test("Native dashboard survives bridge startup, configuration, and local notific
   } finally { harness.cleanup(); }
 });
 
+require("./plugins")(test);
 require("./local-dictation")(test);
 require("./jobs")(test);
 require("./job-actions")(test);

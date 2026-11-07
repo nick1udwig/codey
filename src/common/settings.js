@@ -9,7 +9,6 @@ var DEFAULTS = Object.freeze({
   endpoint: "",
   todoSyncProvider: "server",
   noteSyncProvider: "server",
-  calendarSyncProvider: "server",
   collectionDevelopmentHTTP: false,
   token: "",
   units: "auto",
@@ -38,7 +37,6 @@ function copyDefaults(value) {
   settings.endpoint = Endpoints.normalize(settings.endpoint) || "";
   settings.collectionDevelopmentHTTP = source.collectionDevelopmentHTTP === true;
   settings.todoSyncProvider = ["server", "todoist", "googletasks"].indexOf(source.todoSyncProvider)>=0?source.todoSyncProvider:"server";
-  settings.calendarSyncProvider = ["server", "caldav"].indexOf(source.calendarSyncProvider)>=0?source.calendarSyncProvider:"server";
   settings.noteSyncProvider = ["server", "nextcloudnotes"].indexOf(source.noteSyncProvider)>=0?source.noteSyncProvider:"server";
   settings.token = String(settings.token || "").trim();
   settings.units = settings.units === "imperial" || settings.units === "metric" ? settings.units : "auto";

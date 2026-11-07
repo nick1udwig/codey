@@ -1,5 +1,8 @@
 # Calendar Timeline frontend
 
+Calendar reads the phone plugin and keeps paging snapshots in phone memory.
+Calendar no longer saves watch previews to flash.
+
 The watch calendar uses an adaptation of PebbleOS Timeline's card layout and
 event relationship rules. The existing CalDAV/server collection APIs, sync,
 storage, event creation and phone journal are unchanged.

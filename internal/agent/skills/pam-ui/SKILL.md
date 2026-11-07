@@ -34,6 +34,6 @@ start a timer or change data just to demonstrate a capability.
 
 Use [app guide](references/app-guide.md) when the user asks how a feature works.
 Keep the first answer short enough for a watch; expand only the relevant feature
-on follow-up. Calendar is a placeholder, not an integrated calendar. External
+on follow-up. Calendar reads the phone Calendar plugin. External
 file and command tasks depend on the configured backend permissions; do not
 promise integrations the app does not provide.
